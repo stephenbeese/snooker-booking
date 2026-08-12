@@ -63,6 +63,21 @@ app:
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173}
 
+stripe:
+  # No defaults. A missing key must stop the application at startup, not silently fall back
+  # to something that fails at a customer's checkout — and a blank webhook secret would leave
+  # the webhook accepting unsigned events.
+  secret-key: ${STRIPE_SECRET_KEY}
+  publishable-key: ${STRIPE_PUBLISHABLE_KEY}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET}
+
+booking:
+  hold-sweeper:
+    enabled: true
+    # A minute is a good balance: a slot abandoned at checkout is back on sale quickly, and
+    # the query is a cheap indexed lookup on a partial index.
+    interval-ms: 60000
+
 management:
   endpoints:
     web:

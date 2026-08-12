@@ -54,7 +54,29 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("windowEnd") Instant windowEnd,
             @Param("statuses") Iterable<BookingStatus> statuses);
 
-    List<Booking> findByUserIdOrderByStartAtDesc(long userId);
+    /**
+     * A customer's bookings, with the table fetched in the same query.
+     *
+     * <p>The {@code JOIN FETCH} is required, not an optimisation. {@code snookerTable} is LAZY
+     * and {@code open-in-view} is off, so the proxy is dead by the time the controller builds
+     * the DTO — every row would throw LazyInitializationException. Fetching here also avoids
+     * N+1: one query for the list rather than one per booking.
+     */
+    @Query("""
+            SELECT b FROM Booking b
+            JOIN FETCH b.snookerTable
+            WHERE b.userId = :userId
+            ORDER BY b.startAt DESC
+            """)
+    List<Booking> findByUserIdOrderByStartAtDesc(@Param("userId") long userId);
+
+    /** Same eager fetch, for the single-booking view. */
+    @Query("""
+            SELECT b FROM Booking b
+            JOIN FETCH b.snookerTable
+            WHERE b.reference = :reference
+            """)
+    Optional<Booking> findByReferenceWithTable(@Param("reference") String reference);
 
     /**
      * Confirms a booking if and only if it is still awaiting payment.

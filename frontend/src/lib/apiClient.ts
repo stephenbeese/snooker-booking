@@ -6,11 +6,39 @@ function readCsrfToken(): string | null {
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
+/**
+ * Makes sure a CSRF token exists before a write.
+ *
+ * <p>Spring issues the XSRF-TOKEN cookie on a response, so a freshly-loaded page that has not
+ * yet made a request has no token — and its very first write is rejected with a bare 401. That
+ * first write is usually the login attempt, so without this the app rejects the first sign-in
+ * of every session and succeeds on the retry, which reads exactly like a wrong password.
+ *
+ * <p>A GET to a public endpoint is enough to be issued one.
+ */
+async function ensureCsrfToken(): Promise<string | null> {
+  const existing = readCsrfToken();
+  if (existing) {
+    return existing;
+  }
+  await fetch('/api/auth/me', { credentials: 'include' });
+  return readCsrfToken();
+}
+
 async function toApiError(response: Response): Promise<ApiError> {
-  let body: ApiErrorBody = {
-    code: 'UNEXPECTED_ERROR',
-    message: `Request failed with status ${response.status}`,
-  };
+  // Spring Security rejects a request before it reaches the exception handler — an expired
+  // session, or a missing CSRF token — so a 401 can arrive with no body at all and no error
+  // envelope. Saying so beats "Request failed with status 401".
+  let body: ApiErrorBody =
+    response.status === 401
+      ? {
+          code: 'AUTHENTICATION_REQUIRED',
+          message: 'Your session has expired. Please sign in again.',
+        }
+      : {
+          code: 'UNEXPECTED_ERROR',
+          message: `Request failed with status ${response.status}`,
+        };
   try {
     const parsed: unknown = await response.json();
     if (parsed && typeof parsed === 'object' && 'code' in parsed) {
@@ -34,9 +62,10 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
     headers.set('Content-Type', 'application/json');
   }
 
-  // Session auth means writes need the double-submit CSRF token.
+  // Session auth means writes need the double-submit CSRF token, fetched first if the page
+  // has not been issued one yet.
   if (method !== 'GET' && method !== 'HEAD') {
-    const token = readCsrfToken();
+    const token = await ensureCsrfToken();
     if (token) {
       headers.set('X-XSRF-TOKEN', token);
     }

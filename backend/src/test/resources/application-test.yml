@@ -36,11 +36,11 @@ stripe:
   publishable-key: pk_test_dummy_key_for_integration_tests
   webhook-secret: whsec_dummy_secret_for_integration_tests
 
-# The sweeper must not fire on its own schedule during tests and expire a fixture
-# mid-assertion; tests invoke it directly.
+# The sweeper bean still exists — tests call sweep() directly at a controlled moment — but
+# its schedule is pushed far out so a background run cannot expire a fixture mid-assertion.
 booking:
   hold-sweeper:
-    enabled: false
+    interval-ms: 3600000
 
 logging:
   level:

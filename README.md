@@ -7,8 +7,9 @@ Single-club by design: no tenant ids, no tenant middleware, no platform admins. 
 a club would want to change — opening hours, prices, booking rules, the tables
 themselves — lives in the database rather than in code.
 
-**Status: Phases 0–1 complete.** Availability is live end to end. Booking, payments,
-customer accounts and the admin area are specified but not yet built (see
+**Status: Phases 0–2 complete.** Customers can register, sign in, browse live
+availability, and book a table with payment via Stripe Checkout. Cancellation, the
+customer dashboard and the admin area are specified but not yet built (see
 [Roadmap](#roadmap)).
 
 ---
@@ -58,6 +59,34 @@ the offset). `ClubClock` is the only place that converts between them. Slot grid
 
 **Money is integer pence.** No floats, no `BigDecimal`. Prices are computed server-side
 and a price in a request body is ignored.
+
+**Sessions, not JWTs.** There is no cross-domain client, no mobile app and no third-party
+API consumer, so every argument for a bearer token is absent while its costs (unrevocable
+tokens, refresh rotation, an XSS-exfiltratable credential in `localStorage`) all apply.
+Sessions live in the Postgres already being run. `SameSite=Lax`, not `Strict` — `Strict`
+withholds the cookie on the top-level redirect back from Stripe and lands the user
+signed out.
+
+**The slot is held before Stripe is called.** Taking money for an unreserved slot
+guarantees eventually selling one that is already gone, then owing a refund and an
+apology. Holding first means the worst case is an unused hold that expires by itself. The
+Stripe call also happens outside the database transaction: an HTTP round trip inside one
+holds a connection open, and a slow provider becomes pool exhaustion.
+
+**Confirmation is idempotent from both directions.** The webhook and the customer's
+browser return arrive in an unpredictable order, and either may not arrive at all. Both
+call the same guarded update (`WHERE status = 'PENDING_PAYMENT'`), so whichever is second
+updates zero rows instead of double-confirming. Only `checkout.session.completed` confirms
+a booking — also handling `payment_intent.succeeded` is the classic double-confirmation
+bug, since Stripe sends both.
+
+**Expired holds are swept, never deleted.** The constraint predicate cannot test hold
+expiry (index predicates must be `IMMUTABLE`, and `now()` is not), so a lapsed hold keeps
+blocking its slot until a row update. Three layers cover it: availability treats a lapsed
+hold as free, booking creation expires conflicting holds in-transaction, and a sweeper
+handles the rest. A deleted booking could not be reinstated when a late payment arrives —
+which is reachable, because Stripe's minimum session expiry (30 min) outlives the hold
+(15 min).
 
 ---
 
@@ -213,6 +242,15 @@ Implemented:
 |---|---|---|---|
 | `GET` | `/api/health` | Public | `{status, db}` |
 | `GET` | `/api/availability` | Public | `?date=&durationMinutes=&tableId=` |
+| `POST` | `/api/auth/register` | Public | Always creates a CUSTOMER |
+| `POST` | `/api/auth/login` | Public | Establishes the session |
+| `POST` | `/api/auth/logout` | Public | Idempotent, `204` |
+| `GET` | `/api/auth/me` | Public | The user, or `204` when anonymous |
+| `POST` | `/api/bookings` | Customer | Holds the slot, returns `checkoutUrl` |
+| `GET` | `/api/bookings` | Customer | The caller's own bookings |
+| `GET` | `/api/bookings/{reference}` | Customer | 404 (not 403) for someone else's |
+| `POST` | `/api/bookings/{reference}/checkout` | Customer | New session after a decline |
+| `POST` | `/api/webhooks/stripe` | Public | HMAC-verified; CSRF-exempt |
 
 Browsing availability deliberately needs no account — it is the conversion path.
 
@@ -248,7 +286,7 @@ Errors use one envelope and never include a stack trace:
 |---|---|---|
 | 0 | Project foundation, Compose, health check | **Done** |
 | 1 | Schema, settings, pricing, availability engine + grid | **Done** |
-| 2 | Auth, booking creation, Stripe Checkout, webhooks | Planned |
+| 2 | Auth, booking creation, Stripe Checkout, webhooks, hold sweeper | **Done** |
 | 3 | Customer dashboard, cancellation, password reset | Planned |
 | 4 | Admin dashboard, booking management, authz boundary | Planned |
 | 5 | Telephone bookings, table CRUD, maintenance blocks | Planned |

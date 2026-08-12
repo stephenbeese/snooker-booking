@@ -12,4 +12,8 @@ export const queryKeys = {
   club: () => ['club'] as const,
   tables: () => ['tables'] as const,
   bookingSettings: () => ['booking-settings'] as const,
+
+  currentUser: () => ['current-user'] as const,
+  myBookings: () => ['bookings', 'mine'] as const,
+  booking: (reference: string) => ['bookings', reference] as const,
 } as const;

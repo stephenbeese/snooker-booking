@@ -32,6 +32,10 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.session:spring-session-jdbc")
 
+    // Pinned exactly, not to a range: the Stripe SDK is coupled to an API version, and a
+    // silent minor bump can change deserialisation behaviour on webhook payloads.
+    implementation("com.stripe:stripe-java:33.3.0")
+
     // Spring Boot 4 moved Flyway auto-configuration out of spring-boot-autoconfigure
     // into this module. Without it Flyway is on the classpath but never runs, and the
     // first symptom is Hibernate reporting a missing table.
@@ -54,7 +58,10 @@ dependencies {
 }
 
 tasks.withType<JavaCompile>().configureEach {
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-parameters"))
+    // -Xlint:all minus classfile: the Stripe SDK's Gson @SerializedName annotations are not on
+    // our compile classpath, which emits hundreds of "cannot find annotation method value()"
+    // warnings. They are harmless and they drown out warnings about our own code.
+    options.compilerArgs.addAll(listOf("-Xlint:all,-classfile", "-parameters"))
 }
 
 // The app must run in UTC. Instants are stored as timestamptz with

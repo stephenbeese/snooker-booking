@@ -1,4 +1,9 @@
 import { useState } from 'react';
+import { Link } from 'react-router';
+import { Button } from '@/components/ui/Button';
+import { useCurrentUser } from '@/features/auth/useAuth';
+import { useCreateBooking } from '@/features/booking/useBookings';
+import { ApiError } from '@/lib/apiError';
 import { formatSlotTime, todayIso } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
 import { AvailabilityGrid } from './components/AvailabilityGrid';
@@ -20,10 +25,43 @@ export function BookPage() {
   const [durationMinutes, setDurationMinutes] = useState<number | null>(60);
   const [selected, setSelected] = useState<Selection | null>(null);
 
-  const { data, isPending, isError, error, isPlaceholderData } = useAvailability({
+  const { data, isPending, isError, error, isPlaceholderData, refetch } = useAvailability({
     date,
     durationMinutes: durationMinutes ?? undefined,
   });
+
+  const { data: user } = useCurrentUser();
+  const createBooking = useCreateBooking();
+  const [bookingError, setBookingError] = useState<string | null>(null);
+
+  async function handleBook() {
+    if (!selected || durationMinutes === null) {
+      return;
+    }
+    setBookingError(null);
+    try {
+      const response = await createBooking.mutateAsync({
+        tableId: selected.tableId,
+        date,
+        startTime: selected.startTime,
+        durationMinutes,
+      });
+      // A full navigation, not a router push: Checkout is hosted on Stripe's origin.
+      window.location.assign(response.checkoutUrl);
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.isSlotUnavailable) {
+        // Somebody else took it between rendering the grid and this click. Refetching is the
+        // useful response — a stale grid would let them lose the race repeatedly.
+        setBookingError('That slot has just been taken. The grid has been refreshed.');
+        setSelected(null);
+        await refetch();
+        return;
+      }
+      setBookingError(
+        caught instanceof ApiError ? caught.message : 'Could not create the booking.',
+      );
+    }
+  }
 
   function handleSelect(tableId: number, slot: Slot) {
     const table = data?.tables.find((candidate) => candidate.tableId === tableId);
@@ -93,10 +131,37 @@ export function BookPage() {
             {selected.tableName} at {formatSlotTime(selected.startTime)}
             {selected.pricePence !== null && <> — {formatPence(selected.pricePence)}</>}
           </p>
-          {/* Booking is Phase 2; the grid is read-only for now. */}
-          <p className="mt-2 text-xs text-gray-600">
-            Booking and payment are not enabled yet.
-          </p>
+
+          {bookingError && (
+            <div role="alert" className="mt-3 rounded-md border border-rose-200 bg-rose-50 p-3">
+              <p className="text-sm text-rose-800">{bookingError}</p>
+            </div>
+          )}
+
+          {user ? (
+            <Button
+              className="mt-3"
+              onClick={handleBook}
+              disabled={createBooking.isPending || durationMinutes === null}
+            >
+              {createBooking.isPending ? 'Reserving your table…' : 'Book and pay'}
+            </Button>
+          ) : (
+            <p className="mt-3 text-sm text-felt-900">
+              <Link
+                to="/login"
+                state={{ from: '/book' }}
+                className="font-medium text-felt-700 underline"
+              >
+                Sign in
+              </Link>{' '}
+              or{' '}
+              <Link to="/register" className="font-medium text-felt-700 underline">
+                create an account
+              </Link>{' '}
+              to book this slot.
+            </p>
+          )}
         </aside>
       )}
     </main>

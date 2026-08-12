@@ -260,9 +260,23 @@ public class BookingService {
     }
 
     @Transactional(readOnly = true)
+    public Booking requireById(long id) {
+        return bookingRepository
+                .findById(id)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.NOT_FOUND, "Booking not found."));
+    }
+
+    /**
+     * A booking by reference, with its table loaded.
+     *
+     * <p>The eager fetch matters: callers map this to a DTO after the transaction has closed,
+     * and {@code snookerTable} is LAZY with {@code open-in-view} disabled, so a plain findBy
+     * would hand back a proxy that throws when the controller reads the table name.
+     */
+    @Transactional(readOnly = true)
     public Booking requireByReference(String reference) {
         return bookingRepository
-                .findByReference(reference)
+                .findByReferenceWithTable(reference)
                 .orElseThrow(() -> new NotFoundException(
                         ErrorCode.NOT_FOUND, "No booking found with that reference."));
     }
@@ -299,19 +313,38 @@ public class BookingService {
      *
      * @return true if the slot was still free and the booking is now confirmed
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(propagation = Propagation.REQUIRES_NEW, noRollbackFor = DataIntegrityViolationException.class)
     public boolean tryReinstate(long bookingId) {
-        try {
-            int updated = bookingRepository.reinstateIfReleased(bookingId);
-            bookingRepository.flush();
-            return updated == 1;
-        } catch (DataIntegrityViolationException ex) {
-            if (OVERLAP_CONSTRAINT.equals(constraintNameOf(ex))) {
-                log.warn("Cannot reinstate booking {}: slot has been taken", bookingId);
-                return false;
-            }
-            throw ex;
+        Booking booking = requireById(bookingId);
+        if (booking.getStatus() != BookingStatus.EXPIRED) {
+            return false;
         }
+
+        // Checked before attempting, rather than attempting and catching. Catching is not
+        // enough here: the UPDATE is a bulk statement, so a constraint violation dooms this
+        // transaction whether or not the exception is handled, and the caller — whose entire
+        // purpose is to commit a payment_exception describing the failure — would then fail at
+        // commit with UnexpectedRollbackException.
+        //
+        // This is a check-then-act, and therefore racy. That is acceptable precisely here and
+        // nowhere else in this class: losing the race means declining to reinstate a booking
+        // and raising it for staff instead, which is the same outcome as losing it later. It
+        // never causes a double booking, because the constraint is still the final arbiter.
+        boolean slotFree = bookingRepository
+                .findOverlappingForTable(
+                        booking.getSnookerTable().getId(),
+                        booking.getStartAt(),
+                        booking.getEndAt(),
+                        BookingStatus.slotOccupying())
+                .stream()
+                .allMatch(other -> other.getId().equals(bookingId));
+
+        if (!slotFree) {
+            log.warn("Cannot reinstate booking {}: slot has been taken", bookingId);
+            return false;
+        }
+
+        return bookingRepository.reinstateIfReleased(bookingId) == 1;
     }
 
     /** Marks a hold as expired. Used by the sweeper. */
