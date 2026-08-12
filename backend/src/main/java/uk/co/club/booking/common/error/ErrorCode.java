@@ -29,6 +29,14 @@ public enum ErrorCode {
     // Auth
     AUTHENTICATION_REQUIRED,
     ACCESS_DENIED,
+    /** Deliberately covers both "no such account" and "wrong password" — see AuthController. */
+    INVALID_CREDENTIALS,
+    ACCOUNT_DISABLED,
+    EMAIL_ALREADY_REGISTERED,
+
+    // Payment
+    PAYMENT_NOT_REQUIRED,
+    PAYMENT_PROVIDER_ERROR,
 
     // Generic
     NOT_FOUND,

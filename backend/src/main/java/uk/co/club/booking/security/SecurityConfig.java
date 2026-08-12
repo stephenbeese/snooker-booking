@@ -7,6 +7,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.ProviderManager;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -26,8 +29,10 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 /**
  * Session-cookie authentication for the SPA.
  *
- * <p>Phases 0-1 have no login yet, so only the public read endpoints are wired. The
- * authenticated and admin rules land in Phase 2 alongside the user domain.
+ * <p>Sessions rather than JWTs: there is no cross-domain client, no mobile app and no
+ * third-party API consumer, so every argument for a bearer token is absent while its
+ * costs (unrevocable tokens, refresh rotation, XSS-exfiltratable credentials) all apply.
+ * Sessions live in the Postgres already being run, via Spring Session JDBC.
  */
 @Configuration
 @EnableWebSecurity
@@ -60,6 +65,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/webhooks/stripe").permitAll()
                         .requestMatchers("/api/health", "/actuator/health").permitAll()
+                        .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
+                        // 204 when anonymous, so it must be reachable without a session.
+                        .requestMatchers(HttpMethod.GET, "/api/auth/me").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()
                         // Browsing availability must not require login — it is the
                         // conversion path.
                         .requestMatchers(HttpMethod.GET,
@@ -68,7 +77,12 @@ public class SecurityConfig {
                                 "/api/club",
                                 "/api/booking-settings")
                         .permitAll()
-                        .anyRequest().permitAll())
+                        // Admin rules come before anyRequest(), which matches everything
+                        // and would otherwise shadow them.
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        // Default deny: a new endpoint is unreachable until it is
+                        // deliberately opened, rather than public until someone notices.
+                        .anyRequest().authenticated())
                 // The SPA must receive 401 JSON, never a 302 to a login page.
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
@@ -81,7 +95,25 @@ public class SecurityConfig {
 
     @Bean
     PasswordEncoder passwordEncoder() {
+        // Strength 12 rather than the default 10: ~250ms per hash on current hardware,
+        // slow enough to make offline cracking expensive and fast enough for a login.
         return new BCryptPasswordEncoder(12);
+    }
+
+    /**
+     * Exposed so {@link uk.co.club.booking.domain.user.web.AuthController} can
+     * authenticate a JSON login request.
+     *
+     * <p>{@code hideUserNotFoundExceptions} stays at its default (true), so a missing
+     * account and a wrong password both surface as {@code BadCredentialsException} and
+     * cannot be told apart by timing the branch.
+     */
+    @Bean
+    AuthenticationManager authenticationManager(
+            AppUserDetailsService userDetailsService, PasswordEncoder passwordEncoder) {
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider(userDetailsService);
+        provider.setPasswordEncoder(passwordEncoder);
+        return new ProviderManager(provider);
     }
 
     @Bean

@@ -20,6 +20,18 @@ public class BookingSettings {
 
     public static final short SINGLETON_ID = 1;
 
+    /**
+     * Unwraps the singleton lookup, failing loudly if the row is missing.
+     *
+     * <p>A static helper rather than a {@code default} method on the repository: default methods
+     * on a Mockito mock silently return null instead of running, which turns a mocking mistake
+     * into what looks like a production NullPointerException.
+     */
+    public static BookingSettings require(java.util.Optional<BookingSettings> settings) {
+        return settings.orElseThrow(() -> new IllegalStateException(
+                "booking_settings row is missing; migration V6 should have inserted it"));
+    }
+
     @Id
     private Short id = SINGLETON_ID;
 

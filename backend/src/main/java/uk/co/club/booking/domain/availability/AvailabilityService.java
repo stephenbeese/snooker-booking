@@ -75,14 +75,14 @@ public class AvailabilityService {
     public DayAvailability availability(
             LocalDate date, Integer requestedDurationMinutes, List<Long> tableIds) {
 
-        BookingSettings settings = bookingSettingsRepository.current();
+        BookingSettings settings = BookingSettings.require(bookingSettingsRepository.findSingleton());
         Instant now = clubClock.now();
 
         List<SnookerTable> tables = selectTables(tableIds);
 
         Optional<OpeningWindow> maybeWindow =
                 openingHoursRepository
-                        .findForDay(date.getDayOfWeek())
+                        .findByDayValue(OpeningHoursRepository.dayValue(date.getDayOfWeek()))
                         .flatMap(hours -> slotGenerator.openingWindow(date, hours));
 
         List<DayAvailability.DurationOption> durationOptions = durationOptions(settings);

@@ -1,0 +1,368 @@
+package uk.co.club.booking.domain.booking;
+
+import java.time.Instant;
+import java.util.List;
+import org.hibernate.exception.ConstraintViolationException;
+import org.postgresql.util.PSQLException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.PessimisticLockingFailureException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import uk.co.club.booking.common.error.BusinessRuleException;
+import uk.co.club.booking.common.error.ErrorCode;
+import uk.co.club.booking.common.error.NotFoundException;
+import uk.co.club.booking.common.error.SlotTakenException;
+import uk.co.club.booking.common.time.ClubClock;
+import uk.co.club.booking.domain.club.BookingSettings;
+import uk.co.club.booking.domain.club.BookingSettingsRepository;
+import uk.co.club.booking.domain.club.PricingService;
+import uk.co.club.booking.domain.table.SnookerTable;
+
+/**
+ * The single path by which a booking is created.
+ *
+ * <h2>How double booking is actually prevented</h2>
+ *
+ * Not by checking availability and then inserting. That sequence is a race by construction:
+ * between the check and the insert, another request can do the same check and insert too, and
+ * no amount of application-level care closes the gap. Both requests see a free slot; both
+ * write; the club has sold one table twice.
+ *
+ * <p>Instead the {@code booking_no_overlap} EXCLUDE constraint (migration V8) makes an
+ * overlapping pair <em>unstorable</em>. PostgreSQL serialises the exclusion check internally,
+ * so of two concurrent conflicting inserts one blocks until the other commits and then fails.
+ * Verified against PostgreSQL 17 by {@code BookingConcurrencyIT}: eight threads racing for the
+ * same slot leave exactly one booking.
+ *
+ * <p>This needs no {@code SELECT FOR UPDATE}, no advisory lock, no {@code SERIALIZABLE}
+ * isolation and no retry loop. Those were all considered and rejected as redundant: the
+ * constraint already holds at READ COMMITTED, and a table-level mutex would needlessly
+ * serialise bookings for different times on the same table.
+ *
+ * <p>{@link BookingValidator} still checks for a clash first. That is purely so the common
+ * case produces "that slot has gone" instead of a database error, and it is explicitly
+ * allowed to lose the race.
+ */
+@Service
+public class BookingService {
+
+    private static final Logger log = LoggerFactory.getLogger(BookingService.class);
+
+    /** Name of the EXCLUDE constraint in V8. Matched on so no other failure is mistaken for it. */
+    private static final String OVERLAP_CONSTRAINT = "booking_no_overlap";
+
+    private static final int REFERENCE_ATTEMPTS = 5;
+
+    /** PostgreSQL SQLState for exclusion_violation. */
+    private static final String EXCLUSION_VIOLATION_SQL_STATE = "23P01";
+
+    private final BookingRepository bookingRepository;
+    private final BookingValidator validator;
+    private final BookingSettingsRepository bookingSettingsRepository;
+    private final PricingService pricingService;
+    private final BookingReferenceGenerator referenceGenerator;
+    private final ClubClock clubClock;
+
+    public BookingService(
+            BookingRepository bookingRepository,
+            BookingValidator validator,
+            BookingSettingsRepository bookingSettingsRepository,
+            PricingService pricingService,
+            BookingReferenceGenerator referenceGenerator,
+            ClubClock clubClock) {
+        this.bookingRepository = bookingRepository;
+        this.validator = validator;
+        this.bookingSettingsRepository = bookingSettingsRepository;
+        this.pricingService = pricingService;
+        this.referenceGenerator = referenceGenerator;
+        this.clubClock = clubClock;
+    }
+
+    /**
+     * Creates a booking, applying every rule in {@link BookingValidator} and letting the
+     * database adjudicate the slot.
+     *
+     * @throws SlotTakenException (409) if another booking won the race
+     */
+    @Transactional
+    public Booking create(CreateBookingCommand command, BookingPolicy policy) {
+        SnookerTable table = validator.validate(command, policy);
+        BookingSettings settings = BookingSettings.require(bookingSettingsRepository.findSingleton());
+        Instant now = clubClock.now();
+
+        // A lapsed hold still blocks the slot at the database level, because an index
+        // predicate cannot call now(). Expire it here so the customer is not told a slot is
+        // taken by a hold that timed out ten minutes ago.
+        releaseLapsedHolds(command, now);
+
+        Booking booking = new Booking();
+        booking.setSnookerTable(table);
+        booking.setStartAt(command.startAt());
+        booking.setEndAt(command.endAt());
+        booking.setDurationMinutes(command.durationMinutes());
+        // Server-computed, always. A price in the request body is ignored.
+        booking.setPricePence(
+                pricingService.quotePence(table, command.startAt(), command.endAt()));
+        booking.setSource(command.source());
+        booking.setUserId(command.userId());
+        booking.setCustomerName(command.customerName());
+        booking.setCustomerEmail(command.customerEmail());
+        booking.setCustomerPhone(command.customerPhone());
+        booking.setNotes(command.notes());
+        booking.setCreatedByUserId(command.actingUserId());
+
+        if (policy.requiresPaymentHold()) {
+            booking.setStatus(BookingStatus.PENDING_PAYMENT);
+            booking.setHoldExpiresAt(now.plus(settings.paymentHold()));
+        } else {
+            booking.setStatus(BookingStatus.CONFIRMED);
+            // Must stay null: a CHECK constraint enforces that a hold expiry exists if and
+            // only if the status is PENDING_PAYMENT.
+            booking.setHoldExpiresAt(null);
+        }
+
+        return persistWithUniqueReference(booking);
+    }
+
+    /**
+     * Saves, translating the two constraint violations that are expected rather than
+     * exceptional.
+     *
+     * <p>{@code saveAndFlush} is load-bearing. A plain {@code save} defers the INSERT to
+     * commit, which happens <em>after</em> this method returns and outside any try block here,
+     * so the violation would escape as an unhandled 500 no matter how carefully it was caught.
+     */
+    private Booking persistWithUniqueReference(Booking booking) {
+        for (int attempt = 1; attempt <= REFERENCE_ATTEMPTS; attempt++) {
+            booking.setReference(referenceGenerator.generate());
+            try {
+                return bookingRepository.saveAndFlush(booking);
+            } catch (PessimisticLockingFailureException ex) {
+                // Deadlock while checking the exclusion constraint. Observed under genuine
+                // concurrency: two inserts for the same slot can each hold a lock the other
+                // needs while the gist index is consulted, and PostgreSQL breaks the tie by
+                // aborting one of them (SQLState 40P01).
+                //
+                // Caught at this supertype rather than at CannotAcquireLockException, because
+                // Spring maps the same PostgreSQL deadlock to different subclasses depending on
+                // the access path (JPA vs JdbcTemplate). Catching the narrow type let the
+                // sibling escape as a 500.
+                //
+                // From the customer's point of view this is identical to losing the race —
+                // they did not get the slot — so it must surface as 409. It is deliberately
+                // NOT retried: the winner's row is committed by the time this is thrown, so a
+                // retry would only fail again on the constraint.
+                log.debug(
+                        "Deadlock while inserting booking for table {} at {}; treating as lost race",
+                        booking.getSnookerTable().getId(),
+                        booking.getStartAt());
+                throw new SlotTakenException(
+                        "That slot has just been booked by someone else. Please choose another.");
+            } catch (DataIntegrityViolationException ex) {
+                String constraint = constraintNameOf(ex);
+                if (OVERLAP_CONSTRAINT.equals(constraint)) {
+                    // Lost the race. Expected under concurrency, not a defect.
+                    log.debug(
+                            "Overlap constraint rejected booking for table {} at {}",
+                            booking.getSnookerTable().getId(),
+                            booking.getStartAt());
+                    throw new SlotTakenException(
+                            "That slot has just been booked by someone else. Please choose another.");
+                }
+                if (isReferenceCollision(constraint)) {
+                    // 1-in-a-billion; retry with a new reference rather than failing a real sale.
+                    log.info("Booking reference collision on attempt {}; regenerating", attempt);
+                    continue;
+                }
+                // Anything else is a genuine bug and must not be disguised as a lost race.
+                throw ex;
+            }
+        }
+        throw new IllegalStateException(
+                "Could not generate a unique booking reference after " + REFERENCE_ATTEMPTS
+                        + " attempts");
+    }
+
+    /**
+     * Expires holds whose TTL has passed and that clash with this request.
+     *
+     * <p>Deliberately narrow: only the holds actually in the way. The scheduled sweeper handles
+     * the rest, and widening this would make an ordinary booking do unbounded work.
+     */
+    private void releaseLapsedHolds(CreateBookingCommand command, Instant now) {
+        List<Booking> clashes = bookingRepository.findOverlappingForTable(
+                command.tableId(), command.startAt(), command.endAt(), BookingStatus.slotOccupying());
+        for (Booking clash : clashes) {
+            if (clash.isLapsedHold(now)) {
+                // Guarded update: 0 rows means a webhook confirmed it a moment ago, in which
+                // case the slot is genuinely taken and the constraint will say so.
+                int updated = bookingRepository.expireHold(clash.getId(), now);
+                log.debug("Released lapsed hold {} ({} row(s))", clash.getReference(), updated);
+            }
+        }
+        // Flush the expiries so the constraint sees them before the insert below.
+        bookingRepository.flush();
+    }
+
+    /** Reference uniqueness is enforced by a UNIQUE index; its generated name varies. */
+    private boolean isReferenceCollision(String constraint) {
+        return constraint != null && constraint.toLowerCase().contains("reference");
+    }
+
+    /**
+     * The constraint name behind a data-integrity failure.
+     *
+     * <p>Matching on the name, rather than on message text, is what stops an unrelated
+     * violation being mistranslated into a misleading "that slot has gone".
+     *
+     * <p>Two sources are needed, and the order matters. Hibernate's
+     * {@link ConstraintViolationException} reports {@code null} for an <em>exclusion</em>
+     * violation — it reads the driver's {@code constraint} field, which PostgreSQL populates
+     * for unique and foreign-key violations but not for {@code EXCLUDE}. The name is only in
+     * the server message there, so fall back to the {@link PSQLException}'s
+     * {@code ServerErrorMessage}, and confirm the SQLState is 23P01 (exclusion_violation)
+     * before trusting a name parsed out of prose.
+     */
+    private String constraintNameOf(DataIntegrityViolationException ex) {
+        String hibernateName = null;
+        Throwable cause = ex.getCause();
+        while (cause != null) {
+            if (cause instanceof ConstraintViolationException violation
+                    && violation.getConstraintName() != null) {
+                hibernateName = violation.getConstraintName();
+                break;
+            }
+            cause = cause.getCause();
+        }
+        if (hibernateName != null) {
+            return hibernateName;
+        }
+
+        cause = ex.getCause();
+        while (cause != null) {
+            if (cause instanceof PSQLException psql && psql.getServerErrorMessage() != null) {
+                String constraint = psql.getServerErrorMessage().getConstraint();
+                if (constraint != null) {
+                    return constraint;
+                }
+                if (EXCLUSION_VIOLATION_SQL_STATE.equals(psql.getSQLState())
+                        && psql.getServerErrorMessage().getMessage() != null
+                        && psql.getServerErrorMessage().getMessage().contains(OVERLAP_CONSTRAINT)) {
+                    return OVERLAP_CONSTRAINT;
+                }
+            }
+            cause = cause.getCause();
+        }
+        return null;
+    }
+
+    @Transactional(readOnly = true)
+    public Booking requireByReference(String reference) {
+        return bookingRepository
+                .findByReference(reference)
+                .orElseThrow(() -> new NotFoundException(
+                        ErrorCode.NOT_FOUND, "No booking found with that reference."));
+    }
+
+    /**
+     * Confirms a booking after successful payment. Idempotent by design.
+     *
+     * <p>Reached from two independent directions — the Stripe webhook and the customer's browser
+     * returning from Checkout — with no ordering guarantee between them. A guarded update makes
+     * whichever arrives second a harmless no-op, rather than requiring the two paths to
+     * coordinate.
+     *
+     * <p>{@code REQUIRES_NEW} so a webhook that later fails for an unrelated reason cannot roll
+     * back a confirmation the customer has already been shown.
+     *
+     * @return true if this call performed the confirmation
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean confirmPaid(long bookingId) {
+        int updated = bookingRepository.confirmIfPending(bookingId);
+        if (updated == 0) {
+            log.debug("Booking {} was already resolved; confirmation is a no-op", bookingId);
+        }
+        return updated == 1;
+    }
+
+    /**
+     * Reinstates a booking whose hold lapsed before a late payment arrived.
+     *
+     * <p>Structurally reachable: Stripe's minimum session expiry (30 minutes) outlives the
+     * default hold (15), so a customer can pay after the sweeper has released their slot. Let
+     * the constraint decide whether the slot is still free — if someone else has taken it, the
+     * caller records a payment exception for staff instead of silently overwriting.
+     *
+     * @return true if the slot was still free and the booking is now confirmed
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean tryReinstate(long bookingId) {
+        try {
+            int updated = bookingRepository.reinstateIfReleased(bookingId);
+            bookingRepository.flush();
+            return updated == 1;
+        } catch (DataIntegrityViolationException ex) {
+            if (OVERLAP_CONSTRAINT.equals(constraintNameOf(ex))) {
+                log.warn("Cannot reinstate booking {}: slot has been taken", bookingId);
+                return false;
+            }
+            throw ex;
+        }
+    }
+
+    /** Marks a hold as expired. Used by the sweeper. */
+    @Transactional
+    public int expireHold(long bookingId, Instant now) {
+        return bookingRepository.expireHold(bookingId, now);
+    }
+
+    /**
+     * Rejects an attempt to act on a booking belonging to somebody else.
+     *
+     * <p>404 rather than 403: a 403 confirms the booking exists, which is itself a leak — an
+     * attacker could map the club's whole booking table by watching which references answer
+     * differently. Admins bypass the check entirely.
+     */
+    public void requireOwnership(Booking booking, long userId, boolean isAdmin) {
+        if (isAdmin) {
+            return;
+        }
+        if (booking.getUserId() == null || booking.getUserId() != userId) {
+            throw new NotFoundException(
+                    ErrorCode.NOT_FOUND, "No booking found with that reference.");
+        }
+    }
+
+    /** Guard against a caller passing a duration that is not permitted. */
+    public void validateDuration(int durationMinutes) {
+        validator.validateDuration(
+                durationMinutes, BookingSettings.require(bookingSettingsRepository.findSingleton()));
+    }
+
+    /** Quote for a prospective booking, without creating anything. */
+    @Transactional(readOnly = true)
+    public int quotePence(long tableId, Instant startAt, int durationMinutes) {
+        validateDuration(durationMinutes);
+        SnookerTable table = validator.requireTable(tableId);
+        return pricingService.quotePence(
+                table, startAt, startAt.plus(java.time.Duration.ofMinutes(durationMinutes)));
+    }
+
+    /** Bookings for a customer, newest first. */
+    @Transactional(readOnly = true)
+    public List<Booking> forUser(long userId) {
+        return bookingRepository.findByUserIdOrderByStartAtDesc(userId);
+    }
+
+    void rejectIfNotCancellable(Booking booking) {
+        if (booking.getStatus().isTerminal()) {
+            throw new BusinessRuleException(
+                    ErrorCode.BOOKING_NOT_CANCELLABLE,
+                    "This booking can no longer be changed.");
+        }
+    }
+}

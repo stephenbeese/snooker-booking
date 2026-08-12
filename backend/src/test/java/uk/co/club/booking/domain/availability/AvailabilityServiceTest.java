@@ -2,6 +2,7 @@ package uk.co.club.booking.domain.availability;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyShort;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
 
@@ -81,11 +82,11 @@ class AvailabilityServiceTest {
     }
 
     private void givenSettings(BookingSettings settings) {
-        when(bookingSettingsRepository.current()).thenReturn(settings);
+        when(bookingSettingsRepository.findSingleton()).thenReturn(Optional.of(settings));
     }
 
     private void givenOpen(LocalTime open, LocalTime close) {
-        when(openingHoursRepository.findForDay(any()))
+        when(openingHoursRepository.findByDayValue(anyShort()))
                 .thenReturn(Optional.of(TestFixtures.openingHours(open, close)));
     }
 
@@ -132,7 +133,7 @@ class AvailabilityServiceTest {
 
     @Test
     void closedDayReportsClubClosedAndNoSlots() {
-        when(openingHoursRepository.findForDay(any()))
+        when(openingHoursRepository.findByDayValue(anyShort()))
                 .thenReturn(Optional.of(TestFixtures.closedDay()));
 
         DayAvailability day = service.availability(DATE, null, null);

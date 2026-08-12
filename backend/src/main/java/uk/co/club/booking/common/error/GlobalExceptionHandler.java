@@ -29,7 +29,16 @@ public class GlobalExceptionHandler {
     ResponseEntity<ApiError> handleBusinessRule(BusinessRuleException ex) {
         // Expected outcome, not a defect: log at debug so real problems stay visible.
         log.debug("Business rule rejected request: {} - {}", ex.getCode(), ex.getMessage());
-        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+        // 422. Named UNPROCESSABLE_CONTENT since Spring 7; same status code.
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT)
+                .body(ApiError.of(ex.getCode(), ex.getMessage(), newTraceId()));
+    }
+
+    @ExceptionHandler(SlotTakenException.class)
+    ResponseEntity<ApiError> handleSlotTaken(SlotTakenException ex) {
+        // 409, so the client refetches availability rather than showing a field error.
+        log.debug("Slot lost to a concurrent booking: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiError.of(ex.getCode(), ex.getMessage(), newTraceId()));
     }
 

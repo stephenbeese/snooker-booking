@@ -39,7 +39,9 @@ dependencies {
     implementation("org.flywaydb:flyway-core")
     // Postgres needs its own Flyway module from Flyway 10 onward.
     runtimeOnly("org.flywaydb:flyway-database-postgresql")
-    runtimeOnly("org.postgresql:postgresql")
+    // Not runtimeOnly: BookingService reads PSQLException's ServerErrorMessage to recover
+    // the constraint name for exclusion violations, which Hibernate reports as null.
+    implementation("org.postgresql:postgresql")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
