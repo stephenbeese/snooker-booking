@@ -13,7 +13,7 @@ interface DurationPickerProps {
 export function DurationPicker({ options, value, onChange }: DurationPickerProps) {
   return (
     <div>
-      <label htmlFor="duration" className="mr-2 text-sm text-gray-700">
+      <label htmlFor="duration" className="mr-2 text-sm text-ink-600">
         Duration
       </label>
       <select
@@ -22,7 +22,7 @@ export function DurationPicker({ options, value, onChange }: DurationPickerProps
         onChange={(event) =>
           onChange(event.target.value === '' ? null : Number(event.target.value))
         }
-        className="rounded border border-gray-300 px-2 py-1.5 text-sm"
+        className="rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900"
       >
         <option value="">Any</option>
         {options.map((option) => (

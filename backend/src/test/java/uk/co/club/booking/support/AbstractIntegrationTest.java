@@ -82,5 +82,18 @@ public abstract class AbstractIntegrationTest {
                        open_time  = CASE WHEN day_of_week = 7 THEN TIME '12:00' ELSE TIME '10:00' END,
                        close_time = CASE WHEN day_of_week = 7 THEN TIME '20:00' ELSE TIME '23:00' END
                 """);
+        // Restored to V6's single catch-all rule. A test that adds a peak or off-peak rule
+        // would otherwise change the price of every booking created after it — and because
+        // the extra rule usually has a higher priority, the failures land in unrelated
+        // classes as an unexplained few pence.
+        jdbcTemplate.execute("DELETE FROM pricing_rule WHERE name <> 'Standard hourly rate'");
+        jdbcTemplate.execute(
+                """
+                UPDATE pricing_rule
+                   SET hourly_rate_pence = 1200, priority = 0, active = TRUE,
+                       table_type = NULL, day_of_week = NULL,
+                       start_time = NULL, end_time = NULL
+                 WHERE name = 'Standard hourly rate'
+                """);
     }
 }

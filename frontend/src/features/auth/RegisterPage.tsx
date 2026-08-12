@@ -62,67 +62,69 @@ export function RegisterPage() {
         : null;
 
   return (
-    <main className="mx-auto max-w-md px-4 py-12">
-      <h1 className="text-2xl font-semibold text-felt-900">Create an account</h1>
-      <p className="mt-1 text-sm text-gray-600">You need an account to book a table.</p>
+    <div className="mx-auto max-w-md px-4 py-16">
+      <div className="rounded-card border border-ink-200 bg-white p-8 shadow-card">
+        <h1 className="text-2xl font-semibold tracking-tight text-felt-900">Create an account</h1>
+        <p className="mt-2 text-sm text-ink-600">You need an account to book a table.</p>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4" noValidate>
-        {errorMessage && (
-          <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-3">
-            <p className="text-sm text-rose-800">{errorMessage}</p>
+        <form onSubmit={handleSubmit(onSubmit)} className="mt-8 space-y-5" noValidate>
+          {errorMessage && (
+            <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3">
+              <p className="text-sm text-rose-800">{errorMessage}</p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <TextField
+              label="First name"
+              autoComplete="given-name"
+              error={errors.firstName?.message}
+              {...register('firstName')}
+            />
+            <TextField
+              label="Last name"
+              autoComplete="family-name"
+              error={errors.lastName?.message}
+              {...register('lastName')}
+            />
           </div>
-        )}
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <TextField
-            label="First name"
-            autoComplete="given-name"
-            error={errors.firstName?.message}
-            {...register('firstName')}
+            label="Email address"
+            type="email"
+            autoComplete="email"
+            error={errors.email?.message}
+            {...register('email')}
           />
           <TextField
-            label="Last name"
-            autoComplete="family-name"
-            error={errors.lastName?.message}
-            {...register('lastName')}
+            label="Phone number"
+            type="tel"
+            autoComplete="tel"
+            hint="Optional — so the club can reach you about your booking"
+            error={errors.phone?.message}
+            {...register('phone')}
           />
-        </div>
+          <TextField
+            label="Password"
+            type="password"
+            autoComplete="new-password"
+            hint="At least 12 characters"
+            error={errors.password?.message}
+            {...register('password')}
+          />
 
-        <TextField
-          label="Email address"
-          type="email"
-          autoComplete="email"
-          error={errors.email?.message}
-          {...register('email')}
-        />
-        <TextField
-          label="Phone number"
-          type="tel"
-          autoComplete="tel"
-          hint="Optional — so the club can reach you about your booking"
-          error={errors.phone?.message}
-          {...register('phone')}
-        />
-        <TextField
-          label="Password"
-          type="password"
-          autoComplete="new-password"
-          hint="At least 12 characters"
-          error={errors.password?.message}
-          {...register('password')}
-        />
+          <Button type="submit" size="lg" disabled={isSubmitting} className="w-full">
+            {isSubmitting ? 'Creating account…' : 'Create account'}
+          </Button>
+        </form>
+      </div>
 
-        <Button type="submit" disabled={isSubmitting} className="w-full">
-          {isSubmitting ? 'Creating account…' : 'Create account'}
-        </Button>
-      </form>
-
-      <p className="mt-6 text-sm text-gray-600">
+      <p className="mt-6 text-center text-sm text-ink-600">
         Already have an account?{' '}
-        <Link to="/login" className="font-medium text-felt-700 underline">
+        <Link to="/login" className="font-medium text-felt-700 underline underline-offset-2">
           Sign in
         </Link>
       </p>
-    </main>
+    </div>
   );
 }

@@ -48,42 +48,45 @@ export function LoginPage() {
         : null;
 
   return (
-    <main className="mx-auto max-w-md px-4 py-12">
-      <h1 className="text-2xl font-semibold text-felt-900">Sign in</h1>
+    <div className="mx-auto max-w-md px-4 py-16">
+      <div className="rounded-card border border-ink-200 bg-white p-8 shadow-card">
+        <h1 className="text-2xl font-semibold tracking-tight text-felt-900">Sign in</h1>
+        <p className="mt-2 text-sm text-ink-600">Welcome back. Sign in to manage your bookings.</p>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4" noValidate>
-        {errorMessage && (
-          <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-3">
-            <p className="text-sm text-rose-800">{errorMessage}</p>
-          </div>
-        )}
+        <form onSubmit={handleSubmit(onSubmit)} className="mt-8 space-y-5" noValidate>
+          {errorMessage && (
+            <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3">
+              <p className="text-sm text-rose-800">{errorMessage}</p>
+            </div>
+          )}
 
-        <TextField
-          label="Email address"
-          type="email"
-          autoComplete="email"
-          error={errors.email?.message}
-          {...register('email')}
-        />
-        <TextField
-          label="Password"
-          type="password"
-          autoComplete="current-password"
-          error={errors.password?.message}
-          {...register('password')}
-        />
+          <TextField
+            label="Email address"
+            type="email"
+            autoComplete="email"
+            error={errors.email?.message}
+            {...register('email')}
+          />
+          <TextField
+            label="Password"
+            type="password"
+            autoComplete="current-password"
+            error={errors.password?.message}
+            {...register('password')}
+          />
 
-        <Button type="submit" disabled={isSubmitting} className="w-full">
-          {isSubmitting ? 'Signing in…' : 'Sign in'}
-        </Button>
-      </form>
+          <Button type="submit" size="lg" disabled={isSubmitting} className="w-full">
+            {isSubmitting ? 'Signing in…' : 'Sign in'}
+          </Button>
+        </form>
+      </div>
 
-      <p className="mt-6 text-sm text-gray-600">
+      <p className="mt-6 text-center text-sm text-ink-600">
         No account?{' '}
-        <Link to="/register" className="font-medium text-felt-700 underline">
+        <Link to="/register" className="font-medium text-felt-700 underline underline-offset-2">
           Create one
         </Link>
       </p>
-    </main>
+    </div>
   );
 }

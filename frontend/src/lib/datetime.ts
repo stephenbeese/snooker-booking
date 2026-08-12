@@ -23,6 +23,18 @@ export function formatDateLong(isoDate: string): string {
   }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
+/**
+ * ISO weekday number (1 = Monday) -> "Monday".
+ *
+ * <p>Derived from a known-Monday date rather than a hardcoded array, so the names follow
+ * the locale instead of being English-only strings the backend would have to translate.
+ * 2024-01-01 was a Monday.
+ */
+export function weekdayName(isoDayOfWeek: number, style: 'long' | 'short' = 'long'): string {
+  const date = new Date(Date.UTC(2024, 0, isoDayOfWeek));
+  return new Intl.DateTimeFormat('en-GB', { weekday: style, timeZone: 'UTC' }).format(date);
+}
+
 /** Today in the browser's locale as an ISO date, for the date input's default. */
 export function todayIso(): string {
   const now = new Date();

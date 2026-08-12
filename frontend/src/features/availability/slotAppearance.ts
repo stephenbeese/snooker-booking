@@ -19,7 +19,7 @@ const REASON_LABEL: Record<UnavailableReason, string> = {
   INSUFFICIENT_REMAINING_TIME: 'Not enough time before closing',
 };
 
-const BASE = 'h-9 w-full rounded text-xs font-medium transition-colors';
+const BASE = 'h-10 w-full rounded-lg text-xs font-medium tabular-nums transition-all duration-150';
 
 function formatMinutes(minutes: number): string {
   if (minutes < 60) {
@@ -43,9 +43,9 @@ export function slotAppearance(
       reason === 'MAINTENANCE'
         ? 'bg-amber-100 text-amber-800'
         : reason === 'TABLE_INACTIVE'
-          ? 'bg-gray-100 text-gray-400'
+          ? 'bg-ink-100 text-ink-400'
           : reason === 'PAST' || reason === 'INSUFFICIENT_NOTICE'
-            ? 'bg-gray-50 text-gray-400'
+            ? 'bg-ink-50 text-ink-400'
             : 'bg-rose-100 text-rose-800';
     return {
       className: `${BASE} ${occupied} cursor-not-allowed`,
@@ -56,7 +56,7 @@ export function slotAppearance(
 
   if (isSelected) {
     return {
-      className: `${BASE} bg-felt-700 text-white ring-2 ring-felt-900`,
+      className: `${BASE} bg-felt-700 text-white shadow-card ring-2 ring-felt-900 ring-offset-1`,
       label: `${time} — selected`,
       interactive: true,
     };
@@ -82,7 +82,7 @@ export function slotAppearance(
   }
 
   return {
-    className: `${BASE} bg-felt-100 text-felt-900 hover:bg-felt-500 hover:text-white cursor-pointer`,
+    className: `${BASE} bg-felt-100 text-felt-900 hover:bg-felt-600 hover:text-white hover:shadow-card cursor-pointer`,
     label: `${time} — available`,
     interactive: true,
   };

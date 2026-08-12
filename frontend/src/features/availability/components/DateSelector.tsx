@@ -19,7 +19,7 @@ export function DateSelector({ date, maxAdvanceDays = 30, onChange }: DateSelect
         disabled={atStart}
         onClick={() => onChange(addDays(date, -1))}
         aria-label="Previous day"
-        className="rounded border border-gray-300 px-2 py-1.5 text-sm disabled:opacity-40"
+        className="rounded-lg border border-ink-300 px-2.5 py-2 text-sm text-ink-700 transition-colors hover:bg-ink-50 disabled:opacity-40 disabled:hover:bg-transparent"
       >
         ←
       </button>
@@ -37,7 +37,7 @@ export function DateSelector({ date, maxAdvanceDays = 30, onChange }: DateSelect
           min={today}
           max={max}
           onChange={(event) => onChange(event.target.value)}
-          className="rounded border border-gray-300 px-2 py-1.5 text-sm"
+          className="rounded-lg border border-ink-300 px-3 py-2 text-sm text-ink-900"
         />
       </div>
 
@@ -46,12 +46,14 @@ export function DateSelector({ date, maxAdvanceDays = 30, onChange }: DateSelect
         disabled={atEnd}
         onClick={() => onChange(addDays(date, 1))}
         aria-label="Next day"
-        className="rounded border border-gray-300 px-2 py-1.5 text-sm disabled:opacity-40"
+        className="rounded-lg border border-ink-300 px-2.5 py-2 text-sm text-ink-700 transition-colors hover:bg-ink-50 disabled:opacity-40 disabled:hover:bg-transparent"
       >
         →
       </button>
 
-      <span className="ml-1 text-sm text-gray-600">{formatDateLong(date)}</span>
+      <span className="ml-1 hidden text-sm font-medium text-felt-900 sm:inline">
+        {formatDateLong(date)}
+      </span>
     </div>
   );
 }

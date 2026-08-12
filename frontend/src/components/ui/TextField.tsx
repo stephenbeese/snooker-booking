@@ -33,21 +33,23 @@ export function TextField({ label, error, hint, className = '', ...props }: Text
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy || undefined}
         className={[
-          'mt-1 block w-full rounded-md px-3 py-2 text-sm text-gray-900 shadow-sm',
+          'mt-1.5 block w-full rounded-lg bg-white px-3.5 py-2.5 text-sm text-ink-900',
+          'transition-shadow placeholder:text-ink-400',
+          // The ring is the border. focus:outline-none would strip the only focus
+          // indicator, so the ring thickens instead — visible without a system outline
+          // fighting the rounded corners.
           'ring-1 ring-inset focus:ring-2 focus:ring-inset focus:outline-none',
-          error
-            ? 'ring-rose-400 focus:ring-rose-600'
-            : 'ring-gray-300 focus:ring-felt-700',
+          error ? 'ring-rose-400 focus:ring-rose-600' : 'ring-ink-300 focus:ring-felt-600',
         ].join(' ')}
         {...props}
       />
       {hint && !error && (
-        <p id={hintId} className="mt-1 text-xs text-gray-500">
+        <p id={hintId} className="mt-1.5 text-xs text-ink-500">
           {hint}
         </p>
       )}
       {error && (
-        <p id={errorId} className="mt-1 text-xs text-rose-700">
+        <p id={errorId} className="mt-1.5 text-xs font-medium text-rose-700">
           {error}
         </p>
       )}

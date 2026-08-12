@@ -28,15 +28,17 @@ export function BookingPage() {
   }
 
   if (isPending) {
-    return <Shell>
-      <p className="text-sm text-gray-500">Loading booking…</p>
-    </Shell>;
+    return (
+      <Shell>
+        <div className="h-24 animate-pulse rounded-card bg-ink-100" />
+      </Shell>
+    );
   }
 
   if (isError) {
     return (
       <Shell>
-        <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4">
+        <div role="alert" className="rounded-card border border-rose-200 bg-rose-50 p-4">
           <p className="text-sm font-medium text-rose-800">Could not load this booking</p>
           <p className="mt-1 text-sm text-rose-700">{error.message}</p>
         </div>
@@ -46,10 +48,15 @@ export function BookingPage() {
 
   return (
     <Shell>
-      <StatusBanner booking={booking} justPaid={justPaid} onRetry={handleRetry} retrying={retry.isPending} />
+      <StatusBanner
+        booking={booking}
+        justPaid={justPaid}
+        onRetry={handleRetry}
+        retrying={retry.isPending}
+      />
 
-      <dl className="mt-6 divide-y divide-gray-200 rounded-lg border border-gray-200">
-        <Row label="Reference" value={booking.reference} />
+      <dl className="mt-6 divide-y divide-ink-200 overflow-hidden rounded-card border border-ink-200 bg-white shadow-card">
+        <Row label="Reference" value={booking.reference} mono />
         <Row label="Table" value={booking.tableName} />
         <Row
           label="When"
@@ -60,7 +67,10 @@ export function BookingPage() {
       </dl>
 
       <p className="mt-6">
-        <Link to="/bookings" className="text-sm font-medium text-felt-700 underline">
+        <Link
+          to="/bookings"
+          className="text-sm font-medium text-felt-700 underline underline-offset-2 hover:text-felt-900"
+        >
           All my bookings
         </Link>
       </p>
@@ -81,11 +91,30 @@ function StatusBanner({
 }) {
   if (booking.status === 'CONFIRMED') {
     return (
-      <div role="status" className="rounded-lg border border-felt-100 bg-felt-50 p-4">
-        <p className="text-sm font-semibold text-felt-900">Booking confirmed</p>
-        <p className="mt-1 text-sm text-felt-900">
-          We have your payment. See you at the club.
-        </p>
+      <div
+        role="status"
+        className="flex items-start gap-3 rounded-card border border-felt-200 bg-felt-50 p-5"
+      >
+        <span
+          aria-hidden
+          className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-felt-700 text-white"
+        >
+          <svg
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4"
+          >
+            <path d="M5 10.5l3.5 3.5L15 7" />
+          </svg>
+        </span>
+        <div>
+          <p className="font-semibold text-felt-900">Booking confirmed</p>
+          <p className="mt-1 text-sm text-felt-800">We have your payment. See you at the club.</p>
+        </div>
       </div>
     );
   }
@@ -95,19 +124,30 @@ function StatusBanner({
     // means the webhook is a second behind — telling the customer their payment failed here
     // would send them to pay twice.
     return justPaid ? (
-      <div role="status" aria-live="polite" className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-        <p className="text-sm font-semibold text-amber-900">Confirming your payment…</p>
-        <p className="mt-1 text-sm text-amber-800">
-          This usually takes a few seconds. You do not need to pay again.
-        </p>
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex items-start gap-3 rounded-card border border-amber-200 bg-amber-50 p-5"
+      >
+        <span
+          aria-hidden
+          className="mt-1 h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-amber-300 border-t-amber-700"
+        />
+        <div>
+          <p className="font-semibold text-amber-900">Confirming your payment…</p>
+          <p className="mt-1 text-sm text-amber-800">
+            This usually takes a few seconds. You do not need to pay again.
+          </p>
+        </div>
       </div>
     ) : (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-        <p className="text-sm font-semibold text-amber-900">Payment needed</p>
+      <div className="rounded-card border border-amber-200 bg-amber-50 p-5">
+        <p className="font-semibold text-amber-900">Payment needed</p>
         <p className="mt-1 text-sm text-amber-800">
-          Your table is held{booking.holdExpiresAt ? ` until ${formatHoldExpiry(booking.holdExpiresAt)}` : ''}.
+          Your table is held
+          {booking.holdExpiresAt ? ` until ${formatHoldExpiry(booking.holdExpiresAt)}` : ''}.
         </p>
-        <Button className="mt-3" onClick={onRetry} disabled={retrying}>
+        <Button className="mt-4" size="lg" onClick={onRetry} disabled={retrying}>
           {retrying ? 'Opening payment…' : 'Pay now'}
         </Button>
       </div>
@@ -116,12 +156,15 @@ function StatusBanner({
 
   if (booking.status === 'EXPIRED') {
     return (
-      <div role="status" className="rounded-lg border border-gray-300 bg-gray-50 p-4">
-        <p className="text-sm font-semibold text-gray-900">This booking expired</p>
-        <p className="mt-1 text-sm text-gray-700">
+      <div role="status" className="rounded-card border border-ink-300 bg-ink-50 p-5">
+        <p className="font-semibold text-ink-900">This booking expired</p>
+        <p className="mt-1 text-sm text-ink-700">
           The table was released because payment was not completed in time.
         </p>
-        <Link to="/book" className="mt-3 inline-block text-sm font-medium text-felt-700 underline">
+        <Link
+          to="/book"
+          className="mt-4 inline-flex rounded-xl bg-felt-700 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-felt-800"
+        >
           Book another slot
         </Link>
       </div>
@@ -130,8 +173,8 @@ function StatusBanner({
 
   if (booking.status === 'CANCELLED') {
     return (
-      <div role="status" className="rounded-lg border border-gray-300 bg-gray-50 p-4">
-        <p className="text-sm font-semibold text-gray-900">This booking was cancelled</p>
+      <div role="status" className="rounded-card border border-ink-300 bg-ink-50 p-5">
+        <p className="font-semibold text-ink-900">This booking was cancelled</p>
       </div>
     );
   }
@@ -139,14 +182,12 @@ function StatusBanner({
   // COMPLETED and NO_SHOW. Mapped explicitly rather than rendering booking.status, which would
   // show a customer the raw enum name.
   return (
-    <div role="status" className="rounded-lg border border-gray-300 bg-gray-50 p-4">
-      <p className="text-sm font-semibold text-gray-900">
+    <div role="status" className="rounded-card border border-ink-300 bg-ink-50 p-5">
+      <p className="font-semibold text-ink-900">
         {booking.status === 'COMPLETED' ? 'This session has finished' : 'Recorded as a no-show'}
       </p>
       {booking.status === 'NO_SHOW' && (
-        <p className="mt-1 text-sm text-gray-700">
-          Speak to the club if you think this is wrong.
-        </p>
+        <p className="mt-1 text-sm text-ink-700">Speak to the club if you think this is wrong.</p>
       )}
     </div>
   );
@@ -154,18 +195,18 @@ function StatusBanner({
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="text-2xl font-semibold text-felt-900">Your booking</h1>
-      <div className="mt-6">{children}</div>
-    </main>
+    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
+      <h1 className="text-3xl font-semibold tracking-tight text-felt-900">Your booking</h1>
+      <div className="mt-8">{children}</div>
+    </div>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="flex justify-between gap-4 px-4 py-3">
-      <dt className="text-sm text-gray-600">{label}</dt>
-      <dd className="text-sm font-medium text-felt-900">{value}</dd>
+    <div className="flex justify-between gap-4 px-5 py-3.5">
+      <dt className="text-sm text-ink-600">{label}</dt>
+      <dd className={`text-sm font-medium text-felt-900 ${mono ? 'font-mono' : ''}`}>{value}</dd>
     </div>
   );
 }

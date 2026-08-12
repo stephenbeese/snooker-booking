@@ -26,22 +26,31 @@ export function MyBookingsPage() {
   const { data: bookings, isPending, isError, error } = useMyBookings();
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8">
-      <h1 className="text-2xl font-semibold text-felt-900">My bookings</h1>
+    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+      <h1 className="text-3xl font-semibold tracking-tight text-felt-900">My bookings</h1>
 
-      <div className="mt-6">
-        {isPending && <p className="text-sm text-gray-500">Loading…</p>}
+      <div className="mt-8">
+        {isPending && (
+          <div className="space-y-3">
+            {Array.from({ length: 3 }, (_, index) => (
+              <div key={index} className="h-24 animate-pulse rounded-card bg-ink-100" />
+            ))}
+          </div>
+        )}
 
         {isError && (
-          <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4">
+          <div role="alert" className="rounded-card border border-rose-200 bg-rose-50 p-4">
             <p className="text-sm text-rose-800">{error.message}</p>
           </div>
         )}
 
         {bookings && bookings.length === 0 && (
-          <div className="rounded-lg border border-gray-200 p-6 text-center">
-            <p className="text-sm text-gray-600">You have no bookings yet.</p>
-            <Link to="/book" className="mt-2 inline-block text-sm font-medium text-felt-700 underline">
+          <div className="rounded-card border border-dashed border-ink-300 bg-ink-50 p-10 text-center">
+            <p className="font-medium text-ink-700">You have no bookings yet.</p>
+            <Link
+              to="/book"
+              className="mt-4 inline-flex rounded-xl bg-felt-700 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-felt-800"
+            >
               Book a table
             </Link>
           </div>
@@ -57,7 +66,7 @@ export function MyBookingsPage() {
           </ul>
         )}
       </div>
-    </main>
+    </div>
   );
 }
 
@@ -65,23 +74,24 @@ function BookingCard({ booking }: { booking: Booking }) {
   return (
     <Link
       to={`/bookings/${booking.reference}`}
-      className="block rounded-lg border border-gray-200 p-4 transition-colors hover:border-felt-500"
+      className="block rounded-card border border-ink-200 bg-white p-5 shadow-card transition-all hover:-translate-y-0.5 hover:border-felt-300 hover:shadow-lifted"
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-felt-900">{booking.tableName}</p>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="font-semibold tracking-tight text-felt-900">{booking.tableName}</p>
+          <p className="mt-1 text-sm text-ink-600">
             {formatDate(booking.date)} · {formatSlotTime(booking.startTime)}–
             {formatSlotTime(booking.endTime)}
           </p>
+          <p className="mt-2 font-mono text-xs text-ink-400">{booking.reference}</p>
         </div>
         <div className="text-right">
           <span
-            className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[booking.status]}`}
+            className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLE[booking.status]}`}
           >
             {STATUS_LABEL[booking.status]}
           </span>
-          <p className="mt-1 text-sm font-medium text-felt-900">{formatPence(booking.pricePence)}</p>
+          <p className="mt-2 font-semibold text-felt-900">{formatPence(booking.pricePence)}</p>
         </div>
       </div>
     </Link>

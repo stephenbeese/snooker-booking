@@ -241,6 +241,7 @@ Implemented:
 | Method | Path | Auth | Notes |
 |---|---|---|---|
 | `GET` | `/api/health` | Public | `{status, db}` |
+| `GET` | `/api/club` | Public | Identity, opening hours, "from" rate |
 | `GET` | `/api/availability` | Public | `?date=&durationMinutes=&tableId=` |
 | `POST` | `/api/auth/register` | Public | Always creates a CUSTOMER |
 | `POST` | `/api/auth/login` | Public | Establishes the session |
@@ -277,6 +278,35 @@ Errors use one envelope and never include a stack trace:
 ```
 
 `400` malformed · `422` business rule · `409` race conflict · `401`/`403` auth.
+
+---
+
+## Design system
+
+The whole visual language lives in `frontend/src/index.css`, as Tailwind v4 `@theme`
+tokens. Pages compose those tokens; they do not define colours of their own.
+
+| Token family | Purpose |
+|---|---|
+| `felt-50…950` | Snooker baize. Every brand moment, plus the dark surfaces. |
+| `brass-200…500` | The single accent — headline figures and trim on dark panels. |
+| `ink-50…900` | Neutrals, very slightly green so nothing looks borrowed. |
+| `shadow-card` / `shadow-lifted` | Wide, soft elevation. Diffuse reads as depth. |
+| `rounded-card` | One card radius everywhere. |
+
+Three rules keep it coherent as the admin screens arrive in later phases:
+
+1. **Rose and amber stay Tailwind defaults.** Error and warning should look like error and
+   warning on any site, not like part of the brand.
+2. **Focus is defined once**, as a global `:focus-visible` rule, rather than per component.
+   Component-level focus styling is how a control ships with no visible ring at all.
+3. **Text sits on a token background.** A section that sets a colour but not a surface
+   inherits whatever is behind it, which is how "unreadable in dark mode" starts.
+
+The club's name, address, opening hours and headline rate are read from `/api/club` and
+rendered by the header, footer and home page. Nothing about the club is hardcoded in JSX:
+a page asserting "open until 11pm" would go stale the moment an admin edits the hours, and
+would do so silently.
 
 ---
 

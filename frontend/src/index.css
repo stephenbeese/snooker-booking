@@ -1,22 +1,127 @@
 /* Tailwind v4 is CSS-first: one import, no tailwind.config.js, no PostCSS file. */
 @import 'tailwindcss';
 
+/*
+ * The whole site's visual language, defined once.
+ *
+ * Three families and no more. Restraint is what makes it look designed rather than
+ * assembled: `felt` carries every brand moment, `ink` every surface and text tone, and
+ * `brass` is the single accent, used sparingly enough that it still reads as emphasis.
+ * Rose and amber stay Tailwind defaults — error and warning should look like error and
+ * warning everywhere, not like part of the brand.
+ */
 @theme {
-  /* Snooker baize, used for available slots and primary actions. */
-  --color-felt-50: oklch(0.96 0.03 155);
-  --color-felt-100: oklch(0.92 0.06 155);
-  --color-felt-500: oklch(0.58 0.12 155);
-  --color-felt-600: oklch(0.5 0.12 155);
-  --color-felt-700: oklch(0.42 0.11 155);
-  --color-felt-900: oklch(0.28 0.08 155);
+  /* Snooker baize. The mid tones are the interactive ones; 900/950 are near-black
+     greens used for dark surfaces, which keeps the dark sections tinted rather than
+     flatly grey. */
+  --color-felt-50: oklch(0.97 0.02 158);
+  --color-felt-100: oklch(0.94 0.05 158);
+  --color-felt-200: oklch(0.88 0.07 158);
+  --color-felt-300: oklch(0.8 0.09 158);
+  --color-felt-400: oklch(0.7 0.11 158);
+  --color-felt-500: oklch(0.6 0.12 158);
+  --color-felt-600: oklch(0.52 0.12 158);
+  --color-felt-700: oklch(0.44 0.11 158);
+  --color-felt-800: oklch(0.35 0.09 158);
+  --color-felt-900: oklch(0.26 0.07 158);
+  --color-felt-950: oklch(0.17 0.05 158);
+
+  /* The one accent: a warm brass, for the trim on dark surfaces and the "from £x"
+     figure. Chosen as the near-complement of the baize, so it lifts off green
+     without the muddiness a yellow-green would give. */
+  --color-brass-200: oklch(0.9 0.08 85);
+  --color-brass-300: oklch(0.85 0.11 85);
+  --color-brass-400: oklch(0.79 0.13 85);
+  --color-brass-500: oklch(0.72 0.14 85);
+
+  /* Neutrals with a hint of the same green in them, so nothing on the page looks
+     like it came from a different palette. */
+  --color-ink-50: oklch(0.985 0.002 158);
+  --color-ink-100: oklch(0.96 0.003 158);
+  --color-ink-200: oklch(0.92 0.004 158);
+  --color-ink-300: oklch(0.86 0.005 158);
+  --color-ink-400: oklch(0.7 0.006 158);
+  --color-ink-500: oklch(0.58 0.007 158);
+  --color-ink-600: oklch(0.48 0.008 158);
+  --color-ink-700: oklch(0.38 0.008 158);
+  --color-ink-800: oklch(0.27 0.007 158);
+  --color-ink-900: oklch(0.19 0.006 158);
+
+  /* Softer and wider than Tailwind's defaults. Shadows this diffuse read as depth
+     rather than as a drop shadow, which is most of the "modern" look. */
+  --shadow-card: 0 1px 2px oklch(0.26 0.07 158 / 0.04), 0 4px 16px oklch(0.26 0.07 158 / 0.06);
+  --shadow-lifted: 0 2px 4px oklch(0.26 0.07 158 / 0.06), 0 12px 32px oklch(0.26 0.07 158 / 0.1);
+
+  --radius-card: 0.875rem;
 }
 
-/* Tailwind v4's default border colour is currentColor, so a bare `border` draws in
-   the text colour and looks broken. Restore the v3 behaviour once, globally. */
 @layer base {
+  /* Tailwind v4's default border colour is currentColor, so a bare `border` draws in
+     the text colour and looks broken. Restore the v3 behaviour once, globally. */
   *,
   ::after,
   ::before {
-    border-color: var(--color-gray-200, currentColor);
+    border-color: var(--color-ink-200, currentColor);
+  }
+
+  html {
+    /* An in-page anchor would otherwise land under the sticky header. */
+    scroll-padding-top: 5rem;
+  }
+
+  body {
+    background-color: var(--color-white);
+    color: var(--color-ink-800);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* One focus style for the whole site. Doing this here rather than per-component is
+     what stops a control being shipped with no visible focus ring at all — the most
+     common accessibility regression in a restyle. */
+  :focus-visible {
+    outline: 2px solid var(--color-felt-600);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+  }
+
+  /* Respect a reduced-motion preference for every animation on the site at once,
+     including any added later. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* The hero's baize texture: a soft radial wash over deep green. Pure CSS — an image
+     here would be a network request and a licence to track for no visual gain. */
+  .bg-baize {
+    background-color: var(--color-felt-950);
+    background-image:
+      radial-gradient(ellipse 80% 60% at 20% 0%, oklch(0.35 0.09 158 / 0.55), transparent 60%),
+      radial-gradient(ellipse 60% 50% at 90% 20%, oklch(0.44 0.11 158 / 0.35), transparent 55%);
+  }
+
+  /* Content entering on load. Deliberately one shared, short, subtle animation rather
+     than per-section choreography, which ages badly and delays what people came for. */
+  .animate-rise {
+    animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(0.75rem);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
 }

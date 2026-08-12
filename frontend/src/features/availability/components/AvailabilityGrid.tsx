@@ -21,12 +21,12 @@ export function AvailabilityGrid({ availability, selected, onSelect }: Availabil
     return (
       <div
         role="status"
-        className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-8 text-center"
+        className="rounded-card border border-dashed border-ink-300 bg-ink-50 p-10 text-center"
       >
-        <p className="text-sm font-medium text-gray-700">
+        <p className="font-medium text-ink-700">
           {(reason && DAY_MESSAGE[reason]) ?? 'No tables are available on this date.'}
         </p>
-        <p className="mt-1 text-xs text-gray-500">Try another date.</p>
+        <p className="mt-1 text-sm text-ink-500">Try another date.</p>
       </div>
     );
   }
@@ -37,7 +37,7 @@ export function AvailabilityGrid({ availability, selected, onSelect }: Availabil
 
       {/* Horizontal scroll lives on this wrapper so the page body never scrolls
           sideways on a phone. */}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto rounded-card border border-ink-200 bg-white p-4 shadow-card">
         <table className="w-full border-separate border-spacing-1">
           <caption className="sr-only">
             Table availability for {availability.date}, times in {availability.timezone}
@@ -51,7 +51,7 @@ export function AvailabilityGrid({ availability, selected, onSelect }: Availabil
                 <th
                   key={time}
                   scope="col"
-                  className="min-w-14 pb-1 text-center text-xs font-normal text-gray-500"
+                  className="min-w-14 pb-1 text-center text-xs font-normal tabular-nums text-ink-500"
                 >
                   {time.slice(0, 5)}
                 </th>
@@ -65,10 +65,10 @@ export function AvailabilityGrid({ availability, selected, onSelect }: Availabil
                   scope="row"
                   className="sticky left-0 z-10 min-w-32 bg-white pr-3 text-left align-middle"
                 >
-                  <span className="block text-sm font-medium text-gray-900">
+                  <span className="block text-sm font-medium text-felt-900">
                     {table.tableName}
                   </span>
-                  <span className="block text-xs text-gray-500">
+                  <span className="block text-xs text-ink-500">
                     {formatPence(table.hourlyRatePence)}/hr
                     {!table.tableActive && ' · out of service'}
                   </span>
