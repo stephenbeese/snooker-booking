@@ -1,0 +1,26 @@
+# Postgres for local development.
+# Published on 5433 because this machine already runs a host Postgres on 5432.
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: snooker-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-snooker}
+      POSTGRES_USER: ${POSTGRES_USER:-snooker}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-snooker}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - snooker-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Without dbname/user, pg_isready checks the wrong target and reports
+      # healthy before the database is actually usable.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-snooker} -d ${POSTGRES_DB:-snooker}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  snooker-pgdata:

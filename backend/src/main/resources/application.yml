@@ -1,0 +1,75 @@
+spring:
+  application:
+    name: snooker-booking
+
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/snooker}
+    username: ${DATABASE_USERNAME:snooker}
+    password: ${DATABASE_PASSWORD:snooker}
+    hikari:
+      # Sized above the concurrency test's thread count so those tests exercise the
+      # database constraint rather than starving on the pool.
+      maximum-pool-size: 15
+
+  jpa:
+    open-in-view: false
+    # Flyway owns the schema. Hibernate only ever checks that entities match it.
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  session:
+    store-type: jdbc
+    jdbc:
+      # Flyway owns the Spring Session DDL too. 'embedded' (the default) silently
+      # no-ops on Postgres and you get "relation spring_session does not exist".
+      initialize-schema: never
+    timeout: 30m
+
+  servlet:
+    session:
+      cookie:
+        name: SESSION
+        http-only: true
+        secure: true
+        # Lax, not Strict: Strict withholds the cookie on the cross-site top-level
+        # redirect back from Stripe Checkout, landing the user logged out.
+        same-site: lax
+        path: /
+
+  threads:
+    virtual:
+      enabled: true
+
+server:
+  port: 8080
+  error:
+    # Never leak stack traces to the client.
+    include-stacktrace: never
+    include-message: never
+
+app:
+  club:
+    timezone: Europe/London
+  base-url: ${APP_BASE_URL:http://localhost:5173}
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    root: INFO
+    uk.co.club.booking: DEBUG

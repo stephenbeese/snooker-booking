@@ -1,0 +1,22 @@
+/* Tailwind v4 is CSS-first: one import, no tailwind.config.js, no PostCSS file. */
+@import 'tailwindcss';
+
+@theme {
+  /* Snooker baize, used for available slots and primary actions. */
+  --color-felt-50: oklch(0.96 0.03 155);
+  --color-felt-100: oklch(0.92 0.06 155);
+  --color-felt-500: oklch(0.58 0.12 155);
+  --color-felt-600: oklch(0.5 0.12 155);
+  --color-felt-700: oklch(0.42 0.11 155);
+  --color-felt-900: oklch(0.28 0.08 155);
+}
+
+/* Tailwind v4's default border colour is currentColor, so a bare `border` draws in
+   the text colour and looks broken. Restore the v3 behaviour once, globally. */
+@layer base {
+  *,
+  ::after,
+  ::before {
+    border-color: var(--color-gray-200, currentColor);
+  }
+}

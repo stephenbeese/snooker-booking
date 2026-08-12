@@ -1,0 +1,15 @@
+spring:
+  flyway:
+    # Dev also loads the seed data. Production loads db/migration only.
+    locations: classpath:db/migration,classpath:db/seed
+
+  servlet:
+    session:
+      cookie:
+        # Dev serves plain http on localhost, where Secure cookies are not sent.
+        # Bound to this profile so it can never leak into production.
+        secure: false
+
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
