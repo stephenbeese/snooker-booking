@@ -61,3 +61,8 @@ tasks.withType<Test>().configureEach {
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 }
+
+// Lets `-Dseed.print=true` reach the test JVM (used to regenerate dev seed hashes).
+tasks.named<Test>("test") {
+    systemProperty("seed.print", System.getProperty("seed.print") ?: "false")
+}
