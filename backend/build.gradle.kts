@@ -32,6 +32,10 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.session:spring-session-jdbc")
 
+    // Spring Boot 4 moved Flyway auto-configuration out of spring-boot-autoconfigure
+    // into this module. Without it Flyway is on the classpath but never runs, and the
+    // first symptom is Hibernate reporting a missing table.
+    implementation("org.springframework.boot:spring-boot-flyway")
     implementation("org.flywaydb:flyway-core")
     // Postgres needs its own Flyway module from Flyway 10 onward.
     runtimeOnly("org.flywaydb:flyway-database-postgresql")
@@ -51,10 +55,21 @@ tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.addAll(listOf("-Xlint:all", "-parameters"))
 }
 
+// The app must run in UTC. Instants are stored as timestamptz with
+// hibernate.jdbc.time_zone=UTC, and that setting also makes the driver shift plain TIME
+// columns (opening hours) by the JVM's offset — under BST that read 10:00-23:00 back as
+// 11:00-00:00 and reported the club closed all summer.
+//
+// BookingApplication also sets this in a static initialiser, but -Duser.timezone is
+// resolved before that runs, so it must be set here as well for bootRun.
+tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
+    systemProperty("user.timezone", "UTC")
+}
+
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
-    // Booking logic is timezone-sensitive. Pinning the test JVM to UTC means a test
-    // that accidentally depends on the system zone fails here rather than in October.
+    // Same reason as bootRun, plus: a test that accidentally depends on the system zone
+    // fails here rather than in October.
     systemProperty("user.timezone", "UTC")
     testLogging {
         events("passed", "skipped", "failed")

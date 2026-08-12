@@ -1,6 +1,7 @@
 package uk.co.club.booking.security;
 
 import java.util.List;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -34,7 +35,11 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
 
     @Bean
-    SecurityFilterChain filterChain(HttpSecurity http, CorsConfigurationSource corsSource)
+    SecurityFilterChain filterChain(
+            HttpSecurity http,
+            // Qualified by name: Spring MVC's HandlerMappingIntrospector also implements
+            // CorsConfigurationSource, so the type alone is ambiguous.
+            @Qualifier("corsConfigurationSource") CorsConfigurationSource corsSource)
             throws Exception {
 
         CookieCsrfTokenRepository csrfRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
