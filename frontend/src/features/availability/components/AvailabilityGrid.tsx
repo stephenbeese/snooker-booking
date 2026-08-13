@@ -18,14 +18,18 @@ const DAY_MESSAGE: Record<string, string> = {
 export function AvailabilityGrid({ availability, selected, onSelect }: AvailabilityGridProps) {
   if (!availability.clubOpen || availability.tables.length === 0) {
     const reason = availability.dayUnavailableReason;
+    // "This date has already passed" is wrong for today after the last slot has gone: the
+    // date has not passed, the day's trading has. The club being open is what separates them.
+    const message =
+      reason === 'PAST' && availability.clubOpen
+        ? 'There are no more slots today.'
+        : ((reason && DAY_MESSAGE[reason]) ?? 'No tables are available on this date.');
     return (
       <div
         role="status"
         className="rounded-card border border-dashed border-ink-300 bg-ink-50 p-10 text-center"
       >
-        <p className="font-medium text-ink-700">
-          {(reason && DAY_MESSAGE[reason]) ?? 'No tables are available on this date.'}
-        </p>
+        <p className="font-medium text-ink-700">{message}</p>
         <p className="mt-1 text-sm text-ink-500">Try another date.</p>
       </div>
     );

@@ -346,4 +346,77 @@ class AvailabilityServiceTest {
         assertThat(slot.startAt()).isEqualTo(Instant.parse("2026-08-20T11:00:00Z"));
         assertThat(slot.endTime()).isEqualTo(LocalTime.of(12, 30));
     }
+
+    /**
+     * Builds a service whose clock reads {@code hour:minute} on the day under test, so a
+     * test can stand in the middle of a trading day rather than an hour before opening.
+     */
+    private AvailabilityService serviceAt(int hour, int minute) {
+        ClubClock midDay = new ClubClock(
+                Clock.fixed(
+                        LocalDate.of(2026, 8, 20)
+                                .atTime(hour, minute)
+                                .atZone(java.time.ZoneId.of("Europe/London"))
+                                .toInstant(),
+                        ZoneOffset.UTC),
+                "Europe/London");
+        return new AvailabilityService(
+                tableRepository,
+                bookingRepository,
+                blockRepository,
+                openingHoursRepository,
+                bookingSettingsRepository,
+                new SlotGenerator(midDay),
+                pricingService,
+                midDay);
+    }
+
+    @Test
+    void dropsSlotsThatHaveAlreadyPassed() {
+        // Arriving at 14:15 previously rendered 10:00 onwards as greyed columns: four hours
+        // of dead grid to scroll past before reaching anything bookable.
+        DayAvailability day = serviceAt(14, 15).availability(DATE, null, null);
+
+        assertThat(day.slotTimes())
+                .as("the morning is over and should not occupy the grid")
+                .doesNotContain(LocalTime.of(10, 0), LocalTime.of(13, 0), LocalTime.of(14, 0));
+        assertThat(day.slotTimes().getFirst())
+                .as("the axis starts at the next slot still to come")
+                .isEqualTo(LocalTime.of(14, 30));
+    }
+
+    @Test
+    void keepsSlotsExcludedOnlyByTheNoticePeriod() {
+        // Notice is 60 minutes, so at 14:15 the 14:30 and 15:00 slots are real trading time
+        // the customer cannot claim yet. Hiding them would misreport the club's hours; they
+        // belong on the grid, greyed, saying why.
+        DayAvailability day = serviceAt(14, 15).availability(DATE, null, null);
+
+        assertThat(day.slotTimes()).contains(LocalTime.of(14, 30), LocalTime.of(15, 0));
+        assertThat(slotAt(day, LocalTime.of(14, 30)).reason())
+                .isEqualTo(UnavailableReason.INSUFFICIENT_NOTICE);
+    }
+
+    @Test
+    void leavesAFutureDayFullyIntact() {
+        // The filter compares against now, so a later date must keep its whole axis. Trimming
+        // it would hide tomorrow morning from someone booking today.
+        DayAvailability day = serviceAt(14, 15).availability(DATE.plusDays(1), null, null);
+
+        assertThat(day.slotTimes()).hasSize(26).startsWith(LocalTime.of(10, 0));
+    }
+
+    @Test
+    void reportsADayWhoseSlotsHaveAllGoneRatherThanAnEmptyGrid() {
+        // After the last slot there is nothing to render. A grid with no columns is an empty
+        // box that explains nothing, so this is a whole-day condition instead.
+        DayAvailability day = serviceAt(23, 30).availability(DATE, null, null);
+
+        assertThat(day.slotTimes()).isEmpty();
+        assertThat(day.tables()).isEmpty();
+        assertThat(day.dayUnavailableReason()).isEqualTo(UnavailableReason.PAST);
+        assertThat(day.clubOpen())
+                .as("the club did open today; its trading day is simply over")
+                .isTrue();
+    }
 }

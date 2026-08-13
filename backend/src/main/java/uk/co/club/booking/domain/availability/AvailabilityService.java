@@ -110,7 +110,26 @@ public class AvailabilityService {
         }
 
         OpeningWindow window = maybeWindow.get();
-        List<Instant> slotStarts = slotGenerator.slotStarts(window, settings);
+        List<Instant> slotStarts = withoutElapsed(slotGenerator.slotStarts(window, settings), now);
+
+        // Everything has already gone. Reported as a whole-day condition rather than as a
+        // grid with no columns, which renders as an empty box that explains nothing.
+        if (slotStarts.isEmpty()) {
+            return new DayAvailability(
+                    date,
+                    date.getDayOfWeek(),
+                    clubClock.zone().getId(),
+                    true,
+                    window.openTime(),
+                    window.closeTime(),
+                    settings.getIncrementMinutes(),
+                    List.of(),
+                    durationOptions,
+                    requestedDurationMinutes,
+                    UnavailableReason.PAST,
+                    List.of());
+        }
+
         List<LocalTime> slotTimes =
                 slotStarts.stream().map(clubClock::toLocalTime).toList();
 
@@ -158,6 +177,26 @@ public class AvailabilityService {
                 .sorted(Comparator.comparingInt(SnookerTable::getDisplayOrder)
                         .thenComparing(SnookerTable::getId))
                 .toList();
+    }
+
+    /**
+     * Drops slot starts that are already in the past.
+     *
+     * <p>Visiting at 14:00 previously rendered the morning as greyed columns: four hours of
+     * dead grid to scroll past before reaching anything bookable, and worst on a phone where
+     * the grid scrolls sideways.
+     *
+     * <p>Only genuinely elapsed starts go. A start the club's notice period excludes is kept
+     * and rendered as {@code INSUFFICIENT_NOTICE} — it is real trading time the customer
+     * simply cannot claim yet, and hiding it would misrepresent the club's hours.
+     *
+     * <p>Compared against the same {@code now} the per-cell reasons use, so the axis and the
+     * cells cannot disagree about where the past ends. A future date is untouched: every one
+     * of its starts is after {@code now}, so this returns the list unchanged rather than
+     * needing a date comparison of its own.
+     */
+    private List<Instant> withoutElapsed(List<Instant> slotStarts, Instant now) {
+        return slotStarts.stream().filter(start -> start.isAfter(now)).toList();
     }
 
     /** Whole-day conditions that make every slot moot. */
@@ -326,6 +365,10 @@ public class AvailabilityService {
         if (!table.isActive()) {
             return UnavailableReason.TABLE_INACTIVE;
         }
+        // Normally unreachable: withoutElapsed has already dropped these starts, so a PAST
+        // cell never reaches the grid. Kept because this method is the definition of why a
+        // cell is unbookable, and a caller that skipped the filter must not be told a slot
+        // in the past is free.
         if (!start.isAfter(now)) {
             return UnavailableReason.PAST;
         }

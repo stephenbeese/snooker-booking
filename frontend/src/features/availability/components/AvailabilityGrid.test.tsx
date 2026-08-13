@@ -114,6 +114,34 @@ describe('AvailabilityGrid', () => {
     expect(screen.getByRole('status')).toHaveTextContent('The club is closed on this day.');
   });
 
+  it('says the day is over rather than that the date has passed', () => {
+    // Visiting after the last slot: the date has not passed, the trading day has. The old
+    // "This date has already passed" reads as a bug to someone standing in the club.
+    renderGrid(
+      makeAvailability({
+        clubOpen: true,
+        dayUnavailableReason: 'PAST',
+        slotTimes: [],
+        tables: [],
+      }),
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('There are no more slots today.');
+  });
+
+  it('still reports a genuinely past date as past', () => {
+    renderGrid(
+      makeAvailability({
+        clubOpen: false,
+        dayUnavailableReason: 'PAST',
+        slotTimes: [],
+        tables: [],
+      }),
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('This date has already passed.');
+  });
+
   it('explains a date that is too far ahead', () => {
     renderGrid(
       makeAvailability({
