@@ -80,6 +80,10 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
             new Endpoint(HttpMethod.GET, "/api/admin/dashboard", null),
             new Endpoint(HttpMethod.GET, "/api/admin/bookings", null),
             new Endpoint(HttpMethod.GET, "/api/admin/bookings/day", null),
+            // The staff availability grid. It answers under BookingPolicy.staff() — notice
+            // and advance limits lifted — so a customer reaching it would be handed slots the
+            // public endpoint deliberately withholds from them.
+            new Endpoint(HttpMethod.GET, "/api/admin/availability?date=2030-01-02", null),
             new Endpoint(HttpMethod.GET, "/api/admin/bookings/SNK-VICTIM", null),
             new Endpoint(
                     HttpMethod.POST,

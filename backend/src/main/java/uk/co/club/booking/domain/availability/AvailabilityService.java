@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uk.co.club.booking.common.time.ClubClock;
 import uk.co.club.booking.domain.booking.Booking;
+import uk.co.club.booking.domain.booking.BookingPolicy;
 import uk.co.club.booking.domain.booking.BookingRepository;
 import uk.co.club.booking.domain.booking.BookingStatus;
 import uk.co.club.booking.domain.club.BookingSettings;
@@ -67,7 +68,7 @@ public class AvailabilityService {
     }
 
     /**
-     * Availability for a date across active tables.
+     * Availability as a customer booking online sees it: every rule enforced.
      *
      * @param requestedDurationMinutes when supplied, each slot also reports whether a
      *     booking of exactly this length can start there, and what it would cost
@@ -75,6 +76,30 @@ public class AvailabilityService {
     @Transactional(readOnly = true)
     public DayAvailability availability(
             LocalDate date, Integer requestedDurationMinutes, List<Long> tableIds) {
+        return availability(date, requestedDurationMinutes, tableIds, BookingPolicy.online());
+    }
+
+    /**
+     * Availability for a date across active tables, under the given booking policy.
+     *
+     * <p>The policy is the same record {@link uk.co.club.booking.domain.booking.BookingValidator}
+     * enforces at write time, and it is passed here for exactly that reason: a grid built under
+     * one policy and a booking checked under another disagree, and the disagreement is always
+     * visible to the person using it. Under {@link BookingPolicy#staff()} the notice period and
+     * the advance window are lifted, so a slot staff may genuinely book is offered rather than
+     * greyed out, and a date beyond the customer advance window is a full grid rather than an
+     * empty box.
+     *
+     * <p>What the policy does <em>not</em> relax: occupied cells, maintenance, inactive tables,
+     * opening hours and elapsed time. Those describe the physical world, and the record has no
+     * field for overriding them precisely so that this method cannot.
+     */
+    @Transactional(readOnly = true)
+    public DayAvailability availability(
+            LocalDate date,
+            Integer requestedDurationMinutes,
+            List<Long> tableIds,
+            BookingPolicy policy) {
 
         BookingSettings settings = BookingSettings.require(bookingSettingsRepository.findSingleton());
         Instant now = clubClock.now();
@@ -90,7 +115,7 @@ public class AvailabilityService {
 
         // A day beyond the advance window is reported as a whole-day condition rather
         // than as every slot being individually unavailable.
-        UnavailableReason dayReason = wholeDayReason(date, maybeWindow, settings, now);
+        UnavailableReason dayReason = wholeDayReason(date, maybeWindow, settings, now, policy);
         if (maybeWindow.isEmpty() || dayReason != null) {
             LocalTime open = maybeWindow.map(OpeningWindow::openTime).orElse(null);
             LocalTime close = maybeWindow.map(OpeningWindow::closeTime).orElse(null);
@@ -148,6 +173,7 @@ public class AvailabilityService {
                     settings,
                     now,
                     requestedDurationMinutes,
+                    policy,
                     bookingsByTable.getOrDefault(table.getId(), List.of()),
                     blocksByTable.getOrDefault(table.getId(), List.of())));
         }
@@ -201,7 +227,11 @@ public class AvailabilityService {
 
     /** Whole-day conditions that make every slot moot. */
     private UnavailableReason wholeDayReason(
-            LocalDate date, Optional<OpeningWindow> window, BookingSettings settings, Instant now) {
+            LocalDate date,
+            Optional<OpeningWindow> window,
+            BookingSettings settings,
+            Instant now,
+            BookingPolicy policy) {
         if (window.isEmpty()) {
             return UnavailableReason.CLUB_CLOSED;
         }
@@ -209,9 +239,11 @@ public class AvailabilityService {
         if (date.isBefore(today)) {
             return UnavailableReason.PAST;
         }
+        // Not gated on the policy: a past date is past for everyone. Staff may book at short
+        // notice, not retrospectively.
         // Computed on LocalDate, not by adding days to an Instant: adding 24-hour days
         // across a DST boundary drifts by an hour and moves the cutoff.
-        if (date.isAfter(today.plusDays(settings.getMaxAdvanceDays()))) {
+        if (policy.enforceMaxAdvance() && date.isAfter(today.plusDays(settings.getMaxAdvanceDays()))) {
             return UnavailableReason.TOO_FAR_IN_ADVANCE;
         }
         return null;
@@ -244,6 +276,7 @@ public class AvailabilityService {
             BookingSettings settings,
             Instant now,
             Integer requestedDurationMinutes,
+            BookingPolicy policy,
             List<Booking> bookings,
             List<MaintenanceBlock> blocks) {
 
@@ -258,7 +291,8 @@ public class AvailabilityService {
         // First pass: is each cell itself occupied, and why not if so?
         List<UnavailableReason> cellReasons = new ArrayList<>(slotStarts.size());
         for (Instant start : slotStarts) {
-            cellReasons.add(cellReason(table, start, start.plus(increment), now, settings, bookings, blocks));
+            cellReasons.add(
+                    cellReason(table, start, start.plus(increment), now, settings, policy, bookings, blocks));
         }
 
         // Second pass: how long a booking can start in each cell. Walking backwards
@@ -359,6 +393,7 @@ public class AvailabilityService {
             Instant end,
             Instant now,
             BookingSettings settings,
+            BookingPolicy policy,
             List<Booking> bookings,
             List<MaintenanceBlock> blocks) {
 
@@ -372,7 +407,10 @@ public class AvailabilityService {
         if (!start.isAfter(now)) {
             return UnavailableReason.PAST;
         }
-        if (start.isBefore(now.plus(settings.minNotice()))) {
+        // Staff take bookings for "in ten minutes" over the phone, which BookingPolicy.staff()
+        // permits at write time. Greying the cell here would show them a slot as unbookable
+        // that the very next request would accept.
+        if (policy.enforceMinNotice() && start.isBefore(now.plus(settings.minNotice()))) {
             return UnavailableReason.INSUFFICIENT_NOTICE;
         }
         if (overlaps(blocks, start, end)) {

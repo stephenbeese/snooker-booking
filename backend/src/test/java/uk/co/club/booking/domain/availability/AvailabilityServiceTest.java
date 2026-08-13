@@ -22,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import uk.co.club.booking.common.time.ClubClock;
 import uk.co.club.booking.domain.booking.Booking;
+import uk.co.club.booking.domain.booking.BookingPolicy;
 import uk.co.club.booking.domain.booking.BookingRepository;
 import uk.co.club.booking.domain.booking.BookingStatus;
 import uk.co.club.booking.domain.club.BookingSettings;
@@ -418,5 +419,97 @@ class AvailabilityServiceTest {
         assertThat(day.clubOpen())
                 .as("the club did open today; its trading day is simply over")
                 .isTrue();
+    }
+
+    // The staff grid. These assert that the grid and BookingValidator agree, because they are
+    // handed the same BookingPolicy — a slot offered here that the create endpoint then
+    // refuses, or greyed here that it would have accepted, is the failure being guarded.
+
+    @Test
+    void staffAreOfferedSlotsInsideTheNoticePeriod() {
+        // BookingPolicy.staff() lifts min-notice, so "in fifteen minutes" is a booking the
+        // telephone endpoint accepts. Greying it here would show staff a slot as unbookable
+        // that the very next request would take.
+        DayAvailability day =
+                serviceAt(14, 15).availability(DATE, null, null, BookingPolicy.staff());
+
+        SlotView soon = slotAt(day, LocalTime.of(14, 30));
+        assertThat(soon.reason()).isNull();
+        assertThat(soon.available()).isTrue();
+    }
+
+    @Test
+    void customersAreStillHeldToTheNoticePeriod() {
+        // The other half of the pair: lifting notice for staff must not lift it for everyone.
+        DayAvailability day =
+                serviceAt(14, 15).availability(DATE, null, null, BookingPolicy.online());
+
+        assertThat(slotAt(day, LocalTime.of(14, 30)).reason())
+                .isEqualTo(UnavailableReason.INSUFFICIENT_NOTICE);
+    }
+
+    @Test
+    void staffSeeAFullGridBeyondTheCustomerAdvanceWindow() {
+        // Advance is 30 days and staff may book past it. As a whole-day PAST/TOO_FAR condition
+        // this rendered as an empty box, so staff had no grid at all for a date they can sell.
+        LocalDate tooFar = DATE.plusDays(31);
+
+        DayAvailability day = service.availability(tooFar, null, null, BookingPolicy.staff());
+
+        assertThat(day.dayUnavailableReason()).isNull();
+        assertThat(day.tables()).isNotEmpty();
+        assertThat(day.slotTimes()).isNotEmpty();
+    }
+
+    @Test
+    void staffCannotBookIntoThePast() {
+        // The policy lifts notice and advance, and nothing else. A past date stays past: there
+        // is no field on BookingPolicy for overriding it, and there should not be.
+        //
+        // Two guards independently produce this: the past-date check in wholeDayReason, and
+        // the elapsed-slot filter, which empties yesterday's axis entirely. They return the
+        // same reason and the same clubOpen, so this asserts the outcome and cannot isolate
+        // either one — mutating away the date check leaves the test green because the filter
+        // still catches it. That redundancy is the point worth recording: staff cannot reach
+        // a past date through either route.
+        DayAvailability day =
+                service.availability(DATE.minusDays(1), null, null, BookingPolicy.staff());
+
+        assertThat(day.dayUnavailableReason()).isEqualTo(UnavailableReason.PAST);
+        assertThat(day.tables()).isEmpty();
+    }
+
+    @Test
+    void staffStillCannotBookAnOccupiedSlot() {
+        // The physical-world rules are not policy. A table someone is on is unavailable to
+        // staff exactly as it is to a customer.
+        Booking booking =
+                TestFixtures.booking(table1, local(19, 0), local(20, 0), BookingStatus.CONFIRMED);
+        when(bookingRepository.findOverlapping(any(), any(), any())).thenReturn(List.of(booking));
+
+        DayAvailability day = service.availability(DATE, null, null, BookingPolicy.staff());
+
+        assertThat(slotAt(day, LocalTime.of(19, 0)).reason()).isEqualTo(UnavailableReason.BOOKED);
+    }
+
+    @Test
+    void staffStillCannotBookAMaintenanceBlock() {
+        when(blockRepository.findOverlapping(any(), any()))
+                .thenReturn(List.of(TestFixtures.block(table1, local(15, 0), local(16, 0), "Re-clothing")));
+
+        DayAvailability day = service.availability(DATE, null, null, BookingPolicy.staff());
+
+        assertThat(slotAt(day, LocalTime.of(15, 0)).reason())
+                .isEqualTo(UnavailableReason.MAINTENANCE);
+    }
+
+    @Test
+    void theDefaultOverloadIsTheCustomerPolicy() {
+        // The public endpoint calls the three-argument overload. If that ever defaulted to
+        // staff(), every customer would silently gain the staff freedoms.
+        DayAvailability day = serviceAt(14, 15).availability(DATE, null, null);
+
+        assertThat(slotAt(day, LocalTime.of(14, 30)).reason())
+                .isEqualTo(UnavailableReason.INSUFFICIENT_NOTICE);
     }
 }

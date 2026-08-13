@@ -5,12 +5,14 @@ import { useNavigate } from 'react-router';
 import { z } from 'zod';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
+import { AvailabilityGrid } from '@/features/availability/components/AvailabilityGrid';
+import type { Slot } from '@/features/availability/types';
+import { useAdminAvailability } from '@/features/availability/useAvailability';
 import { ApiError } from '@/lib/apiError';
+import { addMinutesToTime, formatDuration, formatSlotTime } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
 import { useAdminTables, useCreateTelephoneBooking } from './useAdmin';
 import type { AdminBooking } from './types';
-
-const DURATIONS = [60, 90, 120, 180, 240];
 
 const schema = z.object({
   tableId: z.coerce.number().int().positive('Choose a table'),
@@ -39,17 +41,33 @@ function today(): string {
  *
  * <p>No price field. The server prices the booking from the club's own rules, and a figure
  * typed here would either be ignored or, worse, believed.
+ *
+ * <h2>The grid</h2>
+ *
+ * <p>Staff previously typed a time blind and discovered on submit whether the table was free.
+ * The grid is fed by {@code /api/admin/availability} — the same service the public page uses,
+ * under {@code BookingPolicy.staff()}, so what it offers is exactly what the create endpoint
+ * accepts: notice and advance limits lifted, occupied and maintenance slots still refused.
+ *
+ * <p>The time field stays, and stays editable. The grid is an affordance, not a constraint:
+ * staff could always key an arbitrary time, and taking that away to make the picker
+ * authoritative would remove a freedom the backend still grants them.
  */
 export function AdminTelephoneBookingPage() {
   const navigate = useNavigate();
   const { data: tables } = useAdminTables();
   const createBooking = useCreateTelephoneBooking();
   const [created, setCreated] = useState<AdminBooking | null>(null);
+  // Narrows the grid to one table. Not part of the form: it changes what staff are looking
+  // at, not what gets booked — the booked table is whichever cell they click.
+  const [filterTableId, setFilterTableId] = useState<number | null>(null);
 
   const {
     register,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -61,6 +79,27 @@ export function AdminTelephoneBookingPage() {
       notes: '',
     },
   });
+
+  // Watched rather than read on submit: the grid is driven by the same date and duration the
+  // form holds, so a change to either must re-query rather than leave a stale grid on screen.
+  const date = watch('date');
+  const durationMinutes = Number(watch('durationMinutes')) || undefined;
+  const tableId = Number(watch('tableId')) || null;
+  const startTime = watch('startTime');
+
+  const { data: availability, isPending: availabilityPending } = useAdminAvailability({
+    date,
+    durationMinutes,
+    ...(filterTableId !== null ? { tableIds: [filterTableId] } : {}),
+  });
+
+  function selectSlot(pickedTableId: number, slot: Slot) {
+    // Both fields, together: a cell identifies a table and a time, and setting only one
+    // would leave the form describing a slot nobody picked.
+    setValue('tableId', pickedTableId, { shouldValidate: true });
+    // The form's time input is HH:mm; the slot carries HH:mm:ss.
+    setValue('startTime', slot.startTime.slice(0, 5), { shouldValidate: true });
+  }
 
   async function onSubmit(values: FormValues) {
     try {
@@ -98,8 +137,18 @@ export function AdminTelephoneBookingPage() {
 
   const activeTables = (tables ?? []).filter((table) => table.active);
 
+  // The grid marks a cell selected by table and absolute instant, so the form's date and
+  // local time have to be resolved back to the slot they name. Matching on startTime rather
+  // than recomputing an instant keeps the browser's timezone out of it — the server already
+  // resolved the club's.
+  const selectedSlot = availability?.tables
+    .find((row) => row.tableId === tableId)
+    ?.slots.find((slot) => slot.startTime.slice(0, 5) === startTime);
+  const gridSelection =
+    tableId !== null && selectedSlot ? { tableId, startAt: selectedSlot.startAt } : null;
+
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
+    <div className="mx-auto max-w-6xl px-4 py-10">
       <h1 className="text-2xl font-semibold tracking-tight text-felt-900">Telephone booking</h1>
       <p className="mt-2 text-sm text-ink-600">
         Confirmed straight away, with no online payment — take payment at the counter. Notice
@@ -133,51 +182,123 @@ export function AdminTelephoneBookingPage() {
       >
         <h2 className="text-lg font-semibold text-felt-900">The slot</h2>
 
+        <div className="grid gap-5 sm:grid-cols-2">
+          <TextField label="Date" type="date" error={errors.date?.message} {...register('date')} />
+
+          <div>
+            <label htmlFor="phoneDuration" className="block text-sm font-medium text-felt-900">
+              Duration
+            </label>
+            <select
+              id="phoneDuration"
+              className="mt-1.5 block w-full rounded-lg bg-white px-3.5 py-2.5 text-sm text-ink-900 ring-1 ring-inset ring-ink-300 focus:ring-2 focus:ring-inset focus:ring-felt-600 focus:outline-none"
+              {...register('durationMinutes')}
+            >
+              {/* From the server, never derived here. A hardcoded list drifts the moment
+                  someone edits the club's min/max/increment settings.
+
+                  The default duration is offered until the real options arrive: a select
+                  with no options renders blank and, on the first change, submits whatever
+                  the browser picked rather than what the form's default said. */}
+              {(availability?.durationOptions ?? [{ minutes: 60, label: '1 hour' }]).map(
+                (option) => (
+                  <option key={option.minutes} value={option.minutes}>
+                    {option.label}
+                  </option>
+                ),
+              )}
+            </select>
+          </div>
+        </div>
+
         <div>
-          <label htmlFor="phoneTable" className="block text-sm font-medium text-felt-900">
-            Table
+          <label htmlFor="gridTableFilter" className="block text-sm font-medium text-felt-900">
+            Show
           </label>
           <select
-            id="phoneTable"
-            className="mt-1.5 block w-full rounded-lg bg-white px-3.5 py-2.5 text-sm text-ink-900 ring-1 ring-inset ring-ink-300 focus:ring-2 focus:ring-inset focus:ring-felt-600 focus:outline-none"
-            {...register('tableId')}
+            id="gridTableFilter"
+            className="mt-1.5 block w-full rounded-lg bg-white px-3.5 py-2.5 text-sm text-ink-900 ring-1 ring-inset ring-ink-300 focus:ring-2 focus:ring-inset focus:ring-felt-600 focus:outline-none sm:max-w-xs"
+            value={filterTableId ?? ''}
+            onChange={(event) =>
+              setFilterTableId(event.target.value === '' ? null : Number(event.target.value))
+            }
           >
-            <option value="">Choose a table…</option>
+            <option value="">All tables</option>
             {activeTables.map((table) => (
               <option key={table.id} value={table.id}>
                 {table.name}
               </option>
             ))}
           </select>
-          {errors.tableId && (
-            <p className="mt-1.5 text-xs font-medium text-rose-700">{errors.tableId.message}</p>
+        </div>
+
+        <div aria-live="polite" aria-busy={availabilityPending}>
+          {availabilityPending ? (
+            <div className="space-y-2">
+              {Array.from({ length: 4 }, (_, index) => (
+                <div key={index} className="h-11 animate-pulse rounded-lg bg-ink-100" />
+              ))}
+            </div>
+          ) : (
+            availability && (
+              <AvailabilityGrid
+                availability={availability}
+                selected={gridSelection}
+                onSelect={selectSlot}
+              />
+            )
           )}
         </div>
 
-        <TextField label="Date" type="date" error={errors.date?.message} {...register('date')} />
-        <TextField
-          label="Start time"
-          type="time"
-          error={errors.startTime?.message}
-          {...register('startTime')}
-        />
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div>
+            <label htmlFor="phoneTable" className="block text-sm font-medium text-felt-900">
+              Table
+            </label>
+            <select
+              id="phoneTable"
+              className="mt-1.5 block w-full rounded-lg bg-white px-3.5 py-2.5 text-sm text-ink-900 ring-1 ring-inset ring-ink-300 focus:ring-2 focus:ring-inset focus:ring-felt-600 focus:outline-none"
+              {...register('tableId')}
+            >
+              <option value="">Choose a table…</option>
+              {activeTables.map((table) => (
+                <option key={table.id} value={table.id}>
+                  {table.name}
+                </option>
+              ))}
+            </select>
+            {errors.tableId && (
+              <p className="mt-1.5 text-xs font-medium text-rose-700">{errors.tableId.message}</p>
+            )}
+          </div>
 
-        <div>
-          <label htmlFor="phoneDuration" className="block text-sm font-medium text-felt-900">
-            Duration
-          </label>
-          <select
-            id="phoneDuration"
-            className="mt-1.5 block w-full rounded-lg bg-white px-3.5 py-2.5 text-sm text-ink-900 ring-1 ring-inset ring-ink-300 focus:ring-2 focus:ring-inset focus:ring-felt-600 focus:outline-none"
-            {...register('durationMinutes')}
-          >
-            {DURATIONS.map((minutes) => (
-              <option key={minutes} value={minutes}>
-                {minutes} minutes
-              </option>
-            ))}
-          </select>
+          {/* Still editable. The grid fills it in, and staff may overwrite it: the backend
+              lets them book a time the customer grid would refuse, and the picker must not
+              quietly take that away. */}
+          <TextField
+            label="Start time"
+            type="time"
+            hint="Filled in by the grid; edit it to book an off-grid time."
+            error={errors.startTime?.message}
+            {...register('startTime')}
+          />
         </div>
+
+        {/* What is about to be booked, in words. The grid says which cell is lit; this says
+            what that means once the duration is applied. */}
+        {tableId !== null && startTime && (
+          <p className="rounded-lg bg-felt-50 px-3.5 py-2.5 text-sm text-felt-900">
+            {activeTables.find((table) => table.id === tableId)?.name ?? `Table ${tableId}`} ·{' '}
+            {formatSlotTime(startTime)}
+            {durationMinutes !== undefined && (
+              <>
+                –{addMinutesToTime(startTime, durationMinutes)} · {formatDuration(durationMinutes)}
+              </>
+            )}
+            {selectedSlot?.pricePenceForRequestedDuration != null &&
+              ` · ${formatPence(selectedSlot.pricePenceForRequestedDuration)}`}
+          </p>
+        )}
 
         <h2 className="pt-2 text-lg font-semibold text-felt-900">The caller</h2>
         <p className="text-sm text-ink-600">

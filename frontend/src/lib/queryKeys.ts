@@ -6,8 +6,17 @@
 export const queryKeys = {
   health: () => ['health'] as const,
 
-  availability: (date: string, durationMinutes?: number) =>
-    ['availability', date, durationMinutes ?? null] as const,
+  // `tableIds` is part of the key because it is part of the request. Omitting it made two
+  // different table filters share one cache entry, so the staff grid filtered to table 3
+  // would be served the answer computed for table 1.
+  availability: (date: string, durationMinutes?: number, tableIds?: number[]) =>
+    ['availability', date, durationMinutes ?? null, tableIds ?? null] as const,
+
+  // A separate namespace, not a flag on the key above. The staff grid is computed under a
+  // different BookingPolicy — notice and advance lifted — so the two answers genuinely
+  // differ for the same date, and sharing a cache entry would show one to the other.
+  adminAvailability: (date: string, durationMinutes?: number, tableIds?: number[]) =>
+    ['admin', 'availability', date, durationMinutes ?? null, tableIds ?? null] as const,
 
   club: () => ['club'] as const,
   tables: () => ['tables'] as const,

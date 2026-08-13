@@ -1,6 +1,7 @@
 package uk.co.club.booking.domain.admin.web;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -23,6 +24,8 @@ import uk.co.club.booking.domain.admin.AdminDashboard;
 import uk.co.club.booking.domain.admin.web.dto.AdminBookingResponse;
 import uk.co.club.booking.domain.admin.web.dto.PagedResponse;
 import uk.co.club.booking.domain.admin.web.dto.TelephoneBookingRequest;
+import uk.co.club.booking.domain.availability.AvailabilityService;
+import uk.co.club.booking.domain.availability.DayAvailability;
 import uk.co.club.booking.domain.booking.Booking;
 import uk.co.club.booking.domain.booking.BookingPolicy;
 import uk.co.club.booking.domain.booking.BookingService;
@@ -51,6 +54,7 @@ public class AdminBookingController {
 
     private final AdminBookingService adminBookingService;
     private final BookingService bookingService;
+    private final AvailabilityService availabilityService;
     private final PaymentService paymentService;
     private final UserService userService;
     private final ClubClock clubClock;
@@ -58,11 +62,13 @@ public class AdminBookingController {
     public AdminBookingController(
             AdminBookingService adminBookingService,
             BookingService bookingService,
+            AvailabilityService availabilityService,
             PaymentService paymentService,
             UserService userService,
             ClubClock clubClock) {
         this.adminBookingService = adminBookingService;
         this.bookingService = bookingService;
+        this.availabilityService = availabilityService;
         this.paymentService = paymentService;
         this.userService = userService;
         this.clubClock = clubClock;
@@ -104,6 +110,30 @@ public class AdminBookingController {
                     LocalDate date) {
         LocalDate target = date == null ? clubClock.today() : date;
         return adminBookingService.forDay(target).stream().map(this::toResponse).toList();
+    }
+
+    /**
+     * Availability as staff may book it.
+     *
+     * <p>The same {@link AvailabilityService} the public grid uses, differing only in the
+     * {@link BookingPolicy} passed — exactly the relationship the telephone booking endpoint
+     * below has with the online one. Under {@code staff()} the notice period and the advance
+     * window are lifted, so what staff see offered here is precisely what
+     * {@code POST /bookings/telephone} will accept.
+     *
+     * <p>Serving this from the public endpoint instead would show staff a grid greying out
+     * slots they can genuinely book, and blanking dates beyond the customer advance window
+     * that they are entitled to sell.
+     *
+     * @param tableId optional, repeatable; defaults to all active tables
+     */
+    @GetMapping("/availability")
+    public DayAvailability availability(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) @Positive Integer durationMinutes,
+            @RequestParam(required = false) List<Long> tableId) {
+        return availabilityService.availability(
+                date, durationMinutes, tableId, BookingPolicy.staff());
     }
 
     /** One booking in full. */
