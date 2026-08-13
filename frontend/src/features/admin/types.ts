@@ -159,7 +159,8 @@ export interface PricingRule {
   id: number;
   name: string;
   tableType: TableType | null;
-  dayOfWeek: Weekday | null;
+  /** The days this rule covers. **Empty means every day**, not "no days". */
+  daysOfWeek: Weekday[];
   startTime: string | null;
   endTime: string | null;
   hourlyRatePence: number;
@@ -172,7 +173,8 @@ export interface PricingRule {
 export interface PricingRuleInput {
   name: string;
   tableType?: TableType | null;
-  dayOfWeek?: Weekday | null;
+  /** Omit or send empty for a rule that applies every day. */
+  daysOfWeek?: Weekday[];
   startTime?: string | null;
   endTime?: string | null;
   hourlyRatePence: number;

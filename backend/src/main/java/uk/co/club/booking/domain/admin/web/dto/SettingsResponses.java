@@ -2,6 +2,7 @@ package uk.co.club.booking.domain.admin.web.dto;
 
 import java.time.DayOfWeek;
 import java.time.LocalTime;
+import java.util.Set;
 import uk.co.club.booking.domain.club.BookingSettings;
 import uk.co.club.booking.domain.club.ClubSettings;
 import uk.co.club.booking.domain.club.OpeningHours;
@@ -79,7 +80,8 @@ public final class SettingsResponses {
             long id,
             String name,
             TableType tableType,
-            DayOfWeek dayOfWeek,
+            /** Empty means every day. Ordered Monday-first so the UI need not sort. */
+            Set<DayOfWeek> daysOfWeek,
             LocalTime startTime,
             LocalTime endTime,
             int hourlyRatePence,
@@ -89,14 +91,14 @@ public final class SettingsResponses {
 
         public static PricingRuleResponse from(PricingRule rule) {
             boolean catchAll = rule.getTableType() == null
-                    && rule.getDayOfWeek() == null
+                    && rule.getDaysOfWeek().isEmpty()
                     && rule.getStartTime() == null
                     && rule.getEndTime() == null;
             return new PricingRuleResponse(
                     rule.getId(),
                     rule.getName(),
                     rule.getTableType(),
-                    rule.getDayOfWeek(),
+                    rule.getDaysOfWeek(),
                     rule.getStartTime(),
                     rule.getEndTime(),
                     rule.getHourlyRatePence(),

@@ -7,10 +7,12 @@ Single-club by design: no tenant ids, no tenant middleware, no platform admins. 
 a club would want to change — opening hours, prices, booking rules, the tables
 themselves — lives in the database rather than in code.
 
-**Status: Phases 0–3 complete.** Customers can register, sign in, browse live
-availability, book a table with payment via Stripe Checkout, manage their bookings and
-cancel them, edit their profile and reset a forgotten password. The admin area is
-specified but not yet built (see [Roadmap](#roadmap)).
+**Status: all seven phases complete.** Customers can register, sign in, browse live
+availability, book and pay via Stripe Checkout, manage and cancel their bookings, edit
+their profile and reset a forgotten password. Staff have a dashboard, booking management,
+telephone bookings, table and maintenance administration, and full control of opening
+hours, booking rules and pricing. See [Still not done](#still-not-done) for what is
+deliberately outstanding.
 
 ---
 
@@ -142,7 +144,7 @@ Gradle has no dotenv support, so `.env` is **not** read automatically — the sc
 exports it first, then runs `bootRun` with the `dev` profile. Running `./gradlew bootRun`
 directly from `backend/` works only if the variables are already in your shell.
 
-Serves <http://localhost:8080>. Flyway applies `V1`–`V11` and, under the `dev` profile
+Serves <http://localhost:8080>. Flyway applies `V1`–`V12` and, under the `dev` profile
 only, the seed data. To target a database other than the Compose one:
 
 ```bash
@@ -219,10 +221,10 @@ Covered by `StripePropertiesTest`.
 ## Running tests
 
 ```bash
-cd backend  && ./gradlew test        # 214 tests: JUnit 5, Mockito, Testcontainers
-cd frontend && yarn test             # 64 tests: Vitest + React Testing Library
+cd backend  && ./gradlew test        # 220 tests: JUnit 5, Mockito, Testcontainers
+cd frontend && yarn test             # 98 tests: Vitest + React Testing Library
 cd frontend && yarn typecheck        # strict TypeScript, no emit
-cd frontend && yarn e2e              # 23 tests: Playwright, real browser
+cd frontend && yarn e2e              # 28 tests: Playwright, real browser
 ```
 
 Backend tests run in UTC. Integration tests use Testcontainers with `postgres:17-alpine` —
@@ -334,6 +336,7 @@ entities match the schema and never mutates it.
 | `V9` | Maintenance blocks (+ their own EXCLUDE) |
 | `V10` | Payments, webhook event log, payment exceptions |
 | `V11` | Spring Session DDL, copied verbatim from the jar |
+| `V12` | `pricing_rule_day`, so one pricing rule can cover several weekdays |
 
 `db/seed/R__dev_seed.sql` is idempotent and loaded by the `dev` profile only; production
 loads `db/migration` alone.
@@ -492,10 +495,37 @@ those customers. The UI shows them prominently and states that the bookings stil
 **At least one pricing rule must match everything.** `PricingService` throws when no active
 rule applies, which would turn every booking attempt into a 500 — the club silently stops
 selling. Deactivating or deleting the last unrestricted rule is refused at the point of the
-change rather than discovered by the first customer of the day.
+change rather than discovered by the first customer of the day. The UI predicts that refusal
+too: the fallback rule shows "Required — the club's fallback rate" in place of a Delete
+button, so staff are told before they click rather than after.
 
-Editing pricing rates is read-only in the UI for now; the endpoints exist and are tested, but
-the screen lists rules rather than editing them.
+### Pricing rules
+
+Rules are added, edited and deleted in place on the settings screen — in the list rather than
+in a dialog, because which rule wins depends on the others' priorities and a modal covering
+the list makes that impossible to judge.
+
+**Rates are typed in pounds and stored in pence.** `poundsToPence` rounds rather than
+truncates: `12.15 * 100` is `1214.9999999999998` in binary floating point, so truncation would
+quietly charge a penny less on every booking at that rate. It returns `null` for unusable
+input — including an empty field, since `Number('')` is `0` and would otherwise save a rule at
+£0.00. `money.test.ts` covers both, including a round-trip property so that opening a rule and
+saving it untouched cannot change the price.
+
+**A rule can cover several days.** `pricing_rule_day` (added in V12) holds the set, so
+"Monday to Thursday at £9.50" is one rule rather than four kept in step by hand. An **empty
+set means every day**, carrying over exactly what a null `day_of_week` meant before — read as
+"no days" instead, every unrestricted rule including the catch-all would match nothing and no
+booking could be priced at all. Ticking all seven normalises back to empty, so there is one
+representation in the database rather than two that behave alike.
+
+A rule with a start time needs an end time. That is checked in the form as well as on the
+server, so the message lands on the field instead of arriving as a banner after a round trip —
+the server keeps its own copy, and remains the authority.
+
+`e2e/admin-pricing.spec.ts` is the test that matters: it types a rate into the admin screen
+and asserts the new price appears on the customer's booking grid, which is the only way to
+show that pounds became pence, were stored, and came back as the price a customer is quoted.
 
 ---
 
@@ -650,9 +680,6 @@ a sweeper releases abandoned holds.
 ### Still not done
 
 **Editing an existing booking's time or table**, as above — staff cancel and re-book.
-
-**Pricing rules are read-only in the admin UI.** The endpoints exist and are tested; the
-screen lists rules rather than editing them.
 
 **Rate limiting is per-instance and in-memory.** Correct for the single instance this is built
 for; behind a load balancer each node would keep its own counters. `RateLimiter` is the single

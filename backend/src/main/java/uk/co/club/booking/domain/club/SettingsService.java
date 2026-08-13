@@ -327,7 +327,7 @@ public class SettingsService {
             Long id,
             String name,
             TableType tableType,
-            DayOfWeek dayOfWeek,
+            java.util.Collection<DayOfWeek> daysOfWeek,
             LocalTime startTime,
             LocalTime endTime,
             int hourlyRatePence,
@@ -352,7 +352,7 @@ public class SettingsService {
 
         rule.setName(name.trim());
         rule.setTableType(tableType);
-        rule.setDayOfWeek(dayOfWeek);
+        rule.setDaysOfWeek(daysOfWeek);
         rule.setStartTime(startTime);
         rule.setEndTime(endTime);
         rule.setHourlyRatePence(hourlyRatePence);
@@ -389,7 +389,7 @@ public class SettingsService {
     private void requireACatchAllRemains() {
         boolean catchAll = pricingRuleRepository.findAllByActiveTrueOrderByPriorityDesc().stream()
                 .anyMatch(rule -> rule.getTableType() == null
-                        && rule.getDayOfWeek() == null
+                        && rule.getDaysOfWeek().isEmpty()
                         && rule.getStartTime() == null
                         && rule.getEndTime() == null);
         if (!catchAll) {

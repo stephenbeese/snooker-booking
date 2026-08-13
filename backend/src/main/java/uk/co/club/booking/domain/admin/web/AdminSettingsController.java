@@ -142,7 +142,7 @@ public class AdminSettingsController {
                 id,
                 request.name(),
                 request.tableType(),
-                request.dayOfWeek(),
+                request.daysOfWeek(),
                 request.startTime(),
                 request.endTime(),
                 request.hourlyRatePence(),

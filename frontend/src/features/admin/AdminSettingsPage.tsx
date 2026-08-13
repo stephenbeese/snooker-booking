@@ -2,13 +2,12 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
 import { ApiError } from '@/lib/apiError';
-import { formatPence } from '@/lib/money';
+import { PricingRules } from './components/PricingRules';
 import { SettingsWarnings } from './components/SettingsWarnings';
 import {
   useBookingRules,
   useClubDetails,
   useOpeningHours,
-  usePricingRules,
   useUpdateBookingRules,
   useUpdateClubDetails,
   useUpdateOpeningHours,
@@ -201,58 +200,9 @@ function BookingRulesSection() {
 // ---------------------------------------------------------------- pricing
 
 function PricingSection() {
-  const { data: rules, isPending } = usePricingRules();
-
-  if (isPending) return <Section title="Pricing">Loading…</Section>;
-
   return (
     <Section title="Pricing">
-      <p className="text-sm text-ink-600">
-        The highest-priority matching rule sets the hourly rate. A rule with no restrictions
-        applies to everything and is the club&rsquo;s fallback — at least one must stay active,
-        or bookings that match nothing could not be priced.
-      </p>
-
-      <table className="mt-4 w-full border-collapse text-sm">
-        <caption className="sr-only">Pricing rules</caption>
-        <thead>
-          <tr className="border-b border-ink-200 text-left text-ink-600">
-            <th scope="col" className="py-2 pr-4 font-medium">Rule</th>
-            <th scope="col" className="py-2 pr-4 font-medium">Applies to</th>
-            <th scope="col" className="py-2 pr-4 font-medium">Rate / hour</th>
-            <th scope="col" className="py-2 pr-4 font-medium">Priority</th>
-            <th scope="col" className="py-2 font-medium">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(rules ?? []).map((rule) => (
-            <tr key={rule.id} className="border-b border-ink-100">
-              <td className="py-3 pr-4 font-medium">{rule.name}</td>
-              <td className="py-3 pr-4">
-                {rule.catchAll
-                  ? 'Everything'
-                  : [
-                      rule.tableType?.replace('_', ' ').toLowerCase(),
-                      rule.dayOfWeek ? WEEKDAY_LABEL[rule.dayOfWeek] : null,
-                      rule.startTime && rule.endTime
-                        ? `${rule.startTime.slice(0, 5)}–${rule.endTime.slice(0, 5)}`
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(', ')}
-              </td>
-              <td className="py-3 pr-4">{formatPence(rule.hourlyRatePence)}</td>
-              <td className="py-3 pr-4">{rule.priority}</td>
-              <td className="py-3">{rule.active ? 'Active' : 'Inactive'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <p className="mt-3 text-xs text-ink-500">
-        Editing rates is not built into this screen yet — see the README. Existing bookings keep
-        the price they were quoted whatever changes here.
-      </p>
+      <PricingRules />
     </Section>
   );
 }

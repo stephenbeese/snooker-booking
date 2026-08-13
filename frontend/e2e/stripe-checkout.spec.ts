@@ -127,7 +127,26 @@ test.describe('Paying by card', () => {
     // The booking must end up CONFIRMED. It may pass through "confirming…" first: the
     // webhook and the browser return race, and whichever arrives first wins. Polling is the
     // honest way to assert this — the page itself polls for the same reason.
-    await expect(page.getByText(/Confirmed/i).first()).toBeVisible({ timeout: 60_000 });
+    //
+    // If this hangs on "Confirming your payment…", the usual cause is not a defect here: the
+    // Stripe CLI forwarder is not running, so no webhook ever reaches the backend. Named
+    // explicitly because the bare failure ("element not found") sends you looking in the
+    // wrong place entirely.
+    try {
+      await expect(page.getByText(/Confirmed/i).first()).toBeVisible({ timeout: 60_000 });
+    } catch (cause) {
+      const stillConfirming = await page.getByText(/Confirming your payment/i).count();
+      if (stillConfirming > 0) {
+        throw new Error(
+          'The booking never left "Confirming your payment…". The webhook did not arrive — ' +
+            'check that `stripe listen --forward-to localhost:8080/api/webhooks/stripe` is ' +
+            'running and that the backend was started with that CLI signing secret. ' +
+            'See the End-to-end section of the README.',
+          { cause },
+        );
+      }
+      throw cause;
+    }
 
     // Not merely a success message: the money and the slot must both be recorded, or the
     // customer has paid for nothing.

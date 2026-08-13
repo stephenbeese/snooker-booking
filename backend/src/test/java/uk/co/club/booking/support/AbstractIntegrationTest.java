@@ -122,9 +122,13 @@ public abstract class AbstractIntegrationTest {
                 UPDATE pricing_rule
                    SET name = 'Standard hourly rate',
                        hourly_rate_pence = 1200, priority = 0, active = TRUE,
-                       table_type = NULL, day_of_week = NULL,
+                       table_type = NULL,
                        start_time = NULL, end_time = NULL
                  WHERE id = (SELECT MIN(id) FROM pricing_rule)
                 """);
+        // Days moved to their own table in V12. The DELETE above removes the child rows of
+        // every other rule by cascade, but the surviving seeded rule keeps whatever days a
+        // test gave it — leaving it applying on Mondays only for every class that follows.
+        jdbcTemplate.execute("DELETE FROM pricing_rule_day");
     }
 }

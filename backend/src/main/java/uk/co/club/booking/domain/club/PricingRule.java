@@ -1,15 +1,23 @@
 package uk.co.club.booking.domain.club;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
+import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.stream.Collectors;
 import uk.co.club.booking.domain.table.TableType;
 
 /**
@@ -35,8 +43,21 @@ public class PricingRule {
     @Column(name = "table_type")
     private TableType tableType;
 
-    @Column(name = "day_of_week")
-    private Short dayOfWeek;
+    /**
+     * The days this rule applies to. <strong>Empty means every day</strong>, matching what a
+     * null {@code day_of_week} meant before V12 — not "no days", which would make the rule
+     * dead and is never a thing anyone wants to configure.
+     *
+     * <p>Eager because {@code PricingService} reads every active rule and immediately asks each
+     * one whether it matches: lazy loading here would be a query per rule on the pricing path,
+     * which runs for every cell of every availability grid.
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+            name = "pricing_rule_day",
+            joinColumns = @JoinColumn(name = "rule_id"))
+    @Column(name = "day_of_week", nullable = false)
+    private Set<Short> daysOfWeek = new LinkedHashSet<>();
 
     @Column(name = "start_time")
     private LocalTime startTime;
@@ -77,13 +98,30 @@ public class PricingRule {
         this.tableType = tableType;
     }
 
-    public DayOfWeek getDayOfWeek() {
-        return dayOfWeek == null ? null : DayOfWeek.of(dayOfWeek);
+    /**
+     * The days this rule applies to, in week order. Empty means every day.
+     *
+     * <p>Sorted rather than in insertion order so "Monday, Tuesday" never renders as "Tuesday,
+     * Monday" depending on which checkbox staff ticked first.
+     */
+    public Set<DayOfWeek> getDaysOfWeek() {
+        return daysOfWeek.stream()
+                .map(day -> DayOfWeek.of(day))
+                .sorted()
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
-    /** Stored as the ISO weekday number to match the SMALLINT column; null matches any day. */
-    public void setDayOfWeek(DayOfWeek day) {
-        this.dayOfWeek = day == null ? null : (short) day.getValue();
+    /** Null or empty both mean every day. Stored as ISO weekday numbers (Monday = 1). */
+    public void setDaysOfWeek(Collection<DayOfWeek> days) {
+        // Mutated in place, not replaced: Hibernate tracks this collection instance, and
+        // assigning a new Set makes it delete every row and reinsert them on each save.
+        this.daysOfWeek.clear();
+        if (days != null) {
+            days.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .sorted()
+                    .forEach(day -> this.daysOfWeek.add((short) day.getValue()));
+        }
     }
 
     public LocalTime getStartTime() {
@@ -134,7 +172,10 @@ public class PricingRule {
         if (tableType != null && tableType != type) {
             return false;
         }
-        if (dayOfWeek != null && DayOfWeek.of(dayOfWeek) != day) {
+        // Empty means every day, exactly as a null day_of_week did before V12. Testing
+        // membership without the emptiness check would make every unrestricted rule match
+        // nothing — including the catch-all, so no booking could be priced at all.
+        if (!daysOfWeek.isEmpty() && !daysOfWeek.contains((short) day.getValue())) {
             return false;
         }
         if (startTime != null && localStart.isBefore(startTime)) {

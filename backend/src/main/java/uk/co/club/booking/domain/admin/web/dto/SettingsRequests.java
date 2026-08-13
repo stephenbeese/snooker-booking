@@ -12,6 +12,7 @@ import jakarta.validation.constraints.Size;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Set;
 import org.springframework.format.annotation.DateTimeFormat;
 import uk.co.club.booking.domain.table.TableType;
 
@@ -71,7 +72,12 @@ public final class SettingsRequests {
     public record PricingRuleInput(
             @NotBlank @Size(max = 100) String name,
             TableType tableType,
-            DayOfWeek dayOfWeek,
+            /**
+             * The days this rule covers. Null or empty both mean every day — the same thing a
+             * null {@code dayOfWeek} meant before V12, so an older client that omits the field
+             * still gets an every-day rule rather than a dead one.
+             */
+            Set<DayOfWeek> daysOfWeek,
             @DateTimeFormat(iso = DateTimeFormat.ISO.TIME) LocalTime startTime,
             @DateTimeFormat(iso = DateTimeFormat.ISO.TIME) LocalTime endTime,
             @NotNull @Positive Integer hourlyRatePence,
