@@ -24,7 +24,11 @@ public record StripeProperties(String secretKey, String publishableKey, String w
     }
 
     private static boolean isBlank(String value) {
-        return value == null || value.isBlank();
+        // An unset environment variable does not arrive as null or "". Spring leaves the
+        // placeholder unresolved, so the value is the literal "${STRIPE_WEBHOOK_SECRET}",
+        // which is not blank and sailed straight through the check this guard exists for —
+        // the app booted with no webhook secret and verified signatures against that string.
+        return value == null || value.isBlank() || value.startsWith("${");
     }
 
     /** Guards against a live key in a non-production environment. */

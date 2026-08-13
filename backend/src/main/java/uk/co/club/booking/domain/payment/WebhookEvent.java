@@ -5,6 +5,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * A Stripe event we have seen.
@@ -37,6 +39,12 @@ public class WebhookEvent {
      * <p>Stripe payloads contain no card numbers — only tokens and the last four digits — so
      * this is safe to retain.
      */
+    // JdbcTypeCode, not columnDefinition alone. columnDefinition only describes the column to
+    // Hibernate's schema generator, which is switched off here because Flyway owns the schema —
+    // it has no effect on how the value is bound. Without this, Hibernate sends a varchar into a
+    // jsonb column and Postgres refuses the implicit cast, so *every* webhook insert failed and
+    // no payment could ever be confirmed.
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(nullable = false, columnDefinition = "jsonb")
     private String payload;
 

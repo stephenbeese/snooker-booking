@@ -126,15 +126,21 @@ Postgres listens on **5433**, not 5432, to avoid colliding with a host PostgreSQ
 cp .env.example .env
 ```
 
-Defaults match Compose, so nothing needs editing for Phases 0–1. Stripe keys are only
-required from Phase 6.
+Database defaults match Compose, so they need no editing. **The three Stripe keys are
+required to start the backend at all** — `StripeProperties` rejects a blank value at
+startup rather than letting the app fail at a customer's checkout. Placeholders are
+enough to boot and to use every non-payment feature; real test keys are only needed to
+actually reach Checkout.
 
 ### 3. Backend
 
 ```bash
-cd backend
-./gradlew bootRun --args='--spring.profiles.active=dev'
+./run-backend.sh
 ```
+
+Gradle has no dotenv support, so `.env` is **not** read automatically — the script
+exports it first, then runs `bootRun` with the `dev` profile. Running `./gradlew bootRun`
+directly from `backend/` works only if the variables are already in your shell.
 
 Serves <http://localhost:8080>. Flyway applies `V1`–`V11` and, under the `dev` profile
 only, the seed data. To target a database other than the Compose one:
@@ -166,9 +172,18 @@ Seeded by the `dev` profile only. **Local development only.**
 |---|---|---|
 | Admin | `admin@snookerclub.test` | `Admin123!` |
 | Customer | `customer@snookerclub.test` | `Customer123!` |
+| Customer | `ronnie@snookerclub.test` | `Customer123!` |
 
 The seed also creates 6 tables, a maintenance block tomorrow 14:00–18:00 on Pool 2, and
 a couple of demo bookings, so the grid demonstrates every state on first run.
+
+If a seeded login is rejected, the password was probably changed in *your* database by
+earlier testing. The seed is `ON CONFLICT DO NOTHING`, so it never restores the original
+hash. Compare against the seed and reset just that row:
+
+```bash
+psql -h localhost -p 5433 -U snooker -d snooker -c "UPDATE app_user SET password_hash='\$2a\$12\$iwawPf4TEAo6wCZolJnPvuUB3KlLXgo/iRr7ENRSLnlDZQOOtyCYW' WHERE email='customer@snookerclub.test'"
+```
 
 ---
 
@@ -182,11 +197,22 @@ a couple of demo bookings, so the grid demonstrates every state on first run.
 | `DATABASE_USERNAME` / `DATABASE_PASSWORD` | Backend credentials | `snooker` |
 | `APP_BASE_URL` | SPA origin, for redirects | `http://localhost:5173` |
 | `APP_CORS_ALLOWED_ORIGINS` | Permitted CORS origins | `http://localhost:5173` |
-| `STRIPE_SECRET_KEY` | Stripe test secret (Phase 6) | — |
-| `STRIPE_PUBLISHABLE_KEY` | Stripe test publishable key (Phase 6) | — |
-| `STRIPE_WEBHOOK_SECRET` | From `stripe listen` (Phase 6) | — |
+| `STRIPE_SECRET_KEY` | Stripe test secret. **Required at startup** | — |
+| `STRIPE_PUBLISHABLE_KEY` | Stripe test publishable key. **Required at startup** | — |
+| `STRIPE_WEBHOOK_SECRET` | From `stripe listen`. **Required at startup** | — |
 
-Never commit `.env`. Use Stripe **test** keys only.
+Never commit `.env`. Use Stripe **test** keys only — `run-backend.sh` refuses to start
+on an `sk_live_` key.
+
+`STRIPE_PUBLISHABLE_KEY` is currently validated but never used: Checkout is a redirect,
+so the browser never initialises Stripe.js. It stays required so the variable is in
+place for a future embedded-payment form.
+
+The guard also rejects an **unresolved placeholder**. An unset environment variable does
+not reach Spring as `null` or `""` — the value becomes the literal
+`${STRIPE_WEBHOOK_SECRET}`, which is not blank. Before this was fixed the app booted with
+no webhook secret and the webhook endpoint verified signatures against that string.
+Covered by `StripePropertiesTest`.
 
 ---
 
