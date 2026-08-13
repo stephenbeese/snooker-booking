@@ -53,6 +53,12 @@ export function AdminDashboardPage() {
           >
             Maintenance
           </Link>
+          <Link
+            to="/admin/settings"
+            className="rounded-xl bg-white px-5 py-2.5 text-sm font-medium text-felt-900 ring-1 ring-inset ring-ink-300 transition-colors hover:bg-ink-50"
+          >
+            Settings
+          </Link>
         </nav>
       </div>
 

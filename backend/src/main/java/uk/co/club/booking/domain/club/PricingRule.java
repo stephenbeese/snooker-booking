@@ -65,20 +65,41 @@ public class PricingRule {
         return name;
     }
 
+    public void setName(String name) {
+        this.name = name;
+    }
+
     public TableType getTableType() {
         return tableType;
+    }
+
+    public void setTableType(TableType tableType) {
+        this.tableType = tableType;
     }
 
     public DayOfWeek getDayOfWeek() {
         return dayOfWeek == null ? null : DayOfWeek.of(dayOfWeek);
     }
 
+    /** Stored as the ISO weekday number to match the SMALLINT column; null matches any day. */
+    public void setDayOfWeek(DayOfWeek day) {
+        this.dayOfWeek = day == null ? null : (short) day.getValue();
+    }
+
     public LocalTime getStartTime() {
         return startTime;
     }
 
+    public void setStartTime(LocalTime startTime) {
+        this.startTime = startTime;
+    }
+
     public LocalTime getEndTime() {
         return endTime;
+    }
+
+    public void setEndTime(LocalTime endTime) {
+        this.endTime = endTime;
     }
 
     public int getHourlyRatePence() {
@@ -93,8 +114,16 @@ public class PricingRule {
         return priority;
     }
 
+    public void setPriority(int priority) {
+        this.priority = priority;
+    }
+
     public boolean isActive() {
         return active;
+    }
+
+    public void setActive(boolean active) {
+        this.active = active;
     }
 
     /**

@@ -1,0 +1,377 @@
+package uk.co.club.booking.domain.club;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import uk.co.club.booking.common.error.BusinessRuleException;
+import uk.co.club.booking.common.time.ClubClock;
+import uk.co.club.booking.domain.availability.AvailabilityService;
+import uk.co.club.booking.domain.availability.DayAvailability;
+import uk.co.club.booking.domain.booking.BookingPolicy;
+import uk.co.club.booking.domain.booking.BookingService;
+import uk.co.club.booking.domain.booking.BookingSource;
+import uk.co.club.booking.domain.booking.BookingStatus;
+import uk.co.club.booking.domain.booking.CreateBookingCommand;
+import uk.co.club.booking.support.AbstractIntegrationTest;
+import uk.co.club.booking.support.IntegrationFixtures;
+
+/**
+ * Phase 6's hard gate: every setting must visibly change what a customer can do.
+ *
+ * <p>A settings screen that saves to the database but changes nothing a customer experiences
+ * is worse than no settings screen — staff believe they have closed on Christmas Day. So each
+ * test here writes a setting through {@code SettingsService} and then asserts the effect
+ * through {@code AvailabilityService} and {@code BookingService}: the same paths a customer's
+ * browser drives. Nothing is asserted by reading back the settings row.
+ *
+ * <p>The plan called for this as a Playwright spec. Playwright is not set up, so it is an
+ * integration test instead — it exercises the real engine against real PostgreSQL, but it does
+ * not prove the browser renders the result. That gap is recorded in the README.
+ *
+ * <p>The other half of the contract is the negative one: a settings change must
+ * <em>not</em> retroactively invalidate bookings the club has already sold. That is asserted
+ * alongside, because the two properties are easy to trade off against each other by accident.
+ */
+class SettingsAffectAvailabilityIT extends AbstractIntegrationTest {
+
+    @Autowired private SettingsService settingsService;
+    @Autowired private AvailabilityService availabilityService;
+    @Autowired private BookingService bookingService;
+    @Autowired private IntegrationFixtures fixtures;
+    @Autowired private ClubClock clubClock;
+
+    private long tableId;
+    private long adminId;
+    private LocalDate day;
+
+    @BeforeEach
+    void setUp() {
+        tableId = fixtures.aTable("Table 1");
+        adminId = fixtures.anAdmin("settings-admin@test.local", "AdminPass123!");
+        // Far enough ahead to sit inside the default 30-day window with room to shrink it.
+        day = clubClock.today().plusDays(7);
+    }
+
+    @Nested
+    @DisplayName("opening hours")
+    class Hours {
+
+        @Test
+        @DisplayName("closing a day removes it from availability entirely")
+        void closingADayClosesTheClub() {
+            assertThat(availabilityFor(day).clubOpen()).isTrue();
+
+            closeOn(day.getDayOfWeek());
+
+            DayAvailability after = availabilityFor(day);
+            assertThat(after.clubOpen()).isFalse();
+            assertThat(after.tables())
+                    .as("a closed day must offer nothing at all")
+                    .allSatisfy(table -> assertThat(table.slots())
+                            .allSatisfy(slot -> assertThat(slot.available()).isFalse()));
+        }
+
+        @Test
+        @DisplayName("a booking cannot be made on a day that has just been closed")
+        void closingADayBlocksNewBookings() {
+            closeOn(day.getDayOfWeek());
+
+            assertThatThrownBy(() -> book(LocalTime.of(14, 0), 60))
+                    .isInstanceOf(BusinessRuleException.class);
+        }
+
+        @Test
+        @DisplayName("narrowing the hours withdraws the slots outside them")
+        void narrowingHoursRemovesSlots() {
+            // Default is 10:00–23:00. Nothing should remain before 18:00 afterwards.
+            setHours(day.getDayOfWeek(), LocalTime.of(18, 0), LocalTime.of(22, 0));
+
+            DayAvailability after = availabilityFor(day);
+            assertThat(after.slotTimes())
+                    .isNotEmpty()
+                    .allSatisfy(time -> assertThat(time).isBetween(LocalTime.of(18, 0), LocalTime.of(22, 0)));
+        }
+
+        @Test
+        @DisplayName("closing a day warns about the bookings already taken on it, but keeps them")
+        void closingADayWarnsWithoutCancelling() {
+            var booking = book(LocalTime.of(14, 0), 60);
+
+            List<SettingsService.Warning> warnings = closeOn(day.getDayOfWeek());
+
+            // The warning is the entire point: staff must not close a day with games on it
+            // and only find out when the customers turn up.
+            assertThat(warnings)
+                    .extracting(SettingsService.Warning::reference)
+                    .contains(booking.getReference());
+
+            // And the booking still stands. Rules apply when a booking is made; a promise the
+            // club has already sold is not withdrawn by a later change of policy.
+            assertThat(bookingService.requireByReference(booking.getReference()).getStatus())
+                    .isEqualTo(BookingStatus.CONFIRMED);
+        }
+
+        @Test
+        @DisplayName("reopening a day restores its previous hours rather than blanking them")
+        void reopeningRestoresHours() {
+            setHours(day.getDayOfWeek(), LocalTime.of(11, 0), LocalTime.of(21, 0));
+            closeOn(day.getDayOfWeek());
+
+            // Reopen without supplying times: the stored values must still be there, or staff
+            // would have to retype the week every time they close for a day.
+            List<SettingsService.DayHoursInput> week = currentWeek();
+            week.replaceAll(input -> input.day() == day.getDayOfWeek()
+                    ? new SettingsService.DayHoursInput(
+                            input.day(), false, input.openTime(), input.closeTime())
+                    : input);
+            settingsService.updateOpeningHours(week);
+
+            DayAvailability after = availabilityFor(day);
+            assertThat(after.clubOpen()).isTrue();
+            assertThat(after.openingTime()).isEqualTo(LocalTime.of(11, 0));
+            assertThat(after.closingTime()).isEqualTo(LocalTime.of(21, 0));
+        }
+
+        @Test
+        @DisplayName("an open day with no times is refused")
+        void refusesHalfConfiguredDay() {
+            List<SettingsService.DayHoursInput> week = currentWeek();
+            week.replaceAll(input -> input.day() == DayOfWeek.MONDAY
+                    ? new SettingsService.DayHoursInput(input.day(), false, null, null)
+                    : input);
+
+            assertThatThrownBy(() -> settingsService.updateOpeningHours(week))
+                    .isInstanceOf(BusinessRuleException.class)
+                    .hasMessageContaining("opening and a closing time");
+        }
+    }
+
+    @Nested
+    @DisplayName("booking rules")
+    class Rules {
+
+        @Test
+        @DisplayName("changing the increment changes the slot grid a customer sees")
+        void incrementChangesTheGrid() {
+            assertThat(availabilityFor(day).incrementMinutes()).isEqualTo(30);
+
+            settingsService.updateBookingSettings(60, 240, 60, 60, 30, 24, 15);
+
+            DayAvailability after = availabilityFor(day);
+            assertThat(after.incrementMinutes()).isEqualTo(60);
+            // Every slot must now land on the hour, or the grid offers times the validator
+            // will reject.
+            assertThat(after.slotTimes())
+                    .allSatisfy(time -> assertThat(time.getMinute()).isZero());
+        }
+
+        @Test
+        @DisplayName("changing the duration range changes the options offered")
+        void durationRangeChangesOptions() {
+            settingsService.updateBookingSettings(60, 120, 60, 60, 30, 24, 15);
+
+            assertThat(availabilityFor(day).durationOptions())
+                    .extracting(DayAvailability.DurationOption::minutes)
+                    .containsExactly(60, 120);
+        }
+
+        @Test
+        @DisplayName("shortening the advance window closes days beyond it")
+        void advanceWindowClosesDistantDays() {
+            LocalDate distant = clubClock.today().plusDays(20);
+            assertThat(availabilityFor(distant).clubOpen()).isTrue();
+
+            settingsService.updateBookingSettings(30, 240, 30, 60, 7, 24, 15);
+
+            // Not merely unbookable — the whole day is reported as unavailable, with every
+            // slot carrying a reason rather than silently vanishing.
+            assertThat(availabilityFor(distant).tables())
+                    .allSatisfy(table -> assertThat(table.slots())
+                            .allSatisfy(slot -> assertThat(slot.available()).isFalse()));
+        }
+
+        @Test
+        @DisplayName("a duration that is not a multiple of the increment is refused")
+        void refusesIndivisibleDuration() {
+            // 45 is not a multiple of 30. Allowing it would put options in the grid that the
+            // validator then rejects — the customer picks a slot and is told no for no
+            // visible reason.
+            assertThatThrownBy(() -> settingsService.updateBookingSettings(45, 240, 30, 60, 30, 24, 15))
+                    .isInstanceOf(BusinessRuleException.class)
+                    .hasMessageContaining("multiple of the 30-minute increment");
+        }
+
+        @Test
+        @DisplayName("a maximum below the minimum is refused")
+        void refusesInvertedRange() {
+            assertThatThrownBy(() -> settingsService.updateBookingSettings(120, 60, 30, 60, 30, 24, 15))
+                    .isInstanceOf(BusinessRuleException.class)
+                    .hasMessageContaining("cannot be shorter than the minimum");
+        }
+
+        @Test
+        @DisplayName("a payment hold too short to pay within is refused")
+        void refusesTinyHold() {
+            assertThatThrownBy(() -> settingsService.updateBookingSettings(30, 240, 30, 60, 30, 24, 1))
+                    .isInstanceOf(BusinessRuleException.class);
+        }
+
+        @Test
+        @DisplayName("existing bookings survive a rule change that would now forbid them")
+        void existingBookingsSurvive() {
+            var booking = book(LocalTime.of(14, 0), 60);
+
+            // Raise the minimum to two hours: the existing 60-minute booking would no longer
+            // be creatable.
+            var warnings = settingsService.updateBookingSettings(120, 240, 60, 60, 30, 24, 15);
+
+            assertThat(warnings)
+                    .extracting(SettingsService.Warning::reference)
+                    .contains(booking.getReference());
+            assertThat(bookingService.requireByReference(booking.getReference()).getStatus())
+                    .isEqualTo(BookingStatus.CONFIRMED);
+        }
+    }
+
+    @Nested
+    @DisplayName("pricing")
+    class Pricing {
+
+        @Test
+        @DisplayName("changing the rate changes what the next customer is quoted")
+        void rateChangeChangesQuote() {
+            assertThat(quoteFor(60)).isEqualTo(1200);
+
+            PricingRule standard = settingsService.pricingRules().getFirst();
+            settingsService.savePricingRule(
+                    standard.getId(), "Standard hourly rate", null, null, null, null, 1500, 0, true);
+
+            assertThat(quoteFor(60)).isEqualTo(1500);
+            // Pro rata, rounded up in the club's favour.
+            assertThat(quoteFor(90)).isEqualTo(2250);
+        }
+
+        @Test
+        @DisplayName("a booking keeps the price it was quoted when the rate later changes")
+        void existingBookingKeepsItsPrice() {
+            var booking = book(LocalTime.of(14, 0), 60);
+            assertThat(booking.getPricePence()).isEqualTo(1200);
+
+            PricingRule standard = settingsService.pricingRules().getFirst();
+            settingsService.savePricingRule(
+                    standard.getId(), "Standard hourly rate", null, null, null, null, 5000, 0, true);
+
+            // The amount is stored on the booking row, not recomputed on read. A customer who
+            // booked at £12 does not owe £50 because the club put its prices up afterwards.
+            assertThat(bookingService.requireByReference(booking.getReference()).getPricePence())
+                    .isEqualTo(1200);
+        }
+
+        @Test
+        @DisplayName("a higher-priority rule wins for the times it covers")
+        void priorityRuleOverrides() {
+            settingsService.savePricingRule(
+                    null, "Evening peak", null, null, LocalTime.of(18, 0), LocalTime.of(23, 0),
+                    2000, 10, true);
+
+            assertThat(quoteAt(LocalTime.of(14, 0), 60)).isEqualTo(1200);
+            assertThat(quoteAt(LocalTime.of(19, 0), 60)).isEqualTo(2000);
+        }
+
+        @Test
+        @DisplayName("the last catch-all rule cannot be deactivated")
+        void refusesToRemoveTheLastCatchAll() {
+            PricingRule standard = settingsService.pricingRules().getFirst();
+
+            // Without a rule matching everything, PricingService throws and every booking
+            // attempt becomes a 500 — the club silently stops selling. Refuse at the point of
+            // the change rather than at the first customer of the day.
+            assertThatThrownBy(() -> settingsService.savePricingRule(
+                            standard.getId(), standard.getName(), null, null, null, null,
+                            standard.getHourlyRatePence(), 0, false))
+                    .isInstanceOf(BusinessRuleException.class)
+                    .hasMessageContaining("every table at every time");
+
+            // And the club can still price a booking.
+            assertThat(quoteFor(60)).isEqualTo(1200);
+        }
+
+        @Test
+        @DisplayName("deleting the last catch-all rule is refused too")
+        void refusesToDeleteTheLastCatchAll() {
+            PricingRule standard = settingsService.pricingRules().getFirst();
+
+            assertThatThrownBy(() -> settingsService.deletePricingRule(standard.getId()))
+                    .isInstanceOf(BusinessRuleException.class);
+
+            assertThat(quoteFor(60)).isEqualTo(1200);
+        }
+    }
+
+    // ---------------------------------------------------------------- helpers
+
+    private DayAvailability availabilityFor(LocalDate date) {
+        return availabilityService.availability(date, null, null);
+    }
+
+    private int quoteFor(int minutes) {
+        return quoteAt(LocalTime.of(14, 0), minutes);
+    }
+
+    private int quoteAt(LocalTime time, int minutes) {
+        return bookingService.quotePence(tableId, clubClock.toInstant(day, time), minutes);
+    }
+
+    private uk.co.club.booking.domain.booking.Booking book(LocalTime time, int minutes) {
+        return bookingService.create(
+                new CreateBookingCommand(
+                        tableId,
+                        clubClock.toInstant(day, time),
+                        minutes,
+                        null,
+                        "Test Customer",
+                        "settings@example.test",
+                        null,
+                        null,
+                        BookingSource.ADMIN,
+                        adminId),
+                BookingPolicy.staff());
+    }
+
+    /** The stored week, as service inputs, so a test can change one day and resubmit. */
+    private List<SettingsService.DayHoursInput> currentWeek() {
+        List<SettingsService.DayHoursInput> week = new ArrayList<>();
+        for (OpeningHours hours : settingsService.openingHours()) {
+            week.add(new SettingsService.DayHoursInput(
+                    hours.getDay(), hours.isClosed(), hours.getOpenTime(), hours.getCloseTime()));
+        }
+        return week;
+    }
+
+    private List<SettingsService.Warning> closeOn(DayOfWeek dayOfWeek) {
+        List<SettingsService.DayHoursInput> week = currentWeek();
+        week.replaceAll(input -> input.day() == dayOfWeek
+                ? new SettingsService.DayHoursInput(
+                        input.day(), true, input.openTime(), input.closeTime())
+                : input);
+        return settingsService.updateOpeningHours(week);
+    }
+
+    private void setHours(DayOfWeek dayOfWeek, LocalTime open, LocalTime close) {
+        List<SettingsService.DayHoursInput> week = currentWeek();
+        week.replaceAll(input -> input.day() == dayOfWeek
+                ? new SettingsService.DayHoursInput(input.day(), false, open, close)
+                : input);
+        settingsService.updateOpeningHours(week);
+    }
+}

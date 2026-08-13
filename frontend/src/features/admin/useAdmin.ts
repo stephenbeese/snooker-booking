@@ -6,17 +6,26 @@ import {
   createTable,
   createTelephoneBooking,
   deleteMaintenanceBlock,
+  deletePricingRule,
   fetchAdminBooking,
   fetchAdminBookings,
   fetchAdminDay,
   fetchAdminTables,
+  fetchBookingRules,
+  fetchClubDetails,
   fetchDashboard,
   fetchMaintenanceBlocks,
+  fetchOpeningHours,
+  fetchPricingRules,
   fetchTables,
+  savePricingRule,
   setTableActive,
+  updateBookingRules,
+  updateClubDetails,
+  updateOpeningHours,
   updateTable,
 } from './api';
-import type { AdminBookingFilters, TableInput } from './types';
+import type { AdminBookingFilters, PricingRuleInput, TableInput } from './types';
 
 export function useAdminDashboard() {
   return useQuery({
@@ -147,6 +156,92 @@ export function useCreateTelephoneBooking() {
     onSuccess: async () => {
       await invalidate();
       await queryClient.invalidateQueries({ queryKey: ['bookings'] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------- settings
+
+export function useClubDetails() {
+  return useQuery({ queryKey: queryKeys.adminClubDetails(), queryFn: fetchClubDetails });
+}
+
+export function useOpeningHours() {
+  return useQuery({ queryKey: queryKeys.adminOpeningHours(), queryFn: fetchOpeningHours });
+}
+
+export function useBookingRules() {
+  return useQuery({ queryKey: queryKeys.adminBookingRules(), queryFn: fetchBookingRules });
+}
+
+export function usePricingRules() {
+  return useQuery({ queryKey: queryKeys.adminPricingRules(), queryFn: fetchPricingRules });
+}
+
+/**
+ * Club contact details.
+ *
+ * <p>Invalidates `['club']` as well: the public club page and the site footer render this, so
+ * leaving them cached would show staff the old address on the very page they just edited.
+ */
+export function useUpdateClubDetails() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: updateClubDetails,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.adminClubDetails() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.club() });
+    },
+  });
+}
+
+export function useUpdateOpeningHours() {
+  const invalidate = useInvalidateClubStructure();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: updateOpeningHours,
+    onSuccess: async () => {
+      await invalidate();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.club() });
+    },
+  });
+}
+
+export function useUpdateBookingRules() {
+  const invalidate = useInvalidateClubStructure();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: updateBookingRules,
+    onSuccess: async () => {
+      await invalidate();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.club() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.bookingSettings() });
+    },
+  });
+}
+
+export function useSavePricingRule() {
+  const invalidate = useInvalidateClubStructure();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number | null; input: PricingRuleInput }) =>
+      savePricingRule(id, input),
+    onSuccess: async () => {
+      await invalidate();
+      // The "from £x per hour" headline on the public page comes from these rules.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.club() });
+    },
+  });
+}
+
+export function useDeletePricingRule() {
+  const invalidate = useInvalidateClubStructure();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: deletePricingRule,
+    onSuccess: async () => {
+      await invalidate();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.club() });
     },
   });
 }

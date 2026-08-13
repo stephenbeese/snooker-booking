@@ -26,4 +26,8 @@ export const queryKeys = {
   adminDay: (date: string) => ['admin', 'day', date] as const,
   adminTables: () => ['admin', 'tables'] as const,
   adminBlocks: (from: string, to: string) => ['admin', 'blocks', from, to] as const,
+  adminClubDetails: () => ['admin', 'settings', 'club'] as const,
+  adminOpeningHours: () => ['admin', 'settings', 'opening-hours'] as const,
+  adminBookingRules: () => ['admin', 'settings', 'booking-rules'] as const,
+  adminPricingRules: () => ['admin', 'settings', 'pricing-rules'] as const,
 } as const;

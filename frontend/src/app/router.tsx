@@ -3,6 +3,7 @@ import { AdminBookingDetailPage } from '@/features/admin/AdminBookingDetailPage'
 import { AdminBookingsPage } from '@/features/admin/AdminBookingsPage';
 import { AdminDashboardPage } from '@/features/admin/AdminDashboardPage';
 import { AdminMaintenancePage } from '@/features/admin/AdminMaintenancePage';
+import { AdminSettingsPage } from '@/features/admin/AdminSettingsPage';
 import { AdminTablesPage } from '@/features/admin/AdminTablesPage';
 import { AdminTelephoneBookingPage } from '@/features/admin/AdminTelephoneBookingPage';
 import { RequireAdmin } from '@/features/admin/RequireAdmin';
@@ -109,6 +110,14 @@ export const router = createBrowserRouter([
         element: (
           <RequireAdmin>
             <AdminMaintenancePage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: '/admin/settings',
+        element: (
+          <RequireAdmin>
+            <AdminSettingsPage />
           </RequireAdmin>
         ),
       },

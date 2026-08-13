@@ -4,10 +4,16 @@ import type {
   AdminBookingFilters,
   AdminDashboard,
   AdminTable,
+  BookingRules,
+  ClubDetails,
   ClubTable,
+  DayHours,
   MaintenanceBlock,
   MaintenanceBlockInput,
   Paged,
+  PricingRule,
+  PricingRuleInput,
+  SettingsUpdate,
   TableInput,
   TelephoneBookingInput,
 } from './types';
@@ -124,4 +130,62 @@ export function createTelephoneBooking(
     method: 'POST',
     body: JSON.stringify(input),
   });
+}
+
+// ---------------------------------------------------------------- settings
+
+export function fetchClubDetails(): Promise<ClubDetails> {
+  return apiRequest<ClubDetails>('/api/admin/settings/club');
+}
+
+export function updateClubDetails(
+  input: ClubDetails,
+): Promise<SettingsUpdate<ClubDetails>> {
+  return apiRequest<SettingsUpdate<ClubDetails>>('/api/admin/settings/club', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export function fetchOpeningHours(): Promise<DayHours[]> {
+  return apiRequest<DayHours[]>('/api/admin/settings/opening-hours');
+}
+
+/** The whole week at once — the server rejects anything less than seven days. */
+export function updateOpeningHours(days: DayHours[]): Promise<SettingsUpdate<DayHours[]>> {
+  return apiRequest<SettingsUpdate<DayHours[]>>('/api/admin/settings/opening-hours', {
+    method: 'PUT',
+    body: JSON.stringify({ days }),
+  });
+}
+
+export function fetchBookingRules(): Promise<BookingRules> {
+  return apiRequest<BookingRules>('/api/admin/settings/booking-rules');
+}
+
+export function updateBookingRules(
+  input: BookingRules,
+): Promise<SettingsUpdate<BookingRules>> {
+  return apiRequest<SettingsUpdate<BookingRules>>('/api/admin/settings/booking-rules', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export function fetchPricingRules(): Promise<PricingRule[]> {
+  return apiRequest<PricingRule[]>('/api/admin/settings/pricing-rules');
+}
+
+export function savePricingRule(
+  id: number | null,
+  input: PricingRuleInput,
+): Promise<PricingRule> {
+  return apiRequest<PricingRule>(
+    id === null ? '/api/admin/settings/pricing-rules' : `/api/admin/settings/pricing-rules/${id}`,
+    { method: id === null ? 'POST' : 'PUT', body: JSON.stringify(input) },
+  );
+}
+
+export function deletePricingRule(id: number): Promise<void> {
+  return apiRequest<void>(`/api/admin/settings/pricing-rules/${id}`, { method: 'DELETE' });
 }

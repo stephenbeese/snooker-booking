@@ -51,6 +51,30 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
     private long tableId;
     private String victimReference;
 
+    /** A valid full week, so the opening-hours PUT is exercised rather than 400-ing on shape. */
+    private static final List<Map<String, Object>> ALL_SEVEN_DAYS = List.of(
+            day("MONDAY"), day("TUESDAY"), day("WEDNESDAY"), day("THURSDAY"),
+            day("FRIDAY"), day("SATURDAY"), day("SUNDAY"));
+
+    private static Map<String, Object> day(String name) {
+        return Map.of("day", name, "closed", false, "openTime", "10:00:00", "closeTime", "23:00:00");
+    }
+
+    private static final Map<String, Object> DEFAULT_RULES = Map.of(
+            "minDurationMinutes", 30,
+            "maxDurationMinutes", 240,
+            "incrementMinutes", 30,
+            "minNoticeMinutes", 60,
+            "maxAdvanceDays", 30,
+            "cancellationNoticeHours", 24,
+            "paymentHoldMinutes", 15);
+
+    private static final Map<String, Object> CATCH_ALL_RULE = Map.of(
+            "name", "Standard hourly rate",
+            "hourlyRatePence", 1200,
+            "priority", 0,
+            "active", true);
+
     /** Every admin path, so a new one added without a test still has to pass this list. */
     private static final List<Endpoint> ADMIN_ENDPOINTS = List.of(
             new Endpoint(HttpMethod.GET, "/api/admin/dashboard", null),
@@ -94,7 +118,26 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
                             "date", "2030-01-01",
                             "startTime", "14:00:00",
                             "endTime", "18:00:00")),
-            new Endpoint(HttpMethod.DELETE, "/api/admin/maintenance-blocks/1", null));
+            new Endpoint(HttpMethod.DELETE, "/api/admin/maintenance-blocks/1", null),
+            // Phase 6. Settings decide what the whole club can sell and what it charges, so
+            // they are the most consequential writes in the admin area.
+            new Endpoint(HttpMethod.GET, "/api/admin/settings/club", null),
+            new Endpoint(
+                    HttpMethod.PUT, "/api/admin/settings/club", Map.of("name", "Boundary Club")),
+            new Endpoint(HttpMethod.GET, "/api/admin/settings/opening-hours", null),
+            new Endpoint(
+                    HttpMethod.PUT,
+                    "/api/admin/settings/opening-hours",
+                    Map.of("days", ALL_SEVEN_DAYS)),
+            new Endpoint(HttpMethod.GET, "/api/admin/settings/booking-rules", null),
+            new Endpoint(HttpMethod.PUT, "/api/admin/settings/booking-rules", DEFAULT_RULES),
+            new Endpoint(HttpMethod.GET, "/api/admin/settings/pricing-rules", null),
+            new Endpoint(HttpMethod.POST, "/api/admin/settings/pricing-rules", CATCH_ALL_RULE),
+            new Endpoint(HttpMethod.PUT, "/api/admin/settings/pricing-rules/1", CATCH_ALL_RULE),
+            // Deliberately an id that will not exist: the admin sweep asserts "not a 4xx that
+            // means refused", and deleting the seeded catch-all rule would break every later
+            // test in the class by leaving the club unable to price anything.
+            new Endpoint(HttpMethod.DELETE, "/api/admin/settings/pricing-rules/999999", null));
 
     /** Endpoints any signed-in user may reach, but an anonymous one may not. */
     private static final List<Endpoint> CUSTOMER_ENDPOINTS = List.of(

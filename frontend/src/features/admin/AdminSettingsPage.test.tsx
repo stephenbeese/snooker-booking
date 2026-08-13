@@ -1,0 +1,197 @@
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { renderWithRouter } from '@/test/renderWithProviders';
+import { AdminSettingsPage } from './AdminSettingsPage';
+
+const WEEK = [
+  'MONDAY',
+  'TUESDAY',
+  'WEDNESDAY',
+  'THURSDAY',
+  'FRIDAY',
+  'SATURDAY',
+  'SUNDAY',
+].map((day) => ({ day, closed: false, openTime: '10:00:00', closeTime: '23:00:00' }));
+
+const RULES = {
+  minDurationMinutes: 30,
+  maxDurationMinutes: 240,
+  incrementMinutes: 30,
+  minNoticeMinutes: 60,
+  maxAdvanceDays: 30,
+  cancellationNoticeHours: 24,
+  paymentHoldMinutes: 15,
+};
+
+const CLUB = {
+  name: 'The Snooker Club',
+  addressLine1: '1 High Street',
+  addressLine2: null,
+  city: 'Manchester',
+  postcode: 'M1 1AA',
+  phone: '0161 000 0000',
+  email: 'bookings@snookerclub.example',
+  website: null,
+  description: 'Championship tables.',
+};
+
+const PRICING = [
+  {
+    id: 1,
+    name: 'Standard hourly rate',
+    tableType: null,
+    dayOfWeek: null,
+    startTime: null,
+    endTime: null,
+    hourlyRatePence: 1200,
+    priority: 0,
+    active: true,
+    catchAll: true,
+  },
+];
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+/** @param onHoursPut what PUT /opening-hours answers with. */
+function mockApi(onHoursPut: () => Response = () => json({ settings: WEEK, warnings: [] })) {
+  const calls: { url: string; method: string; body: string | null }[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      calls.push({ url, method, body: typeof init?.body === 'string' ? init.body : null });
+
+      if (url.includes('/opening-hours')) {
+        return method === 'GET' ? json(WEEK) : onHoursPut();
+      }
+      if (url.includes('/booking-rules')) {
+        return method === 'GET' ? json(RULES) : json({ settings: RULES, warnings: [] });
+      }
+      if (url.includes('/pricing-rules')) return json(PRICING);
+      if (url.includes('/settings/club')) {
+        return method === 'GET' ? json(CLUB) : json({ settings: CLUB, warnings: [] });
+      }
+      return new Response(null, { status: 204 });
+    }),
+  );
+  return calls;
+}
+
+function render() {
+  return renderWithRouter(<AdminSettingsPage />, {
+    route: '/admin/settings',
+    path: '/admin/settings',
+  });
+}
+
+describe('AdminSettingsPage', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends the whole week when opening hours are saved', async () => {
+    const calls = mockApi();
+    const user = userEvent.setup();
+    render();
+
+    // Close Monday.
+    const mondayClosed = await screen.findByLabelText('Monday opening time');
+    expect(mondayClosed).toBeInTheDocument();
+    // By accessible name, not by index: seven identical "on" checkboxes would let this pass
+    // while a screen-reader user could not tell the days apart.
+    await user.click(screen.getByRole('checkbox', { name: 'Monday closed' }));
+    await user.click(screen.getAllByRole('button', { name: 'Save' })[0]!);
+
+    const put = await waitFor(() => {
+      const found = calls.find((call) => call.method === 'PUT' && call.url.includes('/opening-hours'));
+      expect(found).toBeDefined();
+      return found!;
+    });
+
+    // All seven days, not just the changed one: the server rejects a partial week, and a
+    // half-applied schedule is worse than none.
+    const sent = JSON.parse(put.body ?? '{}');
+    expect(sent.days).toHaveLength(7);
+    expect(sent.days[0]).toMatchObject({ day: 'MONDAY', closed: true });
+  });
+
+  it('shows which bookings a settings change has stranded', async () => {
+    // The whole reason the warnings array exists: staff must not close a day with games on
+    // it and find out when the customers arrive.
+    mockApi(() =>
+      json({
+        settings: WEEK,
+        warnings: [
+          { reference: 'SNK-ABC123', detail: 'The club would be closed on 2026-09-07.' },
+        ],
+      }),
+    );
+    const user = userEvent.setup();
+    render();
+
+    await screen.findByLabelText('Monday opening time');
+    await user.click(screen.getByRole('checkbox', { name: 'Monday closed' }));
+    await user.click(screen.getAllByRole('button', { name: 'Save' })[0]!);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('SNK-ABC123');
+    // It must be clear the booking still stands — this is a warning, not a cancellation.
+    expect(alert).toHaveTextContent(/unchanged and still stand/i);
+  });
+
+  it("surfaces the server's refusal when the rules are inconsistent", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? 'GET').toUpperCase();
+        if (url.includes('/booking-rules') && method === 'PUT') {
+          return json(
+            {
+              code: 'VALIDATION_FAILED',
+              message: 'Both durations must be a multiple of the 30-minute increment.',
+            },
+            422,
+          );
+        }
+        if (url.includes('/opening-hours')) return json(WEEK);
+        if (url.includes('/booking-rules')) return json(RULES);
+        if (url.includes('/pricing-rules')) return json(PRICING);
+        if (url.includes('/settings/club')) return json(CLUB);
+        return new Response(null, { status: 204 });
+      }),
+    );
+    const user = userEvent.setup();
+    render();
+
+    // Wait for the booking-rules section specifically. Querying all Save buttons too early
+    // finds only the sections that have finished loading, and index 1 is then the wrong one.
+    const increment = await screen.findByLabelText('Slot increment (minutes)');
+    const rulesSection = increment.closest('section');
+    await user.click(within(rulesSection!).getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'multiple of the 30-minute increment',
+    );
+  });
+
+  it('marks the catch-all pricing rule, so staff can see the club can always price a booking', async () => {
+    mockApi();
+    render();
+
+    expect(await screen.findByText('Standard hourly rate')).toBeInTheDocument();
+    expect(screen.getByText('Everything')).toBeInTheDocument();
+    expect(screen.getByText('£12.00')).toBeInTheDocument();
+  });
+});

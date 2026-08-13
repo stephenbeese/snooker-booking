@@ -111,6 +111,86 @@ export interface MaintenanceBlockInput {
   reason?: string | null;
 }
 
+export type Weekday =
+  | 'MONDAY'
+  | 'TUESDAY'
+  | 'WEDNESDAY'
+  | 'THURSDAY'
+  | 'FRIDAY'
+  | 'SATURDAY'
+  | 'SUNDAY';
+
+export interface ClubDetails {
+  name: string;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  postcode: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  description: string | null;
+}
+
+/**
+ * One day's hours as staff edit them.
+ *
+ * <p>Times are kept even when the day is closed, so reopening restores the previous hours
+ * instead of presenting an empty form. The public endpoint nulls them for display.
+ */
+export interface DayHours {
+  day: Weekday;
+  closed: boolean;
+  openTime: string | null;
+  closeTime: string | null;
+}
+
+export interface BookingRules {
+  minDurationMinutes: number;
+  maxDurationMinutes: number;
+  incrementMinutes: number;
+  minNoticeMinutes: number;
+  maxAdvanceDays: number;
+  cancellationNoticeHours: number;
+  paymentHoldMinutes: number;
+}
+
+export interface PricingRule {
+  id: number;
+  name: string;
+  tableType: TableType | null;
+  dayOfWeek: Weekday | null;
+  startTime: string | null;
+  endTime: string | null;
+  hourlyRatePence: number;
+  priority: number;
+  active: boolean;
+  /** True when this rule matches every table at every time — the club's pricing floor. */
+  catchAll: boolean;
+}
+
+export interface PricingRuleInput {
+  name: string;
+  tableType?: TableType | null;
+  dayOfWeek?: Weekday | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  hourlyRatePence: number;
+  priority: number;
+  active: boolean;
+}
+
+/** A future booking the new settings would not have permitted. Advisory, never blocking. */
+export interface SettingsWarning {
+  reference: string;
+  detail: string;
+}
+
+export interface SettingsUpdate<T> {
+  settings: T;
+  warnings: SettingsWarning[];
+}
+
 /** What staff type when taking a booking over the phone. */
 export interface TelephoneBookingInput {
   tableId: number;

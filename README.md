@@ -297,6 +297,12 @@ Implemented:
 | `GET` | `/api/admin/maintenance-blocks` | Admin | `?from=&to=`, club-local and inclusive |
 | `POST` | `/api/admin/maintenance-blocks` | Admin | Refused if live bookings fall inside |
 | `DELETE` | `/api/admin/maintenance-blocks/{id}` | Admin | Frees the slot immediately |
+| `GET` `PUT` | `/api/admin/settings/club` | Admin | Contact details; cannot affect a booking |
+| `GET` `PUT` | `/api/admin/settings/opening-hours` | Admin | All seven days at once |
+| `GET` `PUT` | `/api/admin/settings/booking-rules` | Admin | Durations, notice, advance window, hold |
+| `GET` | `/api/admin/settings/pricing-rules` | Admin | Highest-priority match wins |
+| `POST` `PUT` | `/api/admin/settings/pricing-rules[/{id}]` | Admin | Refuses to leave no catch-all rule |
+| `DELETE` | `/api/admin/settings/pricing-rules/{id}` | Admin | Same guard as above |
 | `POST` | `/api/webhooks/stripe` | Public | HMAC-verified; CSRF-exempt |
 
 Browsing availability deliberately needs no account — it is the conversion path.
@@ -373,6 +379,40 @@ make a table permanently unmaintainable.
 Both directions are covered by `MaintenanceBlockIT`, including the half-open `[)` boundary:
 a booking ending at 14:00 and a block starting at 14:00 do not conflict, matching the
 database's own semantics exactly.
+
+---
+
+## Settings
+
+The settings screens drive the booking engine rather than describing it. Closing a day
+removes it from the grid; changing the increment respaces every slot; changing the rate
+changes the next quote. `SettingsAffectAvailabilityIT` asserts each of those through
+`AvailabilityService` and `BookingService` — the same paths a customer's browser drives —
+rather than by reading the settings row back, because a settings screen that saves without
+changing anything is worse than none: staff believe they have closed on Christmas Day.
+
+**Changes apply to new bookings only.** A confirmed booking is a promise the club has
+already sold, and withdrawing it because policy changed afterwards would be worse than the
+inconsistency it avoids. That leaves the real hazard — closing a Monday with eleven games on
+it and not realising — so every settings write returns a `warnings` array naming the future
+bookings the new rules would not have permitted:
+
+```json
+{ "settings": { … },
+  "warnings": [{ "reference": "SNK-ABC123",
+                 "detail": "The club would be closed on 2026-08-23, when this booking starts." }] }
+```
+
+Advisory, never blocking: the club may be closing *because* of an event and intend to ring
+those customers. The UI shows them prominently and states that the bookings still stand.
+
+**At least one pricing rule must match everything.** `PricingService` throws when no active
+rule applies, which would turn every booking attempt into a 500 — the club silently stops
+selling. Deactivating or deleting the last unrestricted rule is refused at the point of the
+change rather than discovered by the first customer of the day.
+
+Editing pricing rates is read-only in the UI for now; the endpoints exist and are tested, but
+the screen lists rules rather than editing them.
 
 ---
 
@@ -453,7 +493,7 @@ would do so silently.
 | 3 | Customer dashboard, cancellation, password reset | **Done** |
 | 4 | Admin dashboard, booking management, authz boundary | **Done** |
 | 5 | Telephone bookings, table CRUD, maintenance blocks | **Done** |
-| 6 | Settings screens | Planned |
+| 6 | Club settings, opening hours, booking rules, pricing | **Done** |
 | 7 | Playwright, accessibility, security review | Planned |
 
 Phase 5 adds the staff booking flow deferred from Phase 4. A telephone booking routes
@@ -467,6 +507,12 @@ asserts staff are still refused all three.
 re-book instead. Moving a booking is a different operation from creating one — it has to
 release the old slot and take the new one atomically, or it can double-sell the table it
 just freed — and it was not worth doing badly to close a checklist item.
+
+Phase 6 makes the booking engine configurable — see [Settings](#settings). Its hard gate was
+specified as a Playwright spec; Playwright is still not set up, so it is
+`SettingsAffectAvailabilityIT` instead. That exercises the real engine against real
+PostgreSQL and is a genuine gate, but it does not prove the browser renders the result: the
+substitution is a real reduction in coverage, not an equivalent.
 
 Two things remain unverified rather than done, and are called out here so nobody assumes
 otherwise: **payment completion through the hosted Stripe Checkout UI has never been driven
