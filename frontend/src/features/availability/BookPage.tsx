@@ -1,10 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { Button } from '@/components/ui/Button';
 import { useCurrentUser } from '@/features/auth/useAuth';
 import { useCreateBooking } from '@/features/booking/useBookings';
 import { ApiError } from '@/lib/apiError';
-import { formatSlotTime, todayIso } from '@/lib/datetime';
+import {
+  addMinutesToTime,
+  formatDateLong,
+  formatDuration,
+  formatSlotTime,
+  todayIso,
+} from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
 import { AvailabilityGrid } from './components/AvailabilityGrid';
 import { DateSelector } from './components/DateSelector';
@@ -12,12 +18,17 @@ import { DurationPicker } from './components/DurationPicker';
 import type { Slot } from './types';
 import { useAvailability } from './useAvailability';
 
+/**
+ * Which cell is picked — the identity only.
+ *
+ * <p>Deliberately not a snapshot of the slot's name, price or times. Those all change when
+ * the requested duration changes, and a copy taken at click time silently goes stale: the
+ * summary would quote the old duration's price for a booking the server then rejects.
+ * Everything displayed is looked up from the live grid on each render instead.
+ */
 interface Selection {
   tableId: number;
-  tableName: string;
   startAt: string;
-  startTime: string;
-  pricePence: number | null;
 }
 
 export function BookPage() {
@@ -33,9 +44,43 @@ export function BookPage() {
   const { data: user } = useCurrentUser();
   const createBooking = useCreateBooking();
   const [bookingError, setBookingError] = useState<string | null>(null);
+  const [droppedReason, setDroppedReason] = useState<string | null>(null);
+
+  // Resolved from the freshest grid, so a duration change re-derives the price, the end time
+  // and whether the slot is still bookable at all.
+  const selectedTable = selected
+    ? data?.tables.find((table) => table.tableId === selected.tableId)
+    : undefined;
+  const selectedSlot = selected
+    ? selectedTable?.slots.find((slot) => slot.startAt === selected.startAt)
+    : undefined;
+
+  // The server decides whether the selection still fits, not a rule reimplemented here — the
+  // two could otherwise disagree, and the server is the one that rejects the booking.
+  // `isPlaceholderData` gates this: during a refetch the grid still holds the *previous*
+  // duration's answer, and acting on it would drop a selection that is actually fine.
+  const staleSelection =
+    selected !== undefined &&
+    selected !== null &&
+    data !== undefined &&
+    !isPlaceholderData &&
+    (selectedSlot === undefined || selectedSlot.bookableForRequestedDuration === false);
+
+  useEffect(() => {
+    if (!staleSelection) {
+      return;
+    }
+    const fits = selectedSlot?.maxDurationMinutes ?? 0;
+    setSelected(null);
+    setDroppedReason(
+      fits > 0
+        ? `That start time only fits ${formatDuration(fits)}, so the selection was cleared.`
+        : 'That slot is no longer available for the chosen duration, so the selection was cleared.',
+    );
+  }, [staleSelection, selectedSlot]);
 
   async function handleBook() {
-    if (!selected || durationMinutes === null) {
+    if (!selected || durationMinutes === null || !selectedSlot) {
       return;
     }
     setBookingError(null);
@@ -43,7 +88,7 @@ export function BookPage() {
       const response = await createBooking.mutateAsync({
         tableId: selected.tableId,
         date,
-        startTime: selected.startTime,
+        startTime: selectedSlot.startTime,
         durationMinutes,
       });
       // A full navigation, not a router push: Checkout is hosted on Stripe's origin.
@@ -64,23 +109,25 @@ export function BookPage() {
   }
 
   function handleSelect(tableId: number, slot: Slot) {
-    const table = data?.tables.find((candidate) => candidate.tableId === tableId);
-    if (!table) {
-      return;
-    }
-    setSelected({
-      tableId,
-      tableName: table.tableName,
-      startAt: slot.startAt,
-      startTime: slot.startTime,
-      pricePence: slot.pricePenceForRequestedDuration,
-    });
+    // A fresh choice invalidates whatever the last attempt said.
+    setBookingError(null);
+    setDroppedReason(null);
+    setSelected({ tableId, startAt: slot.startAt });
   }
 
   function changeDate(next: string) {
     setDate(next);
     // The selection refers to a slot on the old date, so it cannot survive.
     setSelected(null);
+    setBookingError(null);
+    setDroppedReason(null);
+  }
+
+  function changeDuration(next: number | null) {
+    setDurationMinutes(next);
+    // Stale the moment the requested length changes: it was raised against the old duration.
+    setBookingError(null);
+    setDroppedReason(null);
   }
 
   return (
@@ -96,10 +143,22 @@ export function BookPage() {
           <DurationPicker
             options={data.durationOptions}
             value={durationMinutes}
-            onChange={setDurationMinutes}
+            onChange={changeDuration}
           />
         )}
       </div>
+
+      {/* Outside the selection panel below, which only renders while something is selected.
+          A message explaining why the selection was cleared cannot live inside the thing it
+          is explaining the absence of. */}
+      {(droppedReason || (bookingError && !selected)) && (
+        <div
+          role="alert"
+          className="mt-4 rounded-card border border-amber-200 bg-amber-50 p-3"
+        >
+          <p className="text-sm text-amber-900">{droppedReason ?? bookingError}</p>
+        </div>
+      )}
 
       <section className="mt-6" aria-live="polite" aria-busy={isPending}>
         {isPending && (
@@ -128,7 +187,7 @@ export function BookPage() {
         )}
       </section>
 
-      {selected && (
+      {selected && selectedTable && selectedSlot && (
         // Sticky at the bottom of the viewport on a phone: the grid is tall, and a summary
         // that scrolls away takes the "Book and pay" button with it.
         <aside className="sticky bottom-4 mt-6 rounded-card border border-felt-200 bg-felt-50 p-5 shadow-lifted">
@@ -138,21 +197,36 @@ export function BookPage() {
                 Your selection
               </h2>
               <p className="mt-1 text-lg font-semibold tracking-tight text-felt-900">
-                {selected.tableName} at {formatSlotTime(selected.startTime)}
+                {selectedTable.tableName} ·{' '}
+                {durationMinutes === null
+                  ? formatSlotTime(selectedSlot.startTime)
+                  : `${formatSlotTime(selectedSlot.startTime)}–${addMinutesToTime(
+                      selectedSlot.startTime,
+                      durationMinutes,
+                    )}`}
               </p>
-              {selected.pricePence !== null && (
-                <p className="mt-0.5 text-sm text-felt-800">{formatPence(selected.pricePence)}</p>
-              )}
+              <p className="mt-0.5 text-sm text-felt-800">
+                {formatDateLong(date)}
+                {durationMinutes !== null && ` · ${formatDuration(durationMinutes)}`}
+                {selectedSlot.pricePenceForRequestedDuration !== null &&
+                  ` · ${formatPence(selectedSlot.pricePenceForRequestedDuration)}`}
+              </p>
             </div>
 
             {user ? (
-              <Button
-                size="lg"
-                onClick={handleBook}
-                disabled={createBooking.isPending || durationMinutes === null}
-              >
-                {createBooking.isPending ? 'Reserving your table…' : 'Book and pay'}
-              </Button>
+              <div className="text-right">
+                <Button
+                  size="lg"
+                  onClick={handleBook}
+                  disabled={createBooking.isPending || durationMinutes === null}
+                >
+                  {createBooking.isPending ? 'Reserving your table…' : 'Book and pay'}
+                </Button>
+                {/* A disabled button with no explanation reads as a broken page. */}
+                {durationMinutes === null && (
+                  <p className="mt-1.5 text-xs text-felt-800">Choose a duration to book.</p>
+                )}
+              </div>
             ) : (
               <p className="text-sm text-felt-900">
                 <Link
@@ -174,7 +248,10 @@ export function BookPage() {
             )}
           </div>
 
-          {bookingError && (
+          {/* Only while a selection survives. When the booking failed because the slot was
+              taken, the selection is cleared and the message is rendered above the grid
+              instead — here it would unmount with the panel and never be read. */}
+          {bookingError && selected && (
             <div role="alert" className="mt-4 rounded-lg border border-rose-200 bg-white p-3">
               <p className="text-sm text-rose-800">{bookingError}</p>
             </div>

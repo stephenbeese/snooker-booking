@@ -44,14 +44,20 @@ export function AvailabilityGrid({ availability, selected, onSelect }: Availabil
           </caption>
           <thead>
             <tr>
-              <th scope="col" className="sticky left-0 z-10 bg-white pr-2 text-left">
+              {/* z-30: the corner sits where the sticky row and sticky column cross, so it
+                  must outrank both or a scrolling time slides over it. */}
+              <th
+                scope="col"
+                className="sticky left-0 top-0 z-30 bg-white pr-2 text-left shadow-[4px_0_0_0_white]"
+              >
                 <span className="sr-only">Table</span>
               </th>
               {availability.slotTimes.map((time) => (
                 <th
                   key={time}
                   scope="col"
-                  className="min-w-14 pb-1 text-center text-xs font-normal tabular-nums text-ink-500"
+                  // Sticky vertically so the time axis survives scrolling down a tall grid.
+                  className="sticky top-0 z-10 min-w-14 bg-white pb-1 text-center text-xs font-normal tabular-nums text-ink-500"
                 >
                   {time.slice(0, 5)}
                 </th>
@@ -61,9 +67,13 @@ export function AvailabilityGrid({ availability, selected, onSelect }: Availabil
           <tbody>
             {availability.tables.map((table) => (
               <tr key={table.tableId}>
+                {/* z-20 beats the sticky time headers' z-10 so a table name is never
+                    overprinted. The white box-shadow paints the 4px `border-spacing` gutter
+                    to this cell's right: without it that gutter stays transparent and slot
+                    times scroll visibly through the seam beside the table column. */}
                 <th
                   scope="row"
-                  className="sticky left-0 z-10 min-w-32 bg-white pr-3 text-left align-middle"
+                  className="sticky left-0 z-20 min-w-32 bg-white pr-3 text-left align-middle shadow-[4px_0_0_0_white]"
                 >
                   <span className="block text-sm font-medium text-felt-900">
                     {table.tableName}

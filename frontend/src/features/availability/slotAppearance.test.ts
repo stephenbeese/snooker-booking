@@ -17,6 +17,22 @@ describe('slotAppearance', () => {
     expect(appearance.className).toContain('bg-felt-700');
   });
 
+  it('stops showing a selected slot as selected once it no longer fits the duration', () => {
+    // Order-dependent: checking `isSelected` first left the cell green, clickable and
+    // labelled "selected" after the customer lengthened the booking past what fits there,
+    // which is how a stale selection reached the summary bar priced for the old duration.
+    const slot = makeSlot({
+      startTime: '14:00:00',
+      bookableForRequestedDuration: false,
+      maxDurationMinutes: 90,
+    });
+
+    const appearance = slotAppearance(slot, '14:00', true);
+
+    expect(appearance.interactive).toBe(false);
+    expect(appearance.label).toBe('14:00 — Up to 1 hour 30 mins only');
+  });
+
   it.each([
     ['BOOKED', 'Already booked'],
     ['MAINTENANCE', 'Unavailable — maintenance'],

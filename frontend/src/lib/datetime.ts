@@ -43,6 +43,43 @@ export function todayIso(): string {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
+/**
+ * The wall-clock time `minutes` after a "HH:MM:SS" start, as "HH:MM".
+ *
+ * <p>Deliberately not `Slot.endTime`, which is the end of the *cell* (one increment) and not
+ * the end of the booking: a 60-minute booking in a 30-minute grid ends an increment later
+ * than the cell it starts in.
+ *
+ * <p>Plain modular arithmetic on the club's own wall clock, with no Date involved. The
+ * backend has already resolved the club's timezone; reconstructing a Date here would
+ * reintroduce the browser's zone and could shift the displayed time by an hour. Wraps past
+ * midnight for a late booking rather than rendering "25:30".
+ */
+export function addMinutesToTime(time: string, minutes: number): string {
+  const [hours = 0, mins = 0] = time.split(':').map(Number);
+  const total = ((hours * 60 + mins + minutes) % 1440 + 1440) % 1440;
+  const endHours = String(Math.floor(total / 60)).padStart(2, '0');
+  const endMinutes = String(total % 60).padStart(2, '0');
+  return `${endHours}:${endMinutes}`;
+}
+
+/**
+ * Minutes as words: 30 -> "30 mins", 90 -> "1 hour 30 mins".
+ *
+ * <p>Mirrors `AvailabilityService.formatDuration` on the backend, which labels the duration
+ * options. Kept identical so a duration never reads one way in the picker and another in the
+ * summary beside it.
+ */
+export function formatDuration(minutes: number): string {
+  if (minutes < 60) {
+    return `${minutes} mins`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  const hourPart = hours === 1 ? '1 hour' : `${hours} hours`;
+  return remainder === 0 ? hourPart : `${hourPart} ${remainder} mins`;
+}
+
 /** Shifts an ISO date by whole days without tripping over month boundaries. */
 export function addDays(isoDate: string, days: number): string {
   const [year, month, day] = isoDate.split('-').map(Number);

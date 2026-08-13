@@ -1,3 +1,4 @@
+import { formatDuration } from '@/lib/datetime';
 import type { Slot, UnavailableReason } from './types';
 
 /** What a cell should look like and say. Pure, so it is cheap to unit test. */
@@ -20,16 +21,6 @@ const REASON_LABEL: Record<UnavailableReason, string> = {
 };
 
 const BASE = 'h-10 w-full rounded-lg text-xs font-medium tabular-nums transition-all duration-150';
-
-function formatMinutes(minutes: number): string {
-  if (minutes < 60) {
-    return `${minutes} mins`;
-  }
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  const hourPart = hours === 1 ? '1 hour' : `${hours} hours`;
-  return remainder === 0 ? hourPart : `${hourPart} ${remainder} mins`;
-}
 
 export function slotAppearance(
   slot: Slot,
@@ -54,14 +45,10 @@ export function slotAppearance(
     };
   }
 
-  if (isSelected) {
-    return {
-      className: `${BASE} bg-felt-700 text-white shadow-card ring-2 ring-felt-900 ring-offset-1`,
-      label: `${time} — selected`,
-      interactive: true,
-    };
-  }
-
+  // Deliberately checked before `isSelected`: a cell that no longer fits the requested
+  // duration must stop looking selected, whatever was picked earlier. Showing it green and
+  // clickable is how a stale selection reaches the summary bar priced for the old duration.
+  //
   // Free, but the requested duration does not fit. Visibly distinct from both bookable
   // and occupied, so the grid does not look broken when a late slot cannot be clicked.
   //
@@ -72,12 +59,20 @@ export function slotAppearance(
       slot.reason !== null
         ? REASON_LABEL[slot.reason]
         : slot.maxDurationMinutes > 0
-          ? `Up to ${formatMinutes(slot.maxDurationMinutes)} only`
+          ? `Up to ${formatDuration(slot.maxDurationMinutes)} only`
           : 'Does not fit';
     return {
       className: `${BASE} bg-felt-50 text-felt-700/50 cursor-not-allowed`,
       label: `${time} — ${label}`,
       interactive: false,
+    };
+  }
+
+  if (isSelected) {
+    return {
+      className: `${BASE} bg-felt-700 text-white shadow-card ring-2 ring-felt-900 ring-offset-1`,
+      label: `${time} — selected`,
+      interactive: true,
     };
   }
 
