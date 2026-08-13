@@ -1,0 +1,315 @@
+package uk.co.club.booking.security;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
+import uk.co.club.booking.support.AbstractIntegrationTest;
+import uk.co.club.booking.support.HttpClient;
+import uk.co.club.booking.support.IntegrationFixtures;
+
+/**
+ * The authorisation boundary, over real HTTP.
+ *
+ * <p>Phase 4's hard gate. Two distinct properties, both of which have to hold:
+ *
+ * <ol>
+ *   <li><strong>Role boundary</strong> — an anonymous visitor and a signed-in customer are both
+ *       refused every admin endpoint. Enumerated as a matrix rather than spot-checked, because
+ *       the realistic failure is a <em>new</em> endpoint added under a path nobody re-tested.
+ *   <li><strong>IDOR</strong> — a customer cannot read or act on another customer's booking by
+ *       guessing its reference, and the refusal leaks nothing about whether it exists.
+ * </ol>
+ *
+ * <p>Driven through the running server rather than through MockMvc: the checks under test are
+ * implemented by the Spring Security filter chain, and calling controllers directly would bypass
+ * the very layer being asserted.
+ */
+// Spring Boot 4 no longer registers TestRestTemplate just because the web environment is a real
+// one; the bean comes from spring-boot-resttestclient and this annotation is what switches its
+// auto-configuration on.
+@AutoConfigureTestRestTemplate
+class AuthorizationBoundaryIT extends AbstractIntegrationTest {
+
+    private static final String CUSTOMER_PASSWORD = "CustomerPass123!";
+    private static final String ADMIN_PASSWORD = "AdminPass123!";
+
+    @Autowired private TestRestTemplate rest;
+    @Autowired private IntegrationFixtures fixtures;
+
+    private long tableId;
+    private String victimReference;
+
+    /** Every admin path, so a new one added without a test still has to pass this list. */
+    private static final List<Endpoint> ADMIN_ENDPOINTS = List.of(
+            new Endpoint(HttpMethod.GET, "/api/admin/dashboard", null),
+            new Endpoint(HttpMethod.GET, "/api/admin/bookings", null),
+            new Endpoint(HttpMethod.GET, "/api/admin/bookings/day", null),
+            new Endpoint(HttpMethod.GET, "/api/admin/bookings/SNK-VICTIM", null),
+            new Endpoint(
+                    HttpMethod.POST,
+                    "/api/admin/bookings/SNK-VICTIM/cancel",
+                    Map.of("reason", "test")));
+
+    /** Endpoints any signed-in user may reach, but an anonymous one may not. */
+    private static final List<Endpoint> CUSTOMER_ENDPOINTS = List.of(
+            new Endpoint(HttpMethod.GET, "/api/bookings", null),
+            new Endpoint(HttpMethod.GET, "/api/profile", null));
+
+    /** Endpoints that must stay open, or the club cannot sell anything. */
+    private static final List<Endpoint> PUBLIC_ENDPOINTS = List.of(
+            new Endpoint(HttpMethod.GET, "/api/health", null),
+            new Endpoint(HttpMethod.GET, "/api/club", null),
+            new Endpoint(HttpMethod.GET, "/api/tables", null),
+            new Endpoint(HttpMethod.GET, "/api/auth/me", null));
+
+    private record Endpoint(HttpMethod method, String path, Object body) {
+        @Override
+        public String toString() {
+            return method + " " + path;
+        }
+    }
+
+    @BeforeEach
+    void seedPeopleAndABooking() {
+        tableId = fixtures.aTable("Boundary Table");
+        long victimId = fixtures.aCustomer("victim@test.local", CUSTOMER_PASSWORD);
+        fixtures.aCustomer("attacker@test.local", CUSTOMER_PASSWORD);
+        fixtures.anAdmin("boundary-admin@test.local", ADMIN_PASSWORD);
+
+        Instant start = Instant.now().plus(3, ChronoUnit.DAYS).truncatedTo(ChronoUnit.HOURS);
+        fixtures.aBooking("SNK-VICTIM", tableId, start, 60, "CONFIRMED", victimId, null);
+        victimReference = "SNK-VICTIM";
+    }
+
+    @Test
+    @DisplayName("an anonymous visitor is refused every admin endpoint")
+    void anonymousCannotReachAdmin() {
+        HttpClient anonymous = HttpClient.anonymous(rest);
+
+        List<String> allowed = new ArrayList<>();
+        for (Endpoint endpoint : ADMIN_ENDPOINTS) {
+            int status = anonymous.statusOf(endpoint.method(), endpoint.path(), endpoint.body());
+            // 401 (not signed in) is the correct answer. Anything in the 2xx range is a breach;
+            // a 404 or 500 would mean the request reached application code it should not have.
+            if (status != 401) {
+                allowed.add(endpoint + " -> " + status);
+            }
+        }
+
+        assertThat(allowed).as("admin endpoints reachable while anonymous").isEmpty();
+    }
+
+    @Test
+    @DisplayName("a signed-in customer is refused every admin endpoint")
+    void customerCannotReachAdmin() {
+        HttpClient customer =
+                HttpClient.anonymous(rest).login("attacker@test.local", CUSTOMER_PASSWORD);
+
+        // Guards the assertion below: if the session were not travelling, every admin endpoint
+        // would answer 401 and the test would be asserting "anonymous is refused" all over
+        // again while appearing to test the customer boundary.
+        assertThat(customer.get("/api/bookings", String.class).getStatusCode().value())
+                .as("customer session is established")
+                .isEqualTo(200);
+
+        List<String> allowed = new ArrayList<>();
+        for (Endpoint endpoint : ADMIN_ENDPOINTS) {
+            int status = customer.statusOf(endpoint.method(), endpoint.path(), endpoint.body());
+            // 403: authenticated, but not entitled.
+            if (status != 403) {
+                allowed.add(endpoint + " -> " + status);
+            }
+        }
+
+        assertThat(allowed).as("admin endpoints reachable as a customer").isEmpty();
+
+        // And the booking really is still live — proving the refusals above were refusals, not
+        // an endpoint that happens to fail for an unrelated reason after doing the work.
+        assertThat(statusOfBooking(victimReference)).isEqualTo("CONFIRMED");
+    }
+
+    @Test
+    @DisplayName("an admin reaches every admin endpoint")
+    void adminIsAdmitted() {
+        HttpClient admin =
+                HttpClient.anonymous(rest).login("boundary-admin@test.local", ADMIN_PASSWORD);
+
+        List<String> refused = new ArrayList<>();
+        for (Endpoint endpoint : ADMIN_ENDPOINTS) {
+            int status = admin.statusOf(endpoint.method(), endpoint.path(), endpoint.body());
+            if (status == 401 || status == 403) {
+                refused.add(endpoint + " -> " + status);
+            }
+        }
+
+        // The mirror image of the tests above. Without it, a filter chain that denied everything
+        // to everybody would pass them both and lock staff out of their own club.
+        assertThat(refused).as("admin endpoints refused to an admin").isEmpty();
+    }
+
+    @Test
+    @DisplayName("an anonymous visitor is refused customer endpoints but keeps the public ones")
+    void anonymousBoundary() {
+        HttpClient anonymous = HttpClient.anonymous(rest);
+
+        List<String> leaked = new ArrayList<>();
+        for (Endpoint endpoint : CUSTOMER_ENDPOINTS) {
+            int status = anonymous.statusOf(endpoint.method(), endpoint.path(), endpoint.body());
+            if (status != 401) {
+                leaked.add(endpoint + " -> " + status);
+            }
+        }
+        assertThat(leaked).as("customer endpoints reachable while anonymous").isEmpty();
+
+        List<String> blocked = new ArrayList<>();
+        for (Endpoint endpoint : PUBLIC_ENDPOINTS) {
+            int status = anonymous.statusOf(endpoint.method(), endpoint.path(), endpoint.body());
+            if (status >= 400) {
+                blocked.add(endpoint + " -> " + status);
+            }
+        }
+        // Browsing must not require an account: this is the conversion path, and locking it
+        // would be as much a defect as leaving admin open.
+        assertThat(blocked).as("public endpoints blocked").isEmpty();
+    }
+
+    @Test
+    @DisplayName("an inactive table is hidden from customers but visible to staff")
+    void inactiveTablesAreStaffOnly() {
+        fixtures.anInactiveTable("Retired Table");
+
+        String publicView =
+                HttpClient.anonymous(rest).get("/api/tables", String.class).getBody();
+        String staffView = HttpClient.anonymous(rest)
+                .login("boundary-admin@test.local", ADMIN_PASSWORD)
+                .get("/api/tables", String.class)
+                .getBody();
+
+        assertThat(publicView).doesNotContain("Retired Table");
+        assertThat(publicView).contains("Boundary Table");
+        // Staff still need it: a deactivated table has history to filter and report on.
+        assertThat(staffView).contains("Retired Table");
+    }
+
+    @Test
+    @DisplayName("a customer cannot read another customer's booking, and is told nothing about it")
+    void idorOnRead() {
+        HttpClient attacker =
+                HttpClient.anonymous(rest).login("attacker@test.local", CUSTOMER_PASSWORD);
+
+        ResponseEntity<String> response =
+                attacker.get("/api/bookings/" + victimReference, String.class);
+
+        // 404, not 403. A 403 confirms the reference exists, which turns this endpoint into an
+        // oracle for enumerating the club's entire booking table one guess at a time.
+        assertThat(response.getStatusCode().value()).isEqualTo(404);
+
+        // The body must not leak by another route either: no name, no email, no times.
+        String body = response.getBody() == null ? "" : response.getBody();
+        assertThat(body).doesNotContain("Fixture Customer");
+        assertThat(body).doesNotContain("victim@test.local");
+        assertThat(body).doesNotContain("Boundary Table");
+    }
+
+    @Test
+    @DisplayName("a customer cannot cancel another customer's booking")
+    void idorOnCancel() {
+        HttpClient attacker =
+                HttpClient.anonymous(rest).login("attacker@test.local", CUSTOMER_PASSWORD);
+
+        int status = attacker.statusOf(
+                HttpMethod.POST,
+                "/api/bookings/" + victimReference + "/cancel",
+                Map.of("reason", "not mine"));
+
+        assertThat(status).isEqualTo(404);
+        // The decisive assertion: the refusal must be a refusal, not a 404 rendered after the
+        // cancellation already committed.
+        assertThat(statusOfBooking(victimReference)).isEqualTo("CONFIRMED");
+    }
+
+    @Test
+    @DisplayName("a customer's own booking list contains only their own bookings")
+    void listIsScopedToTheCaller() {
+        HttpClient attacker =
+                HttpClient.anonymous(rest).login("attacker@test.local", CUSTOMER_PASSWORD);
+
+        String body = attacker.get("/api/bookings", String.class).getBody();
+
+        assertThat(body).isNotNull();
+        // The attacker has no bookings; the victim's must not appear in the list either.
+        assertThat(body).doesNotContain(victimReference);
+    }
+
+    @Test
+    @DisplayName("a write without a CSRF token is rejected")
+    void csrfIsEnforced() {
+        // Deliberately bypasses HttpClient, which echoes the token like a real browser. A
+        // cross-site form post has the session cookie but cannot read the token cookie, and
+        // that difference is the entire protection.
+        HttpClient customer =
+                HttpClient.anonymous(rest).login("victim@test.local", CUSTOMER_PASSWORD);
+
+        ResponseEntity<String> response = rest.exchange(
+                "/api/bookings/" + victimReference + "/cancel",
+                HttpMethod.POST,
+                new org.springframework.http.HttpEntity<>(Map.of("reason", "csrf")),
+                String.class);
+
+        assertThat(response.getStatusCode().value()).isIn(401, 403);
+        assertThat(statusOfBooking(victimReference)).isEqualTo("CONFIRMED");
+        // Keeps the client referenced so the session it established is genuinely in play.
+        assertThat(customer).isNotNull();
+
+        // No error envelope on a CSRF rejection. The client uses exactly this to tell "your
+        // token is stale, fetch a new one and retry" apart from "you may not do this" — and a
+        // body here would make a recoverable failure look permanent to the user.
+        assertThat(response.getBody()).isNullOrEmpty();
+    }
+
+    @Test
+    @DisplayName("a role refusal explains itself, so the client does not retry it")
+    void roleRefusalCarriesAnEnvelope() {
+        HttpClient customer =
+                HttpClient.anonymous(rest).login("attacker@test.local", CUSTOMER_PASSWORD);
+
+        ResponseEntity<String> response = customer.get("/api/admin/dashboard", String.class);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(403);
+        // The mirror image of the CSRF case above: this one is a decision about the user and
+        // will not change on a retry, so it says so.
+        assertThat(response.getBody()).contains("ACCESS_DENIED");
+    }
+
+    @Test
+    @DisplayName("an admin may cancel a booking belonging to someone else")
+    void adminMayActOnAnyBooking() {
+        HttpClient admin =
+                HttpClient.anonymous(rest).login("boundary-admin@test.local", ADMIN_PASSWORD);
+
+        int status = admin.statusOf(
+                HttpMethod.POST,
+                "/api/admin/bookings/" + victimReference + "/cancel",
+                Map.of("reason", "Customer rang the club"));
+
+        assertThat(status).isEqualTo(200);
+        assertThat(statusOfBooking(victimReference)).isEqualTo("CANCELLED");
+    }
+
+    private String statusOfBooking(String reference) {
+        return jdbcTemplate.queryForObject(
+                "SELECT status FROM booking WHERE reference = ?", String.class, reference);
+    }
+}

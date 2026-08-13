@@ -257,9 +257,43 @@ Implemented:
 | `GET` | `/api/bookings/{reference}` | Customer | 404 (not 403) for someone else's |
 | `POST` | `/api/bookings/{reference}/cancel` | Customer | Releases the slot |
 | `POST` | `/api/bookings/{reference}/checkout` | Customer | New session after a decline |
+| `GET` | `/api/tables` | Public | Active tables; staff also see inactive ones |
+| `GET` | `/api/admin/dashboard` | Admin | Today's counts and committed takings |
+| `GET` | `/api/admin/bookings` | Admin | `?status=&from=&to=&tableId=&search=&page=&size=` |
+| `GET` | `/api/admin/bookings/day` | Admin | `?date=` — one day, in start order |
+| `GET` | `/api/admin/bookings/{reference}` | Admin | Includes customer contact details |
+| `POST` | `/api/admin/bookings/{reference}/cancel` | Admin | Bypasses the notice period only |
 | `POST` | `/api/webhooks/stripe` | Public | HMAC-verified; CSRF-exempt |
 
 Browsing availability deliberately needs no account — it is the conversion path.
+
+### The admin boundary
+
+Every `/api/admin/**` path requires the ADMIN role, enforced by one matcher in
+`SecurityConfig` ahead of `anyRequest()`. `AuthorizationBoundaryIT` drives the whole matrix
+over real HTTP — anonymous, customer and admin against every admin endpoint — because the
+checks live in the servlet filter chain and calling a controller directly would bypass them.
+The same test covers IDOR: one customer cannot read or cancel another's booking, and the
+`404` it gets back leaks no name, email or table.
+
+Two status codes that have to differ, and did not at first:
+
+- **`401`** — not signed in. The SPA treats this as an expired session and redirects to login.
+- **`403`** — signed in, not entitled. Without an explicit `accessDeniedHandler`, Spring
+  answers a role failure through the *authentication* entry point and returns `401`; a
+  customer who followed an admin link would be sent to sign in again, which cannot help,
+  forever.
+
+A `403` from the CSRF filter is deliberately left with an empty body, while a role refusal
+carries the `ACCESS_DENIED` envelope. That difference is the signal the API client uses: a
+bare `403` on a write means the page's CSRF token no longer matches the server's session
+(a backend restart, or a tab left open), so it fetches a fresh token and retries **once**;
+an envelope means the answer will not change and it stops.
+
+Admin cancellation goes through the same `BookingService.cancel` as the customer path,
+differing only in the `isAdmin` flag. Staff bypass the notice period — that is what ringing
+the club is for — but nothing bypasses overlap, maintenance or an inactive table, and a
+session that has already started cannot be cancelled by anyone.
 
 The availability response is shaped so the grid renders with no further computation and
 no further requests. The time axis and the server-computed duration options are sent once
@@ -362,10 +396,21 @@ would do so silently.
 | 1 | Schema, settings, pricing, availability engine + grid | **Done** |
 | 2 | Auth, booking creation, Stripe Checkout, webhooks, hold sweeper | **Done** |
 | 3 | Customer dashboard, cancellation, password reset | **Done** |
-| 4 | Admin dashboard, booking management, authz boundary | Planned |
+| 4 | Admin dashboard, booking management, authz boundary | **Done** |
 | 5 | Telephone bookings, table CRUD, maintenance blocks | Planned |
 | 6 | Settings screens | Planned |
 | 7 | Playwright, accessibility, security review | Planned |
+
+Phase 4 covers the staff dashboard, the filterable booking register, booking detail and
+admin cancellation. Creating and editing bookings from the admin area is deliberately held
+back to Phase 5, where it belongs with the telephone-booking flow it shares almost all of
+its machinery with (find-or-create customer, straight to `CONFIRMED`, no Stripe); building
+it twice would mean throwing the first one away.
+
+Two things remain unverified rather than done, and are called out here so nobody assumes
+otherwise: the **Stripe success path has never been run against real test keys** (the suite
+uses a stubbed gateway, and the webhook is covered by a signed fixture), and **Playwright
+is not set up** — every end-to-end claim in this README was checked by hand in a browser.
 
 Payments will use Stripe Checkout with a `PENDING_PAYMENT` hold: the booking is created
 and its slot reserved *before* Stripe is called (taking money for an unreserved slot

@@ -16,9 +16,9 @@ function readCsrfToken(): string | null {
  *
  * <p>A GET to a public endpoint is enough to be issued one.
  */
-async function ensureCsrfToken(): Promise<string | null> {
+async function ensureCsrfToken(force = false): Promise<string | null> {
   const existing = readCsrfToken();
-  if (existing) {
+  if (existing && !force) {
     return existing;
   }
   await fetch('/api/auth/me', { credentials: 'include' });
@@ -56,27 +56,19 @@ async function toApiError(response: Response): Promise<ApiError> {
  */
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method ?? 'GET').toUpperCase();
-  const headers = new Headers(init.headers);
+  const isWrite = method !== 'GET' && method !== 'HEAD';
 
-  if (init.body !== undefined && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
+  let response = await send(path, init, isWrite, false);
+
+  // A rejected CSRF token comes back as a bare 403 with no error envelope. It means the
+  // cookie the page is holding no longer matches the server's session — after a backend
+  // restart, or a session that expired while the tab sat open. Fetching a fresh token and
+  // retrying once turns that into a successful request instead of an error the user can only
+  // clear by reloading. Retried exactly once, and only for a write, so a genuine "you are not
+  // allowed to do this" 403 still surfaces rather than looping.
+  if (isWrite && response.status === 403 && !(await hasErrorEnvelope(response))) {
+    response = await send(path, init, true, true);
   }
-
-  // Session auth means writes need the double-submit CSRF token, fetched first if the page
-  // has not been issued one yet.
-  if (method !== 'GET' && method !== 'HEAD') {
-    const token = await ensureCsrfToken();
-    if (token) {
-      headers.set('X-XSRF-TOKEN', token);
-    }
-  }
-
-  const response = await fetch(path, {
-    ...init,
-    headers,
-    // Required for the session cookie to travel.
-    credentials: 'include',
-  });
 
   if (!response.ok) {
     throw await toApiError(response);
@@ -87,4 +79,50 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   }
 
   return (await response.json()) as T;
+}
+
+async function send(
+  path: string,
+  init: RequestInit,
+  isWrite: boolean,
+  forceFreshToken: boolean,
+): Promise<Response> {
+  const headers = new Headers(init.headers);
+
+  if (init.body !== undefined && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  // Session auth means writes need the double-submit CSRF token, fetched first if the page
+  // has not been issued one yet.
+  if (isWrite) {
+    const token = await ensureCsrfToken(forceFreshToken);
+    if (token) {
+      headers.set('X-XSRF-TOKEN', token);
+    }
+  }
+
+  return fetch(path, {
+    ...init,
+    headers,
+    // Required for the session cookie to travel.
+    credentials: 'include',
+  });
+}
+
+/**
+ * Whether a 403 carries the application's own error envelope.
+ *
+ * <p>The distinction is what separates "your token is stale, try again" from "you are not
+ * allowed to do this". The former is Spring Security's filter rejecting the request before it
+ * reaches any controller, so there is no envelope; the latter comes from the application and
+ * has one. Reads a clone so the caller can still consume the body.
+ */
+async function hasErrorEnvelope(response: Response): Promise<boolean> {
+  try {
+    const parsed: unknown = await response.clone().json();
+    return Boolean(parsed && typeof parsed === 'object' && 'code' in parsed);
+  } catch {
+    return false;
+  }
 }

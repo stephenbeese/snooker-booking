@@ -77,11 +77,16 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()
                         // Browsing availability must not require login — it is the
                         // conversion path.
+                        // Every path here must have a controller behind it. An allowlisted path
+                        // that does not exist is a decision made in advance for whoever
+                        // eventually creates it — they get a public endpoint without choosing
+                        // one. /api/booking-settings was listed here and never built; the
+                        // duration options it would have served already travel with the
+                        // availability response.
                         .requestMatchers(HttpMethod.GET,
                                 "/api/availability",
                                 "/api/tables",
-                                "/api/club",
-                                "/api/booking-settings")
+                                "/api/club")
                         .permitAll()
                         // Admin rules come before anyRequest(), which matches everything
                         // and would otherwise shadow them.
@@ -89,14 +94,57 @@ public class SecurityConfig {
                         // Default deny: a new endpoint is unreachable until it is
                         // deliberately opened, rather than public until someone notices.
                         .anyRequest().authenticated())
-                // The SPA must receive 401 JSON, never a 302 to a login page.
+                // The SPA must receive a status code, never a 302 to a login page.
+                //
+                // Both handlers are needed, and the difference between them is not cosmetic.
+                // Without an explicit accessDeniedHandler, an authenticated user who lacks the
+                // role is sent to the *entry point* — answering 401 instead of 403. The SPA
+                // reads 401 as "your session has expired" and bounces the user to the login
+                // page, where signing in again changes nothing, because their session was never
+                // the problem. A customer who follows an admin link would loop there forever.
                 .exceptionHandling(ex -> ex
-                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
+                        // setStatus, not sendError: sendError triggers a container ERROR
+                        // dispatch that re-enters the filter chain, where the request is
+                        // anonymous again and comes back out as a 401 — the exact bug this
+                        // handler exists to fix.
+                        //
+                        // The body matters as much as the status. This handler serves two very
+                        // different denials: a role the caller does not have, and a CSRF token
+                        // that no longer matches. Only the first is a decision about the user,
+                        // so only the first carries an error envelope — the client retries a
+                        // bare 403 with a fresh token and gives up on one that explains itself.
+                        .accessDeniedHandler(SecurityConfig::writeAccessDenied))
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .logout(Customizer.withDefaults());
 
         return http.build();
+    }
+
+    /**
+     * Answers an authorisation failure.
+     *
+     * <p>A {@link org.springframework.security.web.csrf.CsrfException} is deliberately left
+     * bare: the client cannot tell a stale token from a real refusal by status code alone, and
+     * the absence of an envelope is the signal that retrying with a fresh token is worth doing.
+     * A role refusal gets the envelope, so the client stops rather than looping.
+     */
+    private static void writeAccessDenied(
+            jakarta.servlet.http.HttpServletRequest request,
+            jakarta.servlet.http.HttpServletResponse response,
+            org.springframework.security.access.AccessDeniedException denied)
+            throws java.io.IOException {
+        response.setStatus(HttpStatus.FORBIDDEN.value());
+        if (denied instanceof org.springframework.security.web.csrf.CsrfException) {
+            return;
+        }
+        response.setContentType("application/json");
+        // Hand-written rather than serialised: no message from the exception reaches the
+        // client, so nothing about the failed check can leak into the response.
+        response.getWriter().write(
+                "{\"code\":\"ACCESS_DENIED\","
+                        + "\"message\":\"You do not have permission to do that.\"}");
     }
 
     @Bean

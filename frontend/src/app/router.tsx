@@ -1,4 +1,8 @@
 import { createBrowserRouter } from 'react-router';
+import { AdminBookingDetailPage } from '@/features/admin/AdminBookingDetailPage';
+import { AdminBookingsPage } from '@/features/admin/AdminBookingsPage';
+import { AdminDashboardPage } from '@/features/admin/AdminDashboardPage';
+import { RequireAdmin } from '@/features/admin/RequireAdmin';
 import { BookPage } from '@/features/availability/BookPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { RegisterPage } from '@/features/auth/RegisterPage';
@@ -51,6 +55,32 @@ export const router = createBrowserRouter([
           <RequireAuth>
             <BookingPage />
           </RequireAuth>
+        ),
+      },
+      // Staff area. RequireAdmin decides what renders; the server decides what is allowed —
+      // every /api/admin/** endpoint is role-gated independently of anything here.
+      {
+        path: '/admin',
+        element: (
+          <RequireAdmin>
+            <AdminDashboardPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: '/admin/bookings',
+        element: (
+          <RequireAdmin>
+            <AdminBookingsPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: '/admin/bookings/:reference',
+        element: (
+          <RequireAdmin>
+            <AdminBookingDetailPage />
+          </RequireAdmin>
         ),
       },
       {

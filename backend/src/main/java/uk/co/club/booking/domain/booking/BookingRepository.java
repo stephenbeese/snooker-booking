@@ -1,8 +1,10 @@
 package uk.co.club.booking.domain.booking;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -162,6 +164,74 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("now") Instant now,
             @Param("cancelledBy") Long cancelledBy,
             @Param("reason") String reason);
+
+    /**
+     * The admin booking list: every filter optional, applied in one query.
+     *
+     * <p>Each predicate is null-guarded (`:param IS NULL OR ...`) so one query serves every
+     * combination of filters. A Specification or a hand-built query string would do the same
+     * thing with more machinery and one more place for an unparameterised value to creep in.
+     *
+     * <p>The search term matches reference, customer name or email. It is bound as a
+     * parameter and never concatenated, so a term containing a quote is a search for that
+     * character rather than a syntax error — or worse.
+     *
+     * <p>{@code JOIN FETCH} for the same reason as the customer list: the table association is
+     * LAZY and open-in-view is off, so the DTO would otherwise be built from a dead proxy.
+     * Paging a fetch join is safe here because it is a to-one — Hibernate pages it in SQL.
+     */
+    @Query(value = """
+            SELECT b FROM Booking b
+            JOIN FETCH b.snookerTable t
+            WHERE (:statuses IS NULL OR b.status IN :statuses)
+              AND (CAST(:from AS timestamp) IS NULL OR b.startAt >= :from)
+              AND (CAST(:to AS timestamp) IS NULL OR b.startAt < :to)
+              AND (:tableId IS NULL OR t.id = :tableId)
+              AND (:search IS NULL
+                   OR LOWER(b.reference) LIKE :search
+                   OR LOWER(b.customerName) LIKE :search
+                   OR LOWER(b.customerEmail) LIKE :search)
+            """,
+            countQuery = """
+            SELECT COUNT(b) FROM Booking b
+            WHERE (:statuses IS NULL OR b.status IN :statuses)
+              AND (CAST(:from AS timestamp) IS NULL OR b.startAt >= :from)
+              AND (CAST(:to AS timestamp) IS NULL OR b.startAt < :to)
+              AND (:tableId IS NULL OR b.snookerTable.id = :tableId)
+              AND (:search IS NULL
+                   OR LOWER(b.reference) LIKE :search
+                   OR LOWER(b.customerName) LIKE :search
+                   OR LOWER(b.customerEmail) LIKE :search)
+            """)
+    Page<Booking> search(
+            @Param("statuses") Collection<BookingStatus> statuses,
+            @Param("from") Instant from,
+            @Param("to") Instant to,
+            @Param("tableId") Long tableId,
+            @Param("search") String search,
+            Pageable pageable);
+
+    /** Bookings in a window regardless of status, for the admin day view and dashboard counts. */
+    @Query("""
+            SELECT b FROM Booking b
+            JOIN FETCH b.snookerTable
+            WHERE b.startAt >= :windowStart AND b.startAt < :windowEnd
+            ORDER BY b.startAt
+            """)
+    List<Booking> findStartingBetween(
+            @Param("windowStart") Instant windowStart, @Param("windowEnd") Instant windowEnd);
+
+    /** How many bookings hold each status in a window. Counted in the database, not in Java. */
+    @Query("""
+            SELECT b.status, COUNT(b) FROM Booking b
+            WHERE b.startAt >= :windowStart AND b.startAt < :windowEnd
+            GROUP BY b.status
+            """)
+    List<Object[]> countByStatusBetween(
+            @Param("windowStart") Instant windowStart, @Param("windowEnd") Instant windowEnd);
+
+    /** Live holds still counting down, for the dashboard's "awaiting payment" figure. */
+    long countByStatusAndHoldExpiresAtAfter(BookingStatus status, Instant now);
 
     /**
      * Holds due for expiry. Batch-limited so a long outage cannot produce one enormous

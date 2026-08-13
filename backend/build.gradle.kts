@@ -48,6 +48,14 @@ dependencies {
     implementation("org.postgresql:postgresql")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    // Spring Boot 4 moved TestRestTemplate out of spring-boot-test into this module, and
+    // starter-test no longer pulls it in. AuthorizationBoundaryIT needs a real HTTP client:
+    // the role checks it asserts live in the servlet filter chain, which MockMvc-style
+    // testing of a controller bean would bypass entirely.
+    testImplementation("org.springframework.boot:spring-boot-resttestclient")
+    // TestRestTemplate is built on RestTemplateBuilder, which lives here. Boot 4 split it out
+    // of the core jar, so without this the bean fails to construct with NoClassDefFoundError.
+    testImplementation("org.springframework.boot:spring-boot-restclient")
     testImplementation("org.springframework.security:spring-security-test")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
     // Testcontainers 2.x prefixes its module names ("testcontainers-postgresql");

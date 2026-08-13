@@ -16,4 +16,12 @@ export const queryKeys = {
   currentUser: () => ['current-user'] as const,
   myBookings: () => ['bookings', 'mine'] as const,
   booking: (reference: string) => ['bookings', reference] as const,
+
+  adminDashboard: () => ['admin', 'dashboard'] as const,
+  // The whole filter object is part of the key: two different filters are two different
+  // result sets, and sharing a key between them shows the previous filter's rows while the
+  // new request is in flight.
+  adminBookings: (filters: unknown) => ['admin', 'bookings', filters] as const,
+  adminBooking: (reference: string) => ['admin', 'bookings', 'one', reference] as const,
+  adminDay: (date: string) => ['admin', 'day', date] as const,
 } as const;
