@@ -219,20 +219,103 @@ Covered by `StripePropertiesTest`.
 ## Running tests
 
 ```bash
-cd backend  && ./gradlew test        # JUnit 5 + Mockito
-cd frontend && yarn test             # Vitest + React Testing Library
+cd backend  && ./gradlew test        # 214 tests: JUnit 5, Mockito, Testcontainers
+cd frontend && yarn test             # 64 tests: Vitest + React Testing Library
 cd frontend && yarn typecheck        # strict TypeScript, no emit
+cd frontend && yarn e2e              # 23 tests: Playwright, real browser
 ```
 
-Backend tests run in UTC. Integration tests will use Testcontainers with
-`postgres:17-alpine` — **H2 cannot express `EXCLUDE USING gist`**, so an H2-based suite
-would give zero coverage of the system's core invariant.
+Backend tests run in UTC. Integration tests use Testcontainers with `postgres:17-alpine` —
+**H2 cannot express `EXCLUDE USING gist`**, so an H2-based suite would give zero coverage of
+the system's core invariant.
 
-Playwright arrives in Phase 7:
+### End-to-end
+
+Playwright starts both servers itself (see `frontend/playwright.config.ts`) and reuses them
+if they are already running. First run only:
 
 ```bash
-cd frontend && yarn playwright install && yarn e2e
+cd frontend && yarn playwright install chromium
 ```
+
+Two projects: `chromium` for the desktop specs and `mobile` (Pixel 7) for `*.mobile.spec.ts`,
+which needs real touch emulation rather than a narrow desktop window.
+
+The specs run against the **dev** database and leave real bookings behind. That is deliberate
+— they exercise the same schema and settings a developer is looking at — but it means they
+change data. Settings are restored in an `afterEach`, and that restore is asserted rather than
+fire-and-forget: a silent failure there once left the club closed on a Wednesday and every
+later spec failing for an unrelated reason.
+
+`stripe-checkout.spec.ts` types a real test card into Stripe's hosted page. For the webhook
+to reach a local backend, forward it and start the backend with the CLI's signing secret:
+
+```bash
+stripe listen --forward-to localhost:8080/api/webhooks/stripe
+```
+
+Without the forwarder the payment still completes and the booking still confirms — the
+browser-return path handles it — but the webhook half of the confirmation is not exercised.
+
+---
+
+## Rate limiting
+
+The endpoints where guessing is the attack are throttled by `RateLimitFilter`, which sits
+*before* the CSRF filter so a flood costs a map lookup rather than a BCrypt comparison.
+
+| Endpoint | Per IP | Per email |
+|---|---|---|
+| `POST /api/auth/login` | 10 / min | 20 / hour |
+| `POST /api/auth/register` | 5 / hour | 3 / hour |
+| `POST /api/auth/forgot-password` | 5 / hour | 3 / hour |
+| `POST /api/auth/reset-password` | 10 / hour | 10 / hour |
+
+Both keys matter. IP alone lets a botnet spray one account; email alone lets one address
+enumerate many. A refusal is `429` with `Retry-After` and the same message whichever limit
+tripped — saying which would confirm the account exists. A successful login clears that
+account's failure history, so someone who mistypes their password a few times is not locked
+out afterwards; the per-IP counter is deliberately left alone, since on a shared network it
+is protecting other people.
+
+BCrypt strength 12 already makes login slow, but slow is not a limit — an unthrottled
+attacker still gets unlimited attempts, and an unthrottled forgot-password endpoint is a way
+to make the club's mail server send arbitrary volumes of mail to an address of the attacker's
+choosing.
+
+Counters are in memory, so they reset on restart and would be per-node behind a load
+balancer. For an attacker that is a marginal gain; a shared Redis counter would be a hard
+dependency on infrastructure the club does not run.
+
+`app.rate-limit.enabled` defaults to **true** — a flag that defaults to off is protection that
+exists only in the config file someone forgot to write. The integration suite turns it off
+(`application-test.yml`) because it logs in far harder than any real user; `RateLimitIT` turns
+it back on for its own context. The dev profile keeps the filter on but scales every limit by
+`app.rate-limit.multiplier: 50`, so the Playwright suite runs through the real filter without
+throttling itself.
+
+---
+
+## API documentation
+
+springdoc generates an OpenAPI document from the controllers and DTOs, so it cannot drift
+from the code the way a hand-written spec does.
+
+| URL | What |
+|---|---|
+| `http://localhost:8080/swagger-ui.html` | Browsable API |
+| `http://localhost:8080/v3/api-docs` | The JSON document |
+
+**Dev profile only.** A public `/v3/api-docs` is a complete and accurate map of every
+endpoint and field, admin surface included — it saves an attacker the reconnaissance and does
+nothing for a customer. `springdoc.api-docs.enabled` defaults to `false`, so a new profile has
+to opt in rather than remember to opt out, and `SecurityConfig` reads that same property when
+deciding whether to allowlist the docs paths, so the two cannot disagree.
+
+`OpenApiDocumentIT` asserts the document generates and contains no secrets. Worth a test
+because springdoc still uses Jackson 2 internally while Spring Boot 4 has moved to Jackson 3:
+both are on the classpath, and if that ever conflicts the failure appears only when someone
+opens the URL.
 
 ---
 
@@ -454,6 +537,43 @@ reset link.
 
 ---
 
+## Security
+
+Reviewed at the end of Phase 7. `SecurityHeadersIT` pins the parts that are invisible in the
+UI and would otherwise be lost silently in a refactor.
+
+| Concern | How |
+|---|---|
+| Passwords | BCrypt strength 12 |
+| Sessions | Spring Session JDBC; id rotated on login; every session invalidated on password reset |
+| Cookies | `Secure` + `SameSite=Lax` on both; `HttpOnly` on `SESSION` but deliberately **not** on `XSRF-TOKEN`, which the SPA must read |
+| CSRF | Cookie-to-header on every write; only the Stripe webhook is exempt, where HMAC is strictly stronger |
+| Authorisation | `hasRole("ADMIN")` on `/api/admin/**`, default-deny `anyRequest().authenticated()`, plus per-record ownership checks |
+| Headers | `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Cache-Control: no-store` |
+| Errors | One envelope, never a stack trace; `include-stacktrace: never` |
+| Enumeration | Login and forgot-password answer identically whether or not the account exists |
+| Webhooks | `Webhook.constructEvent` signature verification; replay-proofed by a PK on `event_id` |
+| Secrets | Environment only; the app refuses to start without the Stripe keys |
+| Rate limiting | See [Rate limiting](#rate-limiting) |
+
+Two decisions worth knowing about, because both look like oversights:
+
+**`SameSite=Lax`, not `Strict`.** `Strict` withholds the cookie on the cross-site top-level
+redirect back from Stripe Checkout, so the customer lands back logged out with a payment they
+cannot see. `Lax` still blocks cross-site POST, which is the attack CSRF cookies exist to stop.
+
+**Reset tokens are stored SHA-256, not BCrypt** — the inverse of the password rule, and
+deliberate. The token is already 32 bytes of `SecureRandom`, so stretching it buys nothing,
+and BCrypt would make lookup-by-token unindexable.
+
+`X-Forwarded-For` is deliberately ignored when identifying a caller. It is attacker-supplied
+unless a trusted proxy overwrites it, and honouring it would let anyone reset their own rate
+limit by varying a header — worse than no limit, because it would look like protection. Behind
+a proxy, set `server.forward-headers-strategy=framework` so the container resolves the real
+address before the filter sees it.
+
+---
+
 ## Design system
 
 The whole visual language lives in `frontend/src/index.css`, as Tailwind v4 `@theme`
@@ -494,7 +614,7 @@ would do so silently.
 | 4 | Admin dashboard, booking management, authz boundary | **Done** |
 | 5 | Telephone bookings, table CRUD, maintenance blocks | **Done** |
 | 6 | Club settings, opening hours, booking rules, pricing | **Done** |
-| 7 | Playwright, accessibility, security review | Planned |
+| 7 | Rate limiting, OpenAPI, Playwright, accessibility, security review | **Done** |
 
 Phase 5 adds the staff booking flow deferred from Phase 4. A telephone booking routes
 through the same `BookingService.create` and the same `BookingValidator` as an online one;
@@ -508,23 +628,39 @@ re-book instead. Moving a booking is a different operation from creating one —
 release the old slot and take the new one atomically, or it can double-sell the table it
 just freed — and it was not worth doing badly to close a checklist item.
 
-Phase 6 makes the booking engine configurable — see [Settings](#settings). Its hard gate was
-specified as a Playwright spec; Playwright is still not set up, so it is
-`SettingsAffectAvailabilityIT` instead. That exercises the real engine against real
-PostgreSQL and is a genuine gate, but it does not prove the browser renders the result: the
-substitution is a real reduction in coverage, not an equivalent.
+Phase 6 makes the booking engine configurable — see [Settings](#settings).
 
-Two things remain unverified rather than done, and are called out here so nobody assumes
-otherwise: **payment completion through the hosted Stripe Checkout UI has never been driven
-with a real card entry** (session creation and webhook processing have both now been
-verified against live test keys, but nobody has typed `4242…` on Stripe's page and followed
-the redirect back), and **Playwright is not set up** — every end-to-end claim in this README
-was checked by hand.
+Phase 7 closes the two gaps the earlier phases carried. Both are now genuinely verified
+rather than argued for:
 
-Payments will use Stripe Checkout with a `PENDING_PAYMENT` hold: the booking is created
-and its slot reserved *before* Stripe is called (taking money for an unreserved slot
-guarantees double-selling), confirmation is idempotent from both the webhook and the
-browser return, and a sweeper releases abandoned holds.
+- **The Phase 6 hard gate is a real Playwright spec.** `admin-settings-affect-availability.spec.ts`
+  drives the admin UI in one browser context and asserts the result in another, as a customer.
+  `SettingsAffectAvailabilityIT` remains as the faster backend-level gate.
+- **Payment has been driven end to end through Stripe's hosted page**, card entry included,
+  with the webhook forwarded by the Stripe CLI and its signature verified. This is the only
+  test that covers the whole chain — hold, session, charge, webhook, confirmation. Every other
+  payment test stubs at least one link, which is exactly how the `jsonb` webhook defect
+  survived 156 passing tests while real bookings stayed unconfirmed.
+
+Payments use Stripe Checkout with a `PENDING_PAYMENT` hold: the booking is created and its
+slot reserved *before* Stripe is called (taking money for an unreserved slot guarantees
+double-selling), confirmation is idempotent from both the webhook and the browser return, and
+a sweeper releases abandoned holds.
+
+### Still not done
+
+**Editing an existing booking's time or table**, as above — staff cancel and re-book.
+
+**Pricing rules are read-only in the admin UI.** The endpoints exist and are tested; the
+screen lists rules rather than editing them.
+
+**Rate limiting is per-instance and in-memory.** Correct for the single instance this is built
+for; behind a load balancer each node would keep its own counters. `RateLimiter` is the single
+place that changes.
+
+**No automated axe/contrast audit.** The accessibility specs drive the keyboard and assert
+accessible names — which is what would actually stop someone booking — but colour contrast has
+only been checked by eye.
 
 Deliberately out of scope: cafe/bar POS, memberships, leagues, recurring bookings,
 reminders, promo codes, analytics, and multi-tenancy. No abstractions have been built for

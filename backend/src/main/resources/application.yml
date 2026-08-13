@@ -78,6 +78,16 @@ booking:
     # the query is a cheap indexed lookup on a partial index.
     interval-ms: 60000
 
+springdoc:
+  # Off by default, switched on per profile. A public /v3/api-docs is a complete and
+  # accurate map of every endpoint and field, admin surface included — it saves an
+  # attacker the reconnaissance and does nothing for a customer, who will never read it.
+  # Defaulting to off means a new profile has to opt in rather than remember to opt out.
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
 management:
   endpoints:
     web:

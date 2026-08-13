@@ -1,6 +1,24 @@
 # Integration-test profile. The datasource is supplied by @ServiceConnection from the
 # Testcontainers Postgres, so no url/username/password here.
 spring:
+  datasource:
+    hikari:
+      # Smaller than production's 15, and the reason is arithmetic rather than taste.
+      #
+      # Every test class that changes a property (@TestPropertySource) gets its own Spring
+      # context, and every context opens its own pool against the one shared Testcontainers
+      # Postgres. Those contexts are cached and not closed between classes, so the pools
+      # accumulate: at 15 each, four contexts plus Spring Session and Flyway exhaust
+      # Postgres's default 100-connection limit and the next context fails to start with
+      # "sorry, too many clients already".
+      #
+      # That failure surfaces as every test in some unrelated class failing at once, which
+      # reads convincingly as an authorisation or wiring bug and is neither.
+      #
+      # 10 still exceeds BookingConcurrencyIT's 8 threads, so the concurrency tests continue
+      # to exercise the database constraint rather than starving on the pool.
+      maximum-pool-size: 10
+
   flyway:
     # Migrations only. The dev seed would fight the explicit fixtures each test builds,
     # and a test that depends on seed data is a test that breaks when the seed changes.
@@ -23,6 +41,12 @@ spring:
       initialize-schema: never
 
 app:
+  # Off for the suite: AuthorizationBoundaryIT alone logs in dozens of times, far beyond
+  # any real user's rate, and would throttle itself into failures that look like auth bugs.
+  # RateLimiterTest and RateLimitIT cover the limiter itself — RateLimitIT re-enables this
+  # property for its own context so the filter is genuinely exercised end to end.
+  rate-limit:
+    enabled: false
   club:
     timezone: Europe/London
   base-url: http://localhost:5173

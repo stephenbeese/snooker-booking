@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { useCurrentUser, useLogout } from '@/features/auth/useAuth';
 import { useClub } from '@/features/club/useClub';
 import { Logo } from './Logo';
+import { useDocumentTitle } from './useDocumentTitle';
 
 export function AppLayout() {
   const { data: user } = useCurrentUser();
@@ -11,6 +12,8 @@ export function AppLayout() {
   const logout = useLogout();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  useDocumentTitle(club?.name);
 
   // Without this the menu stays open over the page it just navigated to, which reads as
   // a broken link on a phone.

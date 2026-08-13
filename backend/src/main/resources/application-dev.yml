@@ -10,6 +10,22 @@ spring:
         # Bound to this profile so it can never leak into production.
         secure: false
 
+app:
+  rate-limit:
+    # Dev only, and never in production: the end-to-end suite signs in dozens of times a
+    # minute. The filter stays enabled so the specs still run through it — this raises the
+    # ceiling rather than removing it.
+    multiplier: 50
+
+springdoc:
+  # Dev only. http://localhost:8080/swagger-ui.html browses the API; /v3/api-docs is the
+  # JSON the frontend's type generation reads.
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+
 logging:
   level:
     org.hibernate.SQL: DEBUG

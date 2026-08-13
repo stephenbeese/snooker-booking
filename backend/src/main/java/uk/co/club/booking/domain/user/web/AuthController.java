@@ -3,6 +3,7 @@ package uk.co.club.booking.domain.user.web;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import uk.co.club.booking.common.error.BusinessRuleException;
 import uk.co.club.booking.common.error.ErrorCode;
+import uk.co.club.booking.common.web.RateLimitFilter;
 import uk.co.club.booking.domain.user.PasswordResetService;
 import uk.co.club.booking.domain.user.User;
 import uk.co.club.booking.domain.user.UserService;
@@ -48,16 +50,20 @@ public class AuthController {
     private final UserService userService;
     private final PasswordResetService passwordResetService;
     private final AuthenticationManager authenticationManager;
+    private final ObjectProvider<RateLimitFilter> rateLimitFilter;
     private final SecurityContextRepository securityContextRepository =
             new HttpSessionSecurityContextRepository();
 
     public AuthController(
             UserService userService,
             PasswordResetService passwordResetService,
-            AuthenticationManager authenticationManager) {
+            AuthenticationManager authenticationManager,
+            // Absent when rate limiting is switched off, which the test profile does.
+            ObjectProvider<RateLimitFilter> rateLimitFilter) {
         this.userService = userService;
         this.passwordResetService = passwordResetService;
         this.authenticationManager = authenticationManager;
+        this.rateLimitFilter = rateLimitFilter;
     }
 
     /** Creates a customer account. Does not log them in — the SPA posts to /login next. */
@@ -114,6 +120,10 @@ public class AuthController {
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, httpRequest, httpResponse);
+
+        // Clears this account's failed-attempt history, so someone who mistyped a few times
+        // before getting in is not throttled for the rest of the hour.
+        rateLimitFilter.ifAvailable(filter -> filter.onSuccessfulLogin(request.email()));
 
         AppUserPrincipal principal = (AppUserPrincipal) authentication.getPrincipal();
         return UserResponse.from(userService.require(principal.id()));

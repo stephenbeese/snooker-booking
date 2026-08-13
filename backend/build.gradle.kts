@@ -47,6 +47,10 @@ dependencies {
     // the constraint name for exclusion violations, which Hibernate reports as null.
     implementation("org.postgresql:postgresql")
 
+    // Generates the OpenAPI document from the controllers and DTOs that already exist, so
+    // it cannot drift from the code the way a hand-written spec does.
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0")
+
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     // Spring Boot 4 moved TestRestTemplate out of spring-boot-test into this module, and
     // starter-test no longer pulls it in. AuthorizationBoundaryIT needs a real HTTP client:

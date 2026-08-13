@@ -35,7 +35,13 @@ public abstract class AbstractIntegrationTest {
                     .withUsername("snooker")
                     .withPassword("snooker")
                     // btree_gist needs elevated rights; the container superuser has them.
-                    .withReuse(false);
+                    .withReuse(false)
+                    // Above Postgres's default 100. Each test class that overrides a property
+                    // gets its own cached Spring context and its own connection pool, and
+                    // those pools are never closed, so the total climbs as classes are added.
+                    // Running out surfaces as every test in one arbitrary class failing to
+                    // start — a failure that looks like a wiring bug and is really exhaustion.
+                    .withCommand("postgres", "-c", "max_connections=200");
 
     static {
         POSTGRES.start();
@@ -57,6 +63,23 @@ public abstract class AbstractIntegrationTest {
                 TRUNCATE TABLE payment_exception, payment, booking, maintenance_block,
                                password_reset_token, snooker_table, app_user
                 RESTART IDENTITY CASCADE
+                """);
+
+        // Mirrors V4. Omitted originally, and the gap stayed invisible until enough test
+        // classes existed to change the running order: AuthorizationBoundaryIT renames the
+        // club to "Boundary Club" and never puts it back, so ClubControllerIT failed only
+        // when it happened to run afterwards. Exactly the order-dependent suite the resets
+        // below exist to prevent.
+        jdbcTemplate.execute(
+                """
+                UPDATE club_settings
+                   SET name = 'The Snooker Club',
+                       address_line1 = '1 High Street', address_line2 = NULL,
+                       city = 'Manchester', postcode = 'M1 1AA',
+                       phone = '0161 000 0000', email = 'bookings@snookerclub.example',
+                       website = NULL,
+                       description = 'Championship tables, open seven days a week.'
+                 WHERE id = 1
                 """);
 
         // Settings and opening hours are singleton/reference rows that migrations insert, so
@@ -86,14 +109,22 @@ public abstract class AbstractIntegrationTest {
         // would otherwise change the price of every booking created after it — and because
         // the extra rule usually has a higher priority, the failures land in unrelated
         // classes as an unexplained few pence.
-        jdbcTemplate.execute("DELETE FROM pricing_rule WHERE name <> 'Standard hourly rate'");
+        // By id, not by name. Deleting "everything not called 'Standard hourly rate'" leaves
+        // behind any rule another test created under that same name — and AuthorizationBoundaryIT
+        // creates exactly one, by POSTing a catch-all rule to prove an admin may. Two catch-alls
+        // then survive into the next class, where "the last catch-all cannot be deleted"
+        // correctly permits deleting one and the test fails. The migration's row is the lowest
+        // id; keeping precisely that one is unambiguous.
+        jdbcTemplate.execute(
+                "DELETE FROM pricing_rule WHERE id <> (SELECT MIN(id) FROM pricing_rule)");
         jdbcTemplate.execute(
                 """
                 UPDATE pricing_rule
-                   SET hourly_rate_pence = 1200, priority = 0, active = TRUE,
+                   SET name = 'Standard hourly rate',
+                       hourly_rate_pence = 1200, priority = 0, active = TRUE,
                        table_type = NULL, day_of_week = NULL,
                        start_time = NULL, end_time = NULL
-                 WHERE name = 'Standard hourly rate'
+                 WHERE id = (SELECT MIN(id) FROM pricing_rule)
                 """);
     }
 }

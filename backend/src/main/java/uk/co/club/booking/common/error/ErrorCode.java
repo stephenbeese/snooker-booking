@@ -41,5 +41,7 @@ public enum ErrorCode {
     // Generic
     NOT_FOUND,
     CONFLICT,
+    /** Throttled by RateLimitFilter. The response carries a Retry-After header. */
+    TOO_MANY_REQUESTS,
     UNEXPECTED_ERROR
 }

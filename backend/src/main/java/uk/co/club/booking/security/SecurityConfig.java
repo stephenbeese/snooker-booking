@@ -21,10 +21,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import uk.co.club.booking.common.web.RateLimitFilter;
 
 /**
  * Session-cookie authentication for the SPA.
@@ -44,14 +46,46 @@ public class SecurityConfig {
             HttpSecurity http,
             // Qualified by name: Spring MVC's HandlerMappingIntrospector also implements
             // CorsConfigurationSource, so the type alone is ambiguous.
-            @Qualifier("corsConfigurationSource") CorsConfigurationSource corsSource)
+            @Qualifier("corsConfigurationSource") CorsConfigurationSource corsSource,
+            // Optional so the integration suite can switch the limiter off. Tests hammer
+            // login far harder than any real user and would otherwise throttle themselves,
+            // producing failures that look like auth bugs.
+            org.springframework.beans.factory.ObjectProvider<RateLimitFilter> rateLimitFilter,
+            // Read from the same property that enables springdoc, so the allowlist and the
+            // endpoints cannot disagree. Hardcoding the paths as permitAll would leave them
+            // open in production, where the documents are disabled — an allowlist entry for
+            // something that does not exist is a decision made in advance for whoever
+            // eventually enables it.
+            @Value("${springdoc.api-docs.enabled:false}") boolean apiDocsEnabled,
+            // Reuses the session cookie's own setting rather than a second flag, so the two
+            // can never disagree — and defaults to true, so a profile that forgets to say
+            // anything gets the safe behaviour rather than the convenient one.
+            @Value("${spring.servlet.session.cookie.secure:true}") boolean secureCookies)
             throws Exception {
 
         CookieCsrfTokenRepository csrfRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        // The session cookie gets Secure and SameSite from application.yml, but this one is
+        // built here and inherits none of it. Left alone it is the only cookie the app sets
+        // without Secure, so a single plain-HTTP request to the domain — a typed URL, an old
+        // bookmark, a stray link — leaks a valid CSRF token in clear text.
+        //
+        // SameSite=Lax matches the session cookie deliberately: Strict would withhold both on
+        // the top-level redirect back from Stripe Checkout, and a CSRF token that is missing
+        // exactly when the customer returns from paying breaks the confirmation step.
+        csrfRepository.setCookieCustomizer(cookie -> cookie
+                .secure(secureCookies)
+                .sameSite("Lax"));
         CsrfTokenRequestAttributeHandler csrfHandler = new CsrfTokenRequestAttributeHandler();
         // Spring Security defers CSRF token loading by default, so an SPA that never
         // renders a token would never receive the cookie. Opting out writes it eagerly.
         csrfHandler.setCsrfRequestAttributeName(null);
+
+        if (apiDocsEnabled) {
+            http.authorizeHttpRequests(auth -> auth
+                    .requestMatchers(
+                            "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
+                    .permitAll());
+        }
 
         http.cors(cors -> cors.configurationSource(corsSource))
                 .csrf(csrf -> csrf.csrfTokenRepository(csrfRepository)
@@ -67,8 +101,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/health", "/actuator/health").permitAll()
                         .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
                         // Necessarily public: someone who has lost their password has no
-                        // session to authenticate with. Both are rate-limited in Phase 7;
-                        // neither reveals whether an account exists.
+                        // session to authenticate with. Both are throttled by
+                        // RateLimitFilter and neither reveals whether an account exists.
                         .requestMatchers(
                                 "/api/auth/forgot-password", "/api/auth/reset-password")
                         .permitAll()
@@ -118,6 +152,12 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .logout(Customizer.withDefaults());
+
+        // Before the CSRF filter, so a flood of unauthenticated login attempts is rejected
+        // on a map lookup rather than after Spring has done session and token work for each
+        // one. Placing it later would still limit the endpoint but would let an attacker
+        // impose most of the cost anyway.
+        rateLimitFilter.ifAvailable(filter -> http.addFilterBefore(filter, CsrfFilter.class));
 
         return http.build();
     }
