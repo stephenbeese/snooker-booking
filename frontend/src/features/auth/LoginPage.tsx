@@ -29,7 +29,9 @@ export function LoginPage() {
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
   // Where the user was heading before being asked to sign in.
-  const redirectTo = (location.state as { from?: string } | null)?.from ?? '/book';
+  const state = location.state as { from?: string; passwordReset?: boolean } | null;
+  const redirectTo = state?.from ?? '/book';
+  const justReset = state?.passwordReset === true;
 
   async function onSubmit(values: FormValues) {
     try {
@@ -54,6 +56,14 @@ export function LoginPage() {
         <p className="mt-2 text-sm text-ink-600">Welcome back. Sign in to manage your bookings.</p>
 
         <form onSubmit={handleSubmit(onSubmit)} className="mt-8 space-y-5" noValidate>
+          {justReset && !errorMessage && (
+            <div role="status" className="rounded-lg border border-felt-200 bg-felt-50 p-3">
+              <p className="text-sm text-felt-900">
+                Your password has been changed. Please sign in with it.
+              </p>
+            </div>
+          )}
+
           {errorMessage && (
             <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3">
               <p className="text-sm text-rose-800">{errorMessage}</p>
@@ -79,6 +89,12 @@ export function LoginPage() {
             {isSubmitting ? 'Signing in…' : 'Sign in'}
           </Button>
         </form>
+
+        <p className="mt-5 text-center text-sm">
+          <Link to="/forgot-password" className="text-ink-600 underline underline-offset-2 hover:text-felt-800">
+            Forgot your password?
+          </Link>
+        </p>
       </div>
 
       <p className="mt-6 text-center text-sm text-ink-600">

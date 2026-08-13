@@ -48,7 +48,12 @@ export function AppLayout() {
           <div className="hidden items-center gap-3 sm:flex">
             {user ? (
               <>
-                <span className="text-sm text-ink-600">{user.firstName}</span>
+                <Link
+                  to="/profile"
+                  className="rounded-lg px-3 py-1.5 text-sm text-ink-600 transition-colors hover:bg-ink-50 hover:text-felt-900"
+                >
+                  {user.firstName}
+                </Link>
                 <Button
                   variant="secondary"
                   size="sm"
@@ -111,7 +116,12 @@ export function AppLayout() {
             <div className="mt-3 flex flex-col gap-2 border-t border-ink-200 pt-3">
               {user ? (
                 <>
-                  <span className="px-3 text-sm text-ink-600">Signed in as {user.firstName}</span>
+                  <Link
+                    to="/profile"
+                    className="rounded-lg px-3 py-2 text-sm font-medium text-felt-800 hover:bg-felt-50"
+                  >
+                    Your account
+                  </Link>
                   <Button
                     variant="secondary"
                     size="sm"

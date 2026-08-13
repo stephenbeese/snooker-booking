@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
-import { createBooking, fetchBooking, fetchMyBookings, retryCheckout } from './api';
+import {
+  cancelBooking,
+  createBooking,
+  fetchBooking,
+  fetchMyBookings,
+  retryCheckout,
+} from './api';
 import type { Booking, CreateBookingRequest } from './types';
 
 export function useMyBookings() {
@@ -48,6 +54,25 @@ export function useCreateBooking() {
 export function useRetryCheckout() {
   return useMutation({
     mutationFn: (reference: string) => retryCheckout(reference),
+  });
+}
+
+/**
+ * Cancels a booking and refreshes what the cancellation changed.
+ *
+ * <p>Availability is invalidated too, not just the booking lists: cancelling releases the slot,
+ * and a stale grid would keep showing it as taken — which is the whole point of cancelling.
+ */
+export function useCancelBooking() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ reference, reason }: { reference: string; reason?: string }) =>
+      cancelBooking(reference, reason),
+    onSuccess: async (booking) => {
+      queryClient.setQueryData(queryKeys.booking(booking.reference), booking);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.myBookings() });
+      await queryClient.invalidateQueries({ queryKey: ['availability'] });
+    },
   });
 }
 

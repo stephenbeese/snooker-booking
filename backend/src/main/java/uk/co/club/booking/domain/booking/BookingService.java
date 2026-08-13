@@ -61,6 +61,7 @@ public class BookingService {
 
     private final BookingRepository bookingRepository;
     private final BookingValidator validator;
+    private final CancellationPolicy cancellationPolicy;
     private final BookingSettingsRepository bookingSettingsRepository;
     private final PricingService pricingService;
     private final BookingReferenceGenerator referenceGenerator;
@@ -69,12 +70,14 @@ public class BookingService {
     public BookingService(
             BookingRepository bookingRepository,
             BookingValidator validator,
+            CancellationPolicy cancellationPolicy,
             BookingSettingsRepository bookingSettingsRepository,
             PricingService pricingService,
             BookingReferenceGenerator referenceGenerator,
             ClubClock clubClock) {
         this.bookingRepository = bookingRepository;
         this.validator = validator;
+        this.cancellationPolicy = cancellationPolicy;
         this.bookingSettingsRepository = bookingSettingsRepository;
         this.pricingService = pricingService;
         this.referenceGenerator = referenceGenerator;
@@ -391,11 +394,40 @@ public class BookingService {
         return bookingRepository.findByUserIdOrderByStartAtDesc(userId);
     }
 
-    void rejectIfNotCancellable(Booking booking) {
-        if (booking.getStatus().isTerminal()) {
-            throw new BusinessRuleException(
-                    ErrorCode.BOOKING_NOT_CANCELLABLE,
-                    "This booking can no longer be changed.");
+    /**
+     * Cancels a booking, releasing its slot for resale.
+     *
+     * <p>The slot is freed by the status change alone: {@code booking_no_overlap} only applies
+     * to slot-occupying statuses, so a CANCELLED row stops blocking the moment it commits. The
+     * row is kept rather than deleted — a deleted booking cannot be explained to a customer who
+     * rings up about it, and cannot be distinguished from one that never existed.
+     *
+     * <p>Rules are checked by {@link CancellationPolicy} before the update, and the update is
+     * <em>also</em> guarded on the status. Both are needed: the policy produces the useful
+     * message, and the guard settles the race with a webhook or the sweeper arriving in between.
+     *
+     * @return true if this call performed the cancellation; false if it had already happened
+     */
+    @Transactional
+    public boolean cancel(Booking booking, long actingUserId, boolean isAdmin, String reason) {
+        cancellationPolicy.requireCancellable(booking, isAdmin);
+
+        int updated = bookingRepository.cancelIfLive(
+                booking.getId(), clubClock.now(), actingUserId, reason);
+
+        if (updated == 0) {
+            // Lost a race: something moved the booking out of a live status between the policy
+            // check and the update. Re-reading tells the caller what actually happened rather
+            // than reporting a success that did not occur.
+            log.debug("Cancellation of booking {} was a no-op", booking.getReference());
+            return false;
         }
+        log.info("Booking {} cancelled by user {}", booking.getReference(), actingUserId);
+        return true;
+    }
+
+    /** Whether and until when this booking may be cancelled, for display. */
+    public CancellationPolicy.Decision cancellation(Booking booking, boolean isAdmin) {
+        return cancellationPolicy.evaluate(booking, isAdmin);
     }
 }

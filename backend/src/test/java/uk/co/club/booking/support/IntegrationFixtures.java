@@ -147,6 +147,12 @@ public class IntegrationFixtures {
                 maxAdvanceDays);
     }
 
+    /** Sets the cancellation notice period, for tests either side of the deadline. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void cancellationNoticeHours(int hours) {
+        jdbc.update("UPDATE booking_settings SET cancellation_notice_hours = ? WHERE id = 1", hours);
+    }
+
     /** Closes the club on a weekday, to test the opening-hours rule. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void closeClubOn(java.time.DayOfWeek day) {

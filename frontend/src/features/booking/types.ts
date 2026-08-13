@@ -24,6 +24,19 @@ export interface Booking {
   holdExpiresAt: string | null;
   customerName: string;
   notes: string | null;
+  /**
+   * Whether the server would accept a cancellation right now.
+   *
+   * <p>Never recomputed on the client. The rule depends on the club's configured notice period
+   * and the server's clock, so deriving it here would eventually enable a button the API
+   * rejects — or disable one when cancelling was allowed.
+   */
+  cancellable: boolean;
+  /** When the cancellation window closes; null when no notice period applies. */
+  cancellableUntil: string | null;
+  /** Why cancellation is unavailable, in words fit to show the customer. */
+  cancellationBlockedReason: string | null;
+  cancelledAt: string | null;
 }
 
 export interface CreateBookingRequest {

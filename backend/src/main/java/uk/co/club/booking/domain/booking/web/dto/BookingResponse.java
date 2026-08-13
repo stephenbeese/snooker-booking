@@ -6,6 +6,7 @@ import java.time.LocalTime;
 import uk.co.club.booking.common.time.ClubClock;
 import uk.co.club.booking.domain.booking.Booking;
 import uk.co.club.booking.domain.booking.BookingStatus;
+import uk.co.club.booking.domain.booking.CancellationPolicy;
 
 /**
  * A booking as the client needs it.
@@ -31,9 +32,24 @@ public record BookingResponse(
         BookingStatus status,
         Instant holdExpiresAt,
         String customerName,
-        String notes) {
+        String notes,
+        /**
+         * Whether the caller may cancel this booking right now, decided by the server.
+         *
+         * <p>Sent rather than derived on the client. The rule depends on the configured notice
+         * period and the server's clock, so a client that computed it would show an enabled
+         * button the API then rejects — or worse, a disabled one when cancellation was allowed.
+         */
+        boolean cancellable,
+        /** When the cancellation window closes; null when no notice period applies. */
+        Instant cancellableUntil,
+        /** Why not, in words fit to show a customer. Null when cancellable. */
+        String cancellationBlockedReason,
+        Instant cancelledAt) {
 
-    public static BookingResponse from(Booking booking, ClubClock clock) {
+    /** For lists and detail views, where the cancel option must be described. */
+    public static BookingResponse from(
+            Booking booking, ClubClock clock, CancellationPolicy.Decision cancellation) {
         return new BookingResponse(
                 booking.getReference(),
                 booking.getSnookerTable().getId(),
@@ -48,6 +64,10 @@ public record BookingResponse(
                 booking.getStatus(),
                 booking.getHoldExpiresAt(),
                 booking.getCustomerName(),
-                booking.getNotes());
+                booking.getNotes(),
+                cancellation.cancellable(),
+                cancellation.cancellableUntil(),
+                cancellation.message(),
+                booking.getCancelledAt());
     }
 }

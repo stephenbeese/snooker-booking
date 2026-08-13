@@ -24,10 +24,13 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import uk.co.club.booking.common.error.BusinessRuleException;
 import uk.co.club.booking.common.error.ErrorCode;
+import uk.co.club.booking.domain.user.PasswordResetService;
 import uk.co.club.booking.domain.user.User;
 import uk.co.club.booking.domain.user.UserService;
+import uk.co.club.booking.domain.user.web.dto.ForgotPasswordRequest;
 import uk.co.club.booking.domain.user.web.dto.LoginRequest;
 import uk.co.club.booking.domain.user.web.dto.RegisterRequest;
+import uk.co.club.booking.domain.user.web.dto.ResetPasswordRequest;
 import uk.co.club.booking.domain.user.web.dto.UserResponse;
 import uk.co.club.booking.security.AppUserPrincipal;
 
@@ -43,12 +46,17 @@ import uk.co.club.booking.security.AppUserPrincipal;
 public class AuthController {
 
     private final UserService userService;
+    private final PasswordResetService passwordResetService;
     private final AuthenticationManager authenticationManager;
     private final SecurityContextRepository securityContextRepository =
             new HttpSessionSecurityContextRepository();
 
-    public AuthController(UserService userService, AuthenticationManager authenticationManager) {
+    public AuthController(
+            UserService userService,
+            PasswordResetService passwordResetService,
+            AuthenticationManager authenticationManager) {
         this.userService = userService;
+        this.passwordResetService = passwordResetService;
         this.authenticationManager = authenticationManager;
     }
 
@@ -117,6 +125,26 @@ public class AuthController {
     public void logout(
             HttpServletRequest request, HttpServletResponse response, Authentication authentication) {
         new SecurityContextLogoutHandler().logout(request, response, authentication);
+    }
+
+    /**
+     * Requests a reset link.
+     *
+     * <p>Always 202, whether or not the address is registered. Answering differently would make
+     * this a free membership check for anyone holding a list of email addresses — and the
+     * addresses most worth checking are exactly the ones an attacker already suspects.
+     */
+    @PostMapping("/forgot-password")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        passwordResetService.requestReset(request.email());
+    }
+
+    /** Consumes a reset token and sets the new password, ending every existing session. */
+    @PostMapping("/reset-password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        passwordResetService.resetPassword(request.token(), request.newPassword());
     }
 
     /**

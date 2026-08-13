@@ -52,6 +52,43 @@ public class UserService {
         return userRepository.save(user);
     }
 
+    /**
+     * Updates the customer's own details.
+     *
+     * <p>Name and phone only. Email is deliberately not editable here: it is the login
+     * identifier and the address password-reset mail goes to, so changing it without proving
+     * ownership of the new mailbox would let anyone who borrows an unlocked session lock the
+     * real owner out of their account.
+     */
+    @Transactional
+    public User updateProfile(long userId, String firstName, String lastName, String phone) {
+        User user = require(userId);
+        user.setFirstName(firstName.trim());
+        user.setLastName(lastName.trim());
+        user.setPhone(phone == null || phone.isBlank() ? null : phone.trim());
+        return userRepository.save(user);
+    }
+
+    /**
+     * Changes the password, requiring the current one.
+     *
+     * <p>Requiring the current password is what stops an unlocked laptop or a borrowed session
+     * becoming a permanent account takeover — without it, changing the password needs only
+     * access, not knowledge.
+     */
+    @Transactional
+    public void changePassword(long userId, String currentPassword, String newPassword) {
+        User user = require(userId);
+
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new BusinessRuleException(
+                    ErrorCode.INVALID_CREDENTIALS, "Your current password is not correct.");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+    }
+
     @Transactional(readOnly = true)
     public User require(long id) {
         return userRepository

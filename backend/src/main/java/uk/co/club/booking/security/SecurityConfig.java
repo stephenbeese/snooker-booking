@@ -66,6 +66,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/webhooks/stripe").permitAll()
                         .requestMatchers("/api/health", "/actuator/health").permitAll()
                         .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
+                        // Necessarily public: someone who has lost their password has no
+                        // session to authenticate with. Both are rate-limited in Phase 7;
+                        // neither reveals whether an account exists.
+                        .requestMatchers(
+                                "/api/auth/forgot-password", "/api/auth/reset-password")
+                        .permitAll()
                         // 204 when anonymous, so it must be reachable without a session.
                         .requestMatchers(HttpMethod.GET, "/api/auth/me").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()

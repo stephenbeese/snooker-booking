@@ -7,6 +7,9 @@ import { BookingPage } from '@/features/booking/BookingPage';
 import { MyBookingsPage } from '@/features/booking/MyBookingsPage';
 import { BackendStatus } from '@/features/health/BackendStatus';
 import { HomePage } from '@/features/home/HomePage';
+import { ForgotPasswordPage } from '@/features/profile/ForgotPasswordPage';
+import { ProfilePage } from '@/features/profile/ProfilePage';
+import { ResetPasswordPage } from '@/features/profile/ResetPasswordPage';
 import { AppLayout } from './AppLayout';
 
 /**
@@ -21,6 +24,17 @@ export const router = createBrowserRouter([
       { path: '/book', element: <BookPage /> },
       { path: '/login', element: <LoginPage /> },
       { path: '/register', element: <RegisterPage /> },
+      // Public by necessity: someone who has lost their password has no session.
+      { path: '/forgot-password', element: <ForgotPasswordPage /> },
+      { path: '/reset-password', element: <ResetPasswordPage /> },
+      {
+        path: '/profile',
+        element: (
+          <RequireAuth>
+            <ProfilePage />
+          </RequireAuth>
+        ),
+      },
       {
         path: '/bookings',
         element: (

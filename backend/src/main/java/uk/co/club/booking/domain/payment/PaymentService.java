@@ -225,6 +225,42 @@ public class PaymentService {
         });
     }
 
+    /**
+     * Flags a settled payment for staff after its booking was cancelled.
+     *
+     * <p>Deliberately does <em>not</em> call Stripe. Refunding is a decision the club makes,
+     * not one this code makes on its behalf: the club may owe nothing (a late cancellation), may
+     * owe part of it (a cancellation fee), or may prefer to offer a credit. An automatic refund
+     * would pre-empt all three and is close to impossible to undo, whereas a flagged row costs a
+     * staff member one click.
+     *
+     * <p>Returns quietly when nothing was actually paid — cancelling an unpaid hold is the
+     * common case and must not raise work for anybody.
+     *
+     * @return true if a refund now needs a human decision
+     */
+    @Transactional
+    public boolean flagForRefundIfPaid(Booking booking) {
+        Optional<Payment> settled = paymentRepository.findByBookingIdOrderByIdDesc(booking.getId())
+                .stream()
+                .filter(payment -> payment.getStatus().isSettled())
+                .findFirst();
+
+        if (settled.isEmpty()) {
+            return false;
+        }
+
+        Payment payment = settled.get();
+        paymentExceptionRepository.save(new PaymentException(
+                booking.getId(),
+                payment.getId(),
+                "Booking cancelled after payment was taken. Refund decision required."));
+        log.info(
+                "Booking {} cancelled with a settled payment; raised for staff refund decision",
+                booking.getReference());
+        return true;
+    }
+
     /** Expires the Stripe session behind a hold the sweeper is about to release. */
     public void cancelCheckoutFor(long bookingId) {
         paymentRepository.findByBookingIdOrderByIdDesc(bookingId).stream()

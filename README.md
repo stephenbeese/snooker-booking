@@ -7,10 +7,10 @@ Single-club by design: no tenant ids, no tenant middleware, no platform admins. 
 a club would want to change — opening hours, prices, booking rules, the tables
 themselves — lives in the database rather than in code.
 
-**Status: Phases 0–2 complete.** Customers can register, sign in, browse live
-availability, and book a table with payment via Stripe Checkout. Cancellation, the
-customer dashboard and the admin area are specified but not yet built (see
-[Roadmap](#roadmap)).
+**Status: Phases 0–3 complete.** Customers can register, sign in, browse live
+availability, book a table with payment via Stripe Checkout, manage their bookings and
+cancel them, edit their profile and reset a forgotten password. The admin area is
+specified but not yet built (see [Roadmap](#roadmap)).
 
 ---
 
@@ -247,9 +247,15 @@ Implemented:
 | `POST` | `/api/auth/login` | Public | Establishes the session |
 | `POST` | `/api/auth/logout` | Public | Idempotent, `204` |
 | `GET` | `/api/auth/me` | Public | The user, or `204` when anonymous |
+| `POST` | `/api/auth/forgot-password` | Public | Always `202` — see below |
+| `POST` | `/api/auth/reset-password` | Public | Single-use token; ends every session |
+| `GET` | `/api/profile` | Customer | The caller's own account |
+| `PUT` | `/api/profile` | Customer | Name and phone; email is not editable |
+| `POST` | `/api/profile/password` | Customer | Requires the current password |
 | `POST` | `/api/bookings` | Customer | Holds the slot, returns `checkoutUrl` |
 | `GET` | `/api/bookings` | Customer | The caller's own bookings |
 | `GET` | `/api/bookings/{reference}` | Customer | 404 (not 403) for someone else's |
+| `POST` | `/api/bookings/{reference}/cancel` | Customer | Releases the slot |
 | `POST` | `/api/bookings/{reference}/checkout` | Customer | New session after a decline |
 | `POST` | `/api/webhooks/stripe` | Public | HMAC-verified; CSRF-exempt |
 
@@ -278,6 +284,44 @@ Errors use one envelope and never include a stack trace:
 ```
 
 `400` malformed · `422` business rule · `409` race conflict · `401`/`403` auth.
+
+---
+
+## Cancellation and password reset
+
+**Cancellation is decided server-side and published.** Every booking carries `cancellable`,
+`cancellableUntil` and `cancellationBlockedReason`, so the UI disables its button from the
+same decision the endpoint enforces. The client never recomputes the notice period: it
+depends on a configured setting and the server's clock, so a client-side copy eventually
+offers a button the API rejects.
+
+Cancelling frees the slot without any code releasing it — `booking_no_overlap` is a
+*partial* index whose predicate excludes CANCELLED, so the row stops occupying its slot the
+moment the status changes. `CancellationIT` books the freed slot again to prove it, because
+if that predicate and `BookingStatus.slotOccupying()` ever drift apart, cancellation
+silently stops releasing anything and the grid keeps showing the slot as taken.
+
+A cancelled booking that was already paid for is **flagged for staff, never auto-refunded**.
+Refunding is the club's decision — it may owe nothing, part, or a credit — and it is close to
+impossible to undo, whereas a flagged row costs a staff member one click.
+
+**Password reset** issues a 32-byte `SecureRandom` token, emails it, and stores only its
+SHA-256. A fast hash is correct here and nowhere else in the system: the token has no
+dictionary to attack, and a salted slow hash could not be looked up without scanning every
+row. Three properties, each covered by `PasswordResetIT`:
+
+- `/forgot-password` answers `202` with an empty body whether or not the address is
+  registered. Anything else is a free membership check for anyone holding a list of emails.
+- The token is claimed by a guarded `UPDATE`, so two simultaneous submissions cannot both
+  succeed and requesting a new link invalidates the old one.
+- Completing a reset deletes **every** session for that user. The usual reason for resetting
+  is believing somebody else has the password, and that somebody is holding a session cookie
+  the new password does not affect.
+
+Mail goes through a `Mailer` interface. With none configured, `LoggingMailer` writes it to
+the log — and **refuses to start under the `prod` profile**, because a deployment that merely
+forgot to configure SMTP would otherwise come up healthy and quietly log every customer's
+reset link.
 
 ---
 
@@ -317,7 +361,7 @@ would do so silently.
 | 0 | Project foundation, Compose, health check | **Done** |
 | 1 | Schema, settings, pricing, availability engine + grid | **Done** |
 | 2 | Auth, booking creation, Stripe Checkout, webhooks, hold sweeper | **Done** |
-| 3 | Customer dashboard, cancellation, password reset | Planned |
+| 3 | Customer dashboard, cancellation, password reset | **Done** |
 | 4 | Admin dashboard, booking management, authz boundary | Planned |
 | 5 | Telephone bookings, table CRUD, maintenance blocks | Planned |
 | 6 | Settings screens | Planned |

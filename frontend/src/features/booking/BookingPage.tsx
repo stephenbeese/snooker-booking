@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { Button } from '@/components/ui/Button';
 import { formatSlotTime } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
+import { CancelBookingDialog } from './CancelBookingDialog';
 import { useBooking, useRetryCheckout } from './useBookings';
 import type { Booking } from './types';
 
@@ -20,6 +22,7 @@ export function BookingPage() {
   // Poll only when we have reason to expect a change: the webhook may still be in flight.
   const { data: booking, isPending, isError, error } = useBooking(reference, { poll: justPaid });
   const retry = useRetryCheckout();
+  const [cancelling, setCancelling] = useState(false);
 
   async function handleRetry() {
     const response = await retry.mutateAsync(reference);
@@ -66,14 +69,35 @@ export function BookingPage() {
         <Row label="Price" value={formatPence(booking.pricePence)} />
       </dl>
 
-      <p className="mt-6">
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
         <Link
           to="/bookings"
           className="text-sm font-medium text-felt-700 underline underline-offset-2 hover:text-felt-900"
         >
           All my bookings
         </Link>
-      </p>
+
+        {booking.cancellable ? (
+          <button
+            type="button"
+            onClick={() => setCancelling(true)}
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-50"
+          >
+            Cancel booking
+          </button>
+        ) : (
+          // Only worth explaining while the booking is still live; for a cancelled or finished
+          // one the status banner above has already said everything.
+          booking.cancellationBlockedReason &&
+          (booking.status === 'CONFIRMED' || booking.status === 'PENDING_PAYMENT') && (
+            <p className="text-sm text-ink-500">{booking.cancellationBlockedReason}</p>
+          )
+        )}
+      </div>
+
+      {cancelling && (
+        <CancelBookingDialog booking={booking} onClose={() => setCancelling(false)} />
+      )}
     </Shell>
   );
 }

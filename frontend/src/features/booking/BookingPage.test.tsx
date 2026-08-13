@@ -1,28 +1,9 @@
 import { screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeBooking as aBooking } from '@/test/factories';
 import { renderWithRouter } from '@/test/renderWithProviders';
 import { BookingPage } from './BookingPage';
 import type { Booking } from './types';
-
-function aBooking(overrides: Partial<Booking> = {}): Booking {
-  return {
-    reference: 'SNK-ABC123',
-    tableId: 1,
-    tableName: 'Table 1',
-    date: '2026-08-20',
-    startTime: '19:00:00',
-    endTime: '20:00:00',
-    startAt: '2026-08-20T18:00:00Z',
-    endAt: '2026-08-20T19:00:00Z',
-    durationMinutes: 60,
-    pricePence: 1200,
-    status: 'CONFIRMED',
-    holdExpiresAt: null,
-    customerName: 'Test Customer',
-    notes: null,
-    ...overrides,
-  };
-}
 
 function mockBooking(booking: Booking) {
   vi.stubGlobal(

@@ -134,6 +134,36 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     int reinstateIfReleased(@Param("bookingId") long bookingId);
 
     /**
+     * Cancels a booking, releasing its slot.
+     *
+     * <p>Guarded on the status for the same reason confirmation is: cancellation races the
+     * webhook and the sweeper. Restricting the update to the two live statuses means a booking
+     * that was confirmed, expired or cancelled a moment ago updates 0 rows rather than
+     * overwriting whichever of those happened.
+     *
+     * <p>Clears {@code holdExpiresAt} because a CHECK constraint requires it to be null unless
+     * the status is PENDING_PAYMENT — cancelling a hold without clearing it fails.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE Booking b
+               SET b.status = uk.co.club.booking.domain.booking.BookingStatus.CANCELLED,
+                   b.holdExpiresAt = NULL,
+                   b.cancelledAt = :now,
+                   b.cancelledByUserId = :cancelledBy,
+                   b.cancellationReason = :reason
+             WHERE b.id = :bookingId
+               AND b.status IN (
+                     uk.co.club.booking.domain.booking.BookingStatus.PENDING_PAYMENT,
+                     uk.co.club.booking.domain.booking.BookingStatus.CONFIRMED)
+            """)
+    int cancelIfLive(
+            @Param("bookingId") long bookingId,
+            @Param("now") Instant now,
+            @Param("cancelledBy") Long cancelledBy,
+            @Param("reason") String reason);
+
+    /**
      * Holds due for expiry. Batch-limited so a long outage cannot produce one enormous
      * transaction on the first sweep after recovery.
      */
