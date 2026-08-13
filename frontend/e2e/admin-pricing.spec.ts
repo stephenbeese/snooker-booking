@@ -19,6 +19,14 @@ import { ADMIN, apiLogin, apiWrite, login, nextNonSunday } from './support/helpe
  */
 const DEFAULT_RATE_POUNDS = 12;
 
+/**
+ * Every rule this spec creates is named with this prefix, and the cleanup deletes only rules
+ * that carry it. That is the whole safety property: these specs run against a real developer
+ * database holding real pricing rules, so the fixture has to be able to tell its own rows
+ * apart from someone's actual configuration.
+ */
+const E2E_PREFIX = 'E2E';
+
 test.describe('Pricing rules', () => {
   test.afterEach(async ({ request }) => {
     // Restore the seeded rate, and assert the restore: a silent failure here leaves the dev
@@ -28,16 +36,20 @@ test.describe('Pricing rules', () => {
       await request.get('http://localhost:8080/api/admin/settings/pricing-rules')
     ).json();
 
-    // Keep exactly the seeded rule — the lowest id, since the migration inserted it first —
-    // and delete everything else. Restoring "every catch-all" instead would rename each rule
-    // this spec created rather than removing it, so every run would leave another duplicate
-    // behind and the row locators would eventually match more than one element.
+    // Delete only the rules this spec created, matched by the E2E_PREFIX every one of them
+    // is named with.
+    //
+    // This deliberately does NOT delete "everything except the seeded rule". These specs run
+    // against the developer's own database, not a disposable one, so anything unrecognised
+    // is far more likely to be a real rule someone configured than leftover test data — and
+    // an earlier version of this cleanup wiped exactly that. A test fixture may remove what
+    // it created; it may not remove what it merely fails to recognise.
     const seeded = rules.reduce((lowest: { id: number }, rule: { id: number }) =>
       rule.id < lowest.id ? rule : lowest,
     );
 
-    for (const rule of rules) {
-      if (rule.id !== seeded.id) {
+    for (const rule of rules as { id: number; name: string }[]) {
+      if (rule.id !== seeded.id && rule.name.startsWith(E2E_PREFIX)) {
         // Delete before restoring the seeded rate: while a second catch-all exists, the
         // server's "one must always remain" guard permits removing this one.
         await apiWrite(request, 'delete', `/api/admin/settings/pricing-rules/${rule.id}`);

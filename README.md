@@ -233,6 +233,17 @@ the system's core invariant.
 
 ### End-to-end
 
+> **The e2e suite writes to your development database.** Unlike the backend integration
+> tests, which get a disposable Testcontainers Postgres, Playwright drives the real app
+> against `localhost:5433`. Specs create and edit real rows, and their cleanup restores
+> settings to the seeded defaults. Anything you have configured by hand — pricing rules,
+> opening hours, booking rules — can be overwritten by a run.
+>
+> A fixture may delete rows **it created**, identified by a marker it set itself (see
+> `E2E_PREFIX` in `e2e/admin-pricing.spec.ts`). It must never delete rows merely because it
+> does not recognise them: an earlier version of that cleanup kept "the seeded rule" and
+> removed everything else, which wiped a real pricing rule a developer had configured.
+
 Playwright starts both servers itself (see `frontend/playwright.config.ts`) and reuses them
 if they are already running. First run only:
 
