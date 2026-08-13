@@ -28,12 +28,32 @@ export function AdminDashboardPage() {
             {dashboard ? formatFullDate(dashboard.date) : 'Loading the club’s figures…'}
           </p>
         </div>
-        <Link
-          to="/admin/bookings"
-          className="rounded-xl bg-felt-700 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-felt-800"
-        >
-          All bookings
-        </Link>
+        <nav aria-label="Staff areas" className="flex flex-wrap gap-2">
+          <Link
+            to="/admin/bookings/telephone"
+            className="rounded-xl bg-felt-700 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-felt-800"
+          >
+            Telephone booking
+          </Link>
+          <Link
+            to="/admin/bookings"
+            className="rounded-xl bg-white px-5 py-2.5 text-sm font-medium text-felt-900 ring-1 ring-inset ring-ink-300 transition-colors hover:bg-ink-50"
+          >
+            All bookings
+          </Link>
+          <Link
+            to="/admin/tables"
+            className="rounded-xl bg-white px-5 py-2.5 text-sm font-medium text-felt-900 ring-1 ring-inset ring-ink-300 transition-colors hover:bg-ink-50"
+          >
+            Tables
+          </Link>
+          <Link
+            to="/admin/maintenance"
+            className="rounded-xl bg-white px-5 py-2.5 text-sm font-medium text-felt-900 ring-1 ring-inset ring-ink-300 transition-colors hover:bg-ink-50"
+          >
+            Maintenance
+          </Link>
+        </nav>
       </div>
 
       {isError && (

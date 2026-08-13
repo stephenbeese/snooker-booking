@@ -60,7 +60,41 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
             new Endpoint(
                     HttpMethod.POST,
                     "/api/admin/bookings/SNK-VICTIM/cancel",
-                    Map.of("reason", "test")));
+                    Map.of("reason", "test")),
+            // Phase 5. A telephone booking creates a CONFIRMED booking with no payment, and
+            // table/maintenance changes alter what the whole club can sell — all strictly staff.
+            new Endpoint(
+                    HttpMethod.POST,
+                    "/api/admin/bookings/telephone",
+                    Map.of(
+                            "tableId", 1,
+                            "date", "2030-01-01",
+                            "startTime", "14:00:00",
+                            "durationMinutes", 60,
+                            "customerEmail", "boundary@test.local",
+                            "firstName", "Bound",
+                            "lastName", "Ary")),
+            new Endpoint(HttpMethod.GET, "/api/admin/tables", null),
+            new Endpoint(
+                    HttpMethod.POST,
+                    "/api/admin/tables",
+                    Map.of("name", "Boundary New Table", "tableType", "SNOOKER", "displayOrder", 9)),
+            new Endpoint(
+                    HttpMethod.PUT,
+                    "/api/admin/tables/1",
+                    Map.of("name", "Renamed", "tableType", "SNOOKER", "displayOrder", 1)),
+            new Endpoint(HttpMethod.PUT, "/api/admin/tables/1/active?active=false", null),
+            new Endpoint(
+                    HttpMethod.GET, "/api/admin/maintenance-blocks?from=2030-01-01&to=2030-01-02", null),
+            new Endpoint(
+                    HttpMethod.POST,
+                    "/api/admin/maintenance-blocks",
+                    Map.of(
+                            "tableId", 1,
+                            "date", "2030-01-01",
+                            "startTime", "14:00:00",
+                            "endTime", "18:00:00")),
+            new Endpoint(HttpMethod.DELETE, "/api/admin/maintenance-blocks/1", null));
 
     /** Endpoints any signed-in user may reach, but an anonymous one may not. */
     private static final List<Endpoint> CUSTOMER_ENDPOINTS = List.of(

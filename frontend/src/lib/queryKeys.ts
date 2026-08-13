@@ -24,4 +24,6 @@ export const queryKeys = {
   adminBookings: (filters: unknown) => ['admin', 'bookings', filters] as const,
   adminBooking: (reference: string) => ['admin', 'bookings', 'one', reference] as const,
   adminDay: (date: string) => ['admin', 'day', date] as const,
+  adminTables: () => ['admin', 'tables'] as const,
+  adminBlocks: (from: string, to: string) => ['admin', 'blocks', from, to] as const,
 } as const;

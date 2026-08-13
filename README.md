@@ -289,6 +289,14 @@ Implemented:
 | `GET` | `/api/admin/bookings/day` | Admin | `?date=` — one day, in start order |
 | `GET` | `/api/admin/bookings/{reference}` | Admin | Includes customer contact details |
 | `POST` | `/api/admin/bookings/{reference}/cancel` | Admin | Bypasses the notice period only |
+| `POST` | `/api/admin/bookings/telephone` | Admin | Find-or-create customer, straight to `CONFIRMED` |
+| `GET` | `/api/admin/tables` | Admin | Includes inactive tables and staff notes |
+| `POST` | `/api/admin/tables` | Admin | Duplicate name → `422 CONFLICT` |
+| `PUT` | `/api/admin/tables/{id}` | Admin | Rename, retype, reorder |
+| `PUT` | `/api/admin/tables/{id}/active` | Admin | `?active=` — take off sale or restore |
+| `GET` | `/api/admin/maintenance-blocks` | Admin | `?from=&to=`, club-local and inclusive |
+| `POST` | `/api/admin/maintenance-blocks` | Admin | Refused if live bookings fall inside |
+| `DELETE` | `/api/admin/maintenance-blocks/{id}` | Admin | Frees the slot immediately |
 | `POST` | `/api/webhooks/stripe` | Public | HMAC-verified; CSRF-exempt |
 
 Browsing availability deliberately needs no account — it is the conversion path.
@@ -344,6 +352,27 @@ Errors use one envelope and never include a stack trace:
 ```
 
 `400` malformed · `422` business rule · `409` race conflict · `401`/`403` auth.
+
+---
+
+## Maintenance blocks
+
+A block and a booking are two promises about the same table at the same time, and only one
+can be kept. The database cannot adjudicate that pair: an `EXCLUDE` constraint works within
+a single table, and these live in two. Blocks are kept from overlapping *each other* by
+`maintenance_block_no_overlap` in V9, but block-versus-booking is enforced in
+`MaintenanceBlockService`.
+
+**A block over live bookings is refused, and the refusal names them.** Silently accepting
+one would leave a customer holding a booking for a table staff believe is out of service,
+and the conflict would surface when they arrived. Cancelling somebody's game is a decision
+with a person at the end of it, so it belongs to the club rather than to a default. Only
+slot-occupying statuses count — a cancelled booking is history, not a promise, and must not
+make a table permanently unmaintainable.
+
+Both directions are covered by `MaintenanceBlockIT`, including the half-open `[)` boundary:
+a booking ending at 14:00 and a block starting at 14:00 do not conflict, matching the
+database's own semantics exactly.
 
 ---
 
@@ -423,20 +452,28 @@ would do so silently.
 | 2 | Auth, booking creation, Stripe Checkout, webhooks, hold sweeper | **Done** |
 | 3 | Customer dashboard, cancellation, password reset | **Done** |
 | 4 | Admin dashboard, booking management, authz boundary | **Done** |
-| 5 | Telephone bookings, table CRUD, maintenance blocks | Planned |
+| 5 | Telephone bookings, table CRUD, maintenance blocks | **Done** |
 | 6 | Settings screens | Planned |
 | 7 | Playwright, accessibility, security review | Planned |
 
-Phase 4 covers the staff dashboard, the filterable booking register, booking detail and
-admin cancellation. Creating and editing bookings from the admin area is deliberately held
-back to Phase 5, where it belongs with the telephone-booking flow it shares almost all of
-its machinery with (find-or-create customer, straight to `CONFIRMED`, no Stripe); building
-it twice would mean throwing the first one away.
+Phase 5 adds the staff booking flow deferred from Phase 4. A telephone booking routes
+through the same `BookingService.create` and the same `BookingValidator` as an online one;
+the only difference is `BookingPolicy.staff()`, which lifts the notice and advance limits
+and skips the payment hold. There is deliberately no flag for skipping overlap, maintenance
+or inactive-table checks — those describe the physical world, and `TelephoneBookingIT`
+asserts staff are still refused all three.
+
+**Editing an existing booking's time or table is still not implemented.** Staff cancel and
+re-book instead. Moving a booking is a different operation from creating one — it has to
+release the old slot and take the new one atomically, or it can double-sell the table it
+just freed — and it was not worth doing badly to close a checklist item.
 
 Two things remain unverified rather than done, and are called out here so nobody assumes
-otherwise: the **Stripe success path has never been run against real test keys** (the suite
-uses a stubbed gateway, and the webhook is covered by a signed fixture), and **Playwright
-is not set up** — every end-to-end claim in this README was checked by hand in a browser.
+otherwise: **payment completion through the hosted Stripe Checkout UI has never been driven
+with a real card entry** (session creation and webhook processing have both now been
+verified against live test keys, but nobody has typed `4242…` on Stripe's page and followed
+the redirect back), and **Playwright is not set up** — every end-to-end claim in this README
+was checked by hand.
 
 Payments will use Stripe Checkout with a `PENDING_PAYMENT` hold: the booking is created
 and its slot reserved *before* Stripe is called (taking money for an unreserved slot

@@ -2,6 +2,9 @@ import { createBrowserRouter } from 'react-router';
 import { AdminBookingDetailPage } from '@/features/admin/AdminBookingDetailPage';
 import { AdminBookingsPage } from '@/features/admin/AdminBookingsPage';
 import { AdminDashboardPage } from '@/features/admin/AdminDashboardPage';
+import { AdminMaintenancePage } from '@/features/admin/AdminMaintenancePage';
+import { AdminTablesPage } from '@/features/admin/AdminTablesPage';
+import { AdminTelephoneBookingPage } from '@/features/admin/AdminTelephoneBookingPage';
 import { RequireAdmin } from '@/features/admin/RequireAdmin';
 import { BookPage } from '@/features/availability/BookPage';
 import { LoginPage } from '@/features/auth/LoginPage';
@@ -76,10 +79,36 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        // Before the /:reference route: "telephone" would otherwise be captured as a booking
+        // reference and send staff to a 404 for a booking that was never meant to exist.
+        path: '/admin/bookings/telephone',
+        element: (
+          <RequireAdmin>
+            <AdminTelephoneBookingPage />
+          </RequireAdmin>
+        ),
+      },
+      {
         path: '/admin/bookings/:reference',
         element: (
           <RequireAdmin>
             <AdminBookingDetailPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: '/admin/tables',
+        element: (
+          <RequireAdmin>
+            <AdminTablesPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: '/admin/maintenance',
+        element: (
+          <RequireAdmin>
+            <AdminMaintenancePage />
           </RequireAdmin>
         ),
       },

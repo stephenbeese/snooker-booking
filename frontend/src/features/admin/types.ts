@@ -72,3 +72,54 @@ export interface ClubTable {
   displayOrder: number;
   active: boolean;
 }
+
+/**
+ * A table as staff see it.
+ *
+ * <p>Distinct from `ClubTable` only by `notes`, which is a staff field the public endpoint
+ * never returns. Keeping them separate means a component that renders a public table cannot
+ * accidentally display it.
+ */
+export interface AdminTable extends ClubTable {
+  notes: string | null;
+}
+
+export interface TableInput {
+  name: string;
+  tableType: TableType;
+  displayOrder: number;
+  notes?: string | null;
+}
+
+export interface MaintenanceBlock {
+  id: number;
+  tableId: number;
+  tableName: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  startAt: string;
+  endAt: string;
+  reason: string | null;
+}
+
+export interface MaintenanceBlockInput {
+  tableId: number;
+  date: string;
+  startTime: string;
+  endTime: string;
+  reason?: string | null;
+}
+
+/** What staff type when taking a booking over the phone. */
+export interface TelephoneBookingInput {
+  tableId: number;
+  date: string;
+  startTime: string;
+  durationMinutes: number;
+  customerEmail: string;
+  firstName: string;
+  lastName: string;
+  customerPhone?: string | null;
+  notes?: string | null;
+}

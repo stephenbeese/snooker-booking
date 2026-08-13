@@ -3,8 +3,13 @@ import type {
   AdminBooking,
   AdminBookingFilters,
   AdminDashboard,
+  AdminTable,
   ClubTable,
+  MaintenanceBlock,
+  MaintenanceBlockInput,
   Paged,
+  TableInput,
+  TelephoneBookingInput,
 } from './types';
 
 /**
@@ -62,4 +67,61 @@ export function cancelBookingAsAdmin(
 
 export function fetchTables(): Promise<ClubTable[]> {
   return apiRequest<ClubTable[]>('/api/tables');
+}
+
+/** Every table including inactive ones, plus the staff-only notes field. */
+export function fetchAdminTables(): Promise<AdminTable[]> {
+  return apiRequest<AdminTable[]>('/api/admin/tables');
+}
+
+export function createTable(input: TableInput): Promise<AdminTable> {
+  return apiRequest<AdminTable>('/api/admin/tables', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateTable(id: number, input: TableInput): Promise<AdminTable> {
+  return apiRequest<AdminTable>(`/api/admin/tables/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+/** Separate from updateTable so taking a table off sale is always deliberate. */
+export function setTableActive(id: number, active: boolean): Promise<AdminTable> {
+  return apiRequest<AdminTable>(`/api/admin/tables/${id}/active?active=${active}`, {
+    method: 'PUT',
+  });
+}
+
+export function fetchMaintenanceBlocks(
+  from: string,
+  to: string,
+): Promise<MaintenanceBlock[]> {
+  return apiRequest<MaintenanceBlock[]>(
+    `/api/admin/maintenance-blocks?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  );
+}
+
+export function createMaintenanceBlock(
+  input: MaintenanceBlockInput,
+): Promise<MaintenanceBlock> {
+  return apiRequest<MaintenanceBlock>('/api/admin/maintenance-blocks', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteMaintenanceBlock(id: number): Promise<void> {
+  return apiRequest<void>(`/api/admin/maintenance-blocks/${id}`, { method: 'DELETE' });
+}
+
+export function createTelephoneBooking(
+  input: TelephoneBookingInput,
+): Promise<AdminBooking> {
+  return apiRequest<AdminBooking>('/api/admin/bookings/telephone', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
