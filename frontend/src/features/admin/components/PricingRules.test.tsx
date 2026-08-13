@@ -390,6 +390,51 @@ describe('PricingRules', () => {
     expect(warning).toHaveTextContent('Second fallback');
   });
 
+  it('says when a rule can never apply because the fallback outranks it', async () => {
+    // The highest priority wins, so a narrowed rule at 0 loses to a catch-all at 10 and
+    // applies to nothing. Nothing rejects that — it is legal — so staff set a morning rate,
+    // see no change on the booking page, and conclude pricing rules do not work.
+    mockApi([
+      { ...CATCH_ALL, priority: 10 },
+      { ...PEAK, priority: 0, name: 'Morning rate' },
+    ]);
+    render();
+
+    const row = (await screen.findByText('Morning rate')).closest('tr')!;
+    expect(within(row).getByText(/Never applies/)).toBeInTheDocument();
+  });
+
+  it('does not cry wolf when the rule does outrank the fallback', async () => {
+    mockApi([
+      { ...CATCH_ALL, priority: 0 },
+      { ...PEAK, priority: 10, name: 'Morning rate' },
+    ]);
+    render();
+
+    const row = (await screen.findByText('Morning rate')).closest('tr')!;
+    expect(within(row).queryByText(/Never applies/)).not.toBeInTheDocument();
+  });
+
+  it('defaults a new rule to a priority that beats the fallback', async () => {
+    // The seeded fallback sits at 0 and ties go to it, so a new rule created at 0 would be
+    // dead on arrival — the single likeliest way to conclude the feature is broken.
+    const calls = mockApi();
+    const user = userEvent.setup();
+    render();
+
+    await screen.findByText('Standard hourly rate');
+    await user.click(screen.getByRole('button', { name: 'Add a pricing rule' }));
+    await user.type(await screen.findByLabelText('Rule name'), 'New rule');
+    await user.click(screen.getByRole('button', { name: 'Save rule' }));
+
+    const post = await vi.waitFor(() => {
+      const found = calls.find((call) => call.method === 'POST');
+      expect(found).toBeDefined();
+      return found!;
+    });
+    expect(JSON.parse(post.body ?? '{}').priority).toBeGreaterThan(0);
+  });
+
   it('will not let staff delete the last rule that can price anything', async () => {
     // Deleting it makes PricingService throw on every booking — the club silently stops
     // selling. The server refuses; this proves staff are told before they click, not after.

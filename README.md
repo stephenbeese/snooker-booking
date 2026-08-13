@@ -221,8 +221,8 @@ Covered by `StripePropertiesTest`.
 ## Running tests
 
 ```bash
-cd backend  && ./gradlew test        # 220 tests: JUnit 5, Mockito, Testcontainers
-cd frontend && yarn test             # 98 tests: Vitest + React Testing Library
+cd backend  && ./gradlew test        # 224 tests: JUnit 5, Mockito, Testcontainers
+cd frontend && yarn test             # 103 tests: Vitest + React Testing Library
 cd frontend && yarn typecheck        # strict TypeScript, no emit
 cd frontend && yarn e2e              # 28 tests: Playwright, real browser
 ```
@@ -511,6 +511,22 @@ quietly charge a penny less on every booking at that rate. It returns `null` for
 input — including an empty field, since `Number('')` is `0` and would otherwise save a rule at
 £0.00. `money.test.ts` covers both, including a round-trip property so that opening a rule and
 saving it untouched cannot change the price.
+
+**A booking spanning a rate change pays each rate for the time it covers.** A 10:00–14:00
+morning rate and a booking of 10:30–14:30 is charged 3h30 at the morning rate plus 30 minutes
+at the fallback, not four hours at whichever rate happened to apply at the start. `quotePence`
+splits the interval at each rule boundary and rounds up once at the end — rounding per segment
+would make a price depend on how many boundaries it happened to cross.
+
+**The grid shows the rate at each slot, not one rate per row.** A rule narrowed by time of day
+makes the rate a function of the slot; a single figure per row showed a morning rate all day
+and never showed an evening rate at all. The row header reports a range (`£7.50–£12.00/hr`)
+when the rate varies, and `varyingRate` says whether it does.
+
+**Priority decides which rule wins, and ties go to the older rule.** A narrowed rule created
+at priority 0 therefore loses to the seeded fallback and silently never applies — the single
+likeliest reason to conclude pricing rules do not work. New rules default to priority 10, and
+a rule that cannot beat the fallback is labelled "Never applies" in the list.
 
 **A rule can cover several days.** `pricing_rule_day` (added in V12) holds the set, so
 "Monday to Thursday at £9.50" is one rule rather than four kept in step by hand. An **empty

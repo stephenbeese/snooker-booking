@@ -289,6 +289,91 @@ class SettingsAffectAvailabilityIT extends AbstractIntegrationTest {
         }
 
         @Test
+        @DisplayName("the grid shows the rate that applies at each time, not one rate per row")
+        void theGridShowsTheRateAtEachSlot() {
+            // The gap this closes: the assertions above prove the *quote* is right, and the
+            // quote was always right. The grid's displayed rate was computed once at opening
+            // time and shown against every slot in the row, so a rule narrowed to the evening
+            // never appeared and a morning rule was shown all day. Staff configured a peak
+            // rate, saw no change on the booking page, and reasonably concluded pricing rules
+            // did not work.
+            settingsService.savePricingRule(
+                    null, "Evening peak", null, null, LocalTime.of(18, 0), LocalTime.of(23, 0),
+                    2000, 10, true);
+
+            var row = availabilityFor(day).tables().stream()
+                    .filter(table -> table.tableId() == tableId)
+                    .findFirst()
+                    .orElseThrow();
+
+            assertThat(rateAt(row, LocalTime.of(14, 0)))
+                    .as("before the peak window")
+                    .isEqualTo(1200);
+            assertThat(rateAt(row, LocalTime.of(19, 0)))
+                    .as("inside the peak window")
+                    .isEqualTo(2000);
+
+            // The row headline is a "from" price and says so, rather than quoting one figure
+            // for a day that has two.
+            assertThat(row.hourlyRatePence()).as("cheapest in the row").isEqualTo(1200);
+            assertThat(row.highestHourlyRatePence()).as("dearest in the row").isEqualTo(2000);
+            assertThat(row.varyingRate()).isTrue();
+        }
+
+        @Test
+        @DisplayName("a booking spanning a rate change pays each rate for the time it covers")
+        void aBookingSpanningARateChangeIsSplit() {
+            // A 10:00–14:00 morning rate and a booking of 10:30–14:30 straddles the boundary.
+            // Charging the start rate for the whole booking sold the last half hour at the
+            // morning price; charging the end rate would overcharge the first three and a
+            // half. Neither matches what the customer was shown on the grid.
+            settingsService.savePricingRule(
+                    null, "Morning rate", null, null, LocalTime.of(10, 0), LocalTime.of(14, 0),
+                    750, 10, true);
+
+            // 3h30 at 750 = 2625p, plus 30 min at the 1200 fallback = 600p.
+            assertThat(quoteAt(LocalTime.of(10, 30), 240)).isEqualTo(2625 + 600);
+
+            // Wholly inside the window, and wholly outside it, are unchanged.
+            assertThat(quoteAt(LocalTime.of(10, 30), 60)).as("inside the morning").isEqualTo(750);
+            assertThat(quoteAt(LocalTime.of(15, 0), 60)).as("after it").isEqualTo(1200);
+
+            // And the boundary itself belongs to the later rate: the rule is [10:00, 14:00).
+            assertThat(quoteAt(LocalTime.of(14, 0), 60)).as("starting at the boundary").isEqualTo(1200);
+        }
+
+        @Test
+        @DisplayName("a booking crossing two rate changes pays all three rates")
+        void aBookingCrossingTwoBoundaries() {
+            // Guards the loop rather than a single split: a quote that stopped at the first
+            // boundary would price the rest of the booking at the middle rate.
+            settingsService.savePricingRule(
+                    null, "Morning", null, null, LocalTime.of(10, 0), LocalTime.of(12, 0),
+                    600, 10, true);
+            settingsService.savePricingRule(
+                    null, "Evening", null, null, LocalTime.of(14, 0), LocalTime.of(23, 0),
+                    1800, 10, true);
+
+            // 11:00–15:00: 1h at 600, 2h at the 1200 fallback, 1h at 1800.
+            assertThat(quoteAt(LocalTime.of(11, 0), 240)).isEqualTo(600 + 2400 + 1800);
+        }
+
+        @Test
+        @DisplayName("a row with one rate all day is not reported as varying")
+        void aUniformRowDoesNotClaimToVary() {
+            // Otherwise every row would render as a range, and "£12.00–£12.00/hr" is worse
+            // than the single figure it replaced.
+            var row = availabilityFor(day).tables().stream()
+                    .filter(table -> table.tableId() == tableId)
+                    .findFirst()
+                    .orElseThrow();
+
+            assertThat(row.varyingRate()).isFalse();
+            assertThat(row.hourlyRatePence()).isEqualTo(1200);
+            assertThat(row.highestHourlyRatePence()).isEqualTo(1200);
+        }
+
+        @Test
         @DisplayName("the last catch-all rule cannot be deactivated")
         void refusesToRemoveTheLastCatchAll() {
             PricingRule standard = settingsService.pricingRules().getFirst();
@@ -326,6 +411,16 @@ class SettingsAffectAvailabilityIT extends AbstractIntegrationTest {
 
     private int quoteFor(int minutes) {
         return quoteAt(LocalTime.of(14, 0), minutes);
+    }
+
+    /** The rate the grid reports for one cell of a row. */
+    private int rateAt(
+            uk.co.club.booking.domain.availability.TableAvailability row, LocalTime time) {
+        return row.slots().stream()
+                .filter(slot -> slot.startTime().equals(time))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("No slot at " + time))
+                .hourlyRatePence();
     }
 
     private int quoteAt(LocalTime time, int minutes) {

@@ -28,6 +28,11 @@ export interface Slot {
   bookableForRequestedDuration: boolean | null;
   maxDurationMinutes: number;
   pricePenceForRequestedDuration: number | null;
+  /**
+   * The rate at this cell. Present on every slot, because a rule narrowed by time of day
+   * makes the rate vary across the row — one figure per row would misquote the rest.
+   */
+  hourlyRatePence: number;
 }
 
 export interface TableAvailability {
@@ -35,7 +40,11 @@ export interface TableAvailability {
   tableName: string;
   tableType: TableType;
   tableActive: boolean;
+  /** The **lowest** rate in this row — a "from" price when `varyingRate` is true. */
   hourlyRatePence: number;
+  /** True when the rate changes during the day, so the UI shows a range rather than one price. */
+  varyingRate: boolean;
+  highestHourlyRatePence: number;
   slots: Slot[];
 }
 

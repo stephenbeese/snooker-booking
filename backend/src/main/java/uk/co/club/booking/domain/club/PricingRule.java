@@ -16,6 +16,7 @@ import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.util.Collection;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import uk.co.club.booking.domain.table.TableType;
@@ -162,6 +163,24 @@ public class PricingRule {
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    /**
+     * The club-local times at which this rule starts or stops applying.
+     *
+     * <p>Used to price a booking that spans a rate change: the rate can only change where some
+     * rule begins or ends, so these are the only instants a quote has to split on. A rule with
+     * no time window never changes anything mid-day and contributes nothing.
+     */
+    public List<LocalTime> boundaryTimes() {
+        List<LocalTime> boundaries = new java.util.ArrayList<>(2);
+        if (startTime != null) {
+            boundaries.add(startTime);
+        }
+        if (endTime != null) {
+            boundaries.add(endTime);
+        }
+        return boundaries;
     }
 
     /**

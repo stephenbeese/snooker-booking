@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -208,7 +209,12 @@ public class AvailabilityService {
             List<MaintenanceBlock> blocks) {
 
         Duration increment = settings.increment();
-        int hourlyRatePence = pricingService.hourlyRatePence(table, window.openAt());
+
+        // Per slot, not once at opening time. A pricing rule narrowed by time of day makes
+        // the rate a function of the slot: computing it from window.openAt() showed a
+        // morning rate against the whole day, and never showed an evening rate at all.
+        // Batched so the rules are read once per row rather than once per cell.
+        int[] slotRates = pricingService.hourlyRatesPence(table, slotStarts);
 
         // First pass: is each cell itself occupied, and why not if so?
         List<UnavailableReason> cellReasons = new ArrayList<>(slotStarts.size());
@@ -269,15 +275,28 @@ public class AvailabilityService {
                     reason,
                     bookableForRequested,
                     maxDuration,
-                    pricePenceForRequested));
+                    pricePenceForRequested,
+                    slotRates[i]));
         }
+
+        // A "from" price, and a flag saying whether it is the whole story. A single number
+        // cannot describe a row that costs £7.50 before 14:00 and £12.00 after, so the row
+        // reports the cheapest and admits that it varies rather than quietly misquoting.
+        int lowestRate = slotRates.length == 0
+                ? pricingService.hourlyRatePence(table, window.openAt())
+                : Arrays.stream(slotRates).min().orElseThrow();
+        int highestRate = slotRates.length == 0
+                ? lowestRate
+                : Arrays.stream(slotRates).max().orElseThrow();
 
         return new TableAvailability(
                 table.getId(),
                 table.getName(),
                 table.getTableType(),
                 table.isActive(),
-                hourlyRatePence,
+                lowestRate,
+                lowestRate != highestRate,
+                highestRate,
                 slots);
     }
 

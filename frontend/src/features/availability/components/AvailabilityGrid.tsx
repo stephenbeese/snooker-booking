@@ -68,8 +68,12 @@ export function AvailabilityGrid({ availability, selected, onSelect }: Availabil
                   <span className="block text-sm font-medium text-felt-900">
                     {table.tableName}
                   </span>
+                  {/* A range when the rate changes during the day. One figure would be a
+                      quote the club does not honour after the rule's window ends. */}
                   <span className="block text-xs text-ink-500">
-                    {formatPence(table.hourlyRatePence)}/hr
+                    {table.varyingRate
+                      ? `${formatPence(table.hourlyRatePence)}–${formatPence(table.highestHourlyRatePence)}/hr`
+                      : `${formatPence(table.hourlyRatePence)}/hr`}
                     {!table.tableActive && ' · out of service'}
                   </span>
                 </th>

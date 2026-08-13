@@ -13,6 +13,7 @@ export function makeSlot(overrides: Partial<Slot> & { startTime: string }): Slot
     bookableForRequestedDuration: null,
     maxDurationMinutes: 240,
     pricePenceForRequestedDuration: null,
+    hourlyRatePence: 1200,
     ...overrides,
   };
 }
@@ -24,6 +25,8 @@ export function makeTable(overrides: Partial<TableAvailability> = {}): TableAvai
     tableType: 'SNOOKER',
     tableActive: true,
     hourlyRatePence: 1200,
+    varyingRate: false,
+    highestHourlyRatePence: 1200,
     slots: [
       makeSlot({ startTime: '10:00:00' }),
       makeSlot({ startTime: '10:30:00' }),

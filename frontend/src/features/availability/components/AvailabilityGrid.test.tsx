@@ -38,6 +38,42 @@ describe('AvailabilityGrid', () => {
     expect(screen.getByText(/£12\.50\/hr/)).toBeInTheDocument();
   });
 
+  it('shows a range when the rate changes during the day', () => {
+    // A single figure would be a quote the club does not honour after the peak rule starts.
+    // The row header is the only place a customer sees a rate before choosing a duration.
+    renderGrid(
+      makeAvailability({
+        tables: [
+          makeTable({
+            hourlyRatePence: 750,
+            highestHourlyRatePence: 2000,
+            varyingRate: true,
+          }),
+        ],
+      }),
+    );
+
+    expect(screen.getByText(/£7\.50–£20\.00\/hr/)).toBeInTheDocument();
+  });
+
+  it('does not render a pointless range when every slot costs the same', () => {
+    // "£12.00–£12.00/hr" is worse than the single figure it replaced.
+    renderGrid(
+      makeAvailability({
+        tables: [
+          makeTable({
+            hourlyRatePence: 1200,
+            highestHourlyRatePence: 1200,
+            varyingRate: false,
+          }),
+        ],
+      }),
+    );
+
+    expect(screen.getByText(/£12\.00\/hr/)).toBeInTheDocument();
+    expect(screen.queryByText(/£12\.00–/)).not.toBeInTheDocument();
+  });
+
   it('calls back with the table and slot when an available cell is clicked', async () => {
     const { onSelect } = renderGrid();
 

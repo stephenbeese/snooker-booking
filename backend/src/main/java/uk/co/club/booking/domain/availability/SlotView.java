@@ -27,6 +27,9 @@ import java.time.LocalTime;
  * @param bookableForRequestedDuration null when no duration was requested
  * @param maxDurationMinutes longest permitted booking that can start here (0 if none)
  * @param pricePenceForRequestedDuration null when no duration was requested
+ * @param hourlyRatePence the rate applying at <em>this</em> cell. Present on every slot,
+ *     not just bookable ones, because a rate that changes at 14:00 has to be visible before
+ *     a duration is chosen — otherwise the grid shows one price for a day that has two.
  */
 public record SlotView(
         LocalTime startTime,
@@ -36,4 +39,5 @@ public record SlotView(
         UnavailableReason reason,
         Boolean bookableForRequestedDuration,
         int maxDurationMinutes,
-        Integer pricePenceForRequestedDuration) {}
+        Integer pricePenceForRequestedDuration,
+        int hourlyRatePence) {}

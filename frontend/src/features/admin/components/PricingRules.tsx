@@ -62,7 +62,11 @@ type FormValues = z.input<typeof schema>;
 const BLANK: FormValues = {
   name: '',
   ratePounds: 12,
-  priority: 0,
+  // 10, not 0. The seeded fallback sits at 0, and ties are broken in its favour, so a new
+  // rule created at 0 loses to it and silently never applies — which is exactly what makes
+  // someone conclude that pricing rules do not work. A new rule is almost always meant to
+  // override the fallback; staff who want otherwise can lower it.
+  priority: 10,
   tableType: ANY,
   daysOfWeek: [],
   startTime: '',
@@ -128,6 +132,21 @@ function appliesTo(rule: PricingRule): string {
 function isLastActiveCatchAll(rules: PricingRule[], rule: PricingRule): boolean {
   if (!rule.catchAll || !rule.active) return false;
   return rules.filter((candidate) => candidate.catchAll && candidate.active).length === 1;
+}
+
+/**
+ * Is this rule shadowed by a broader one that outranks it?
+ *
+ * <p>The highest priority wins, so a narrowed rule at priority 0 loses to a catch-all at
+ * priority 10 and never applies to anything. Nothing rejects that — it is a legal
+ * configuration — so staff set a morning rate, see no change on the booking page, and
+ * conclude pricing rules do not work. Saying it on the row is the whole fix.
+ */
+function isShadowed(rules: PricingRule[], rule: PricingRule): boolean {
+  if (!rule.active || rule.catchAll) return false;
+  return rules.some(
+    (other) => other.active && other.catchAll && other.priority >= rule.priority,
+  );
 }
 
 /**
@@ -306,7 +325,14 @@ export function PricingRules() {
                 <td className="py-3 pr-4">{appliesTo(rule)}</td>
                 <td className="py-3 pr-4 tabular-nums">{formatPence(rule.hourlyRatePence)}</td>
                 <td className="py-3 pr-4 tabular-nums">{rule.priority}</td>
-                <td className="py-3 pr-4">{rule.active ? 'Active' : 'Inactive'}</td>
+                <td className="py-3 pr-4">
+                  {rule.active ? 'Active' : 'Inactive'}
+                  {isShadowed(all, rule) && (
+                    <span className="mt-0.5 block text-xs font-medium text-amber-700">
+                      Never applies — raise its priority above the fallback
+                    </span>
+                  )}
+                </td>
                 <td className="py-3">
                   <div className="flex flex-wrap justify-end gap-2">
                     <Button
@@ -460,7 +486,7 @@ export function PricingRules() {
               label="Priority"
               type="number"
               error={errors.priority?.message}
-              hint="Higher wins when more than one rule matches."
+              hint="Higher wins when more than one rule matches. Must beat the fallback to apply."
               {...register('priority')}
             />
             <label className="flex items-end gap-2 pb-2.5 text-sm text-ink-700">

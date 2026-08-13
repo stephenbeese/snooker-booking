@@ -78,6 +78,15 @@ class AvailabilityServiceTest {
         when(bookingRepository.findOverlapping(any(), any(), any())).thenReturn(List.of());
         when(blockRepository.findOverlapping(any(), any())).thenReturn(List.of());
         when(pricingService.hourlyRatePence(any(), any())).thenReturn(1200);
+        // The grid asks for a rate per slot, since a rule narrowed by time of day makes the
+        // rate vary across the row. A flat array keeps these tests about availability; the
+        // rate actually varying is covered by SettingsAffectAvailabilityIT against real rules.
+        when(pricingService.hourlyRatesPence(any(), any())).thenAnswer(invocation -> {
+            List<?> starts = invocation.getArgument(1);
+            int[] rates = new int[starts.size()];
+            java.util.Arrays.fill(rates, 1200);
+            return rates;
+        });
         when(pricingService.quotePence(any(), any(), any())).thenReturn(1800);
     }
 
