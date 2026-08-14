@@ -9,10 +9,17 @@ import type { Booking } from './types';
 function mockBooking(booking: Booking) {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => new Response(JSON.stringify(booking), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    })),
+    // The page captions the table with its type, whose labels come from /api/tables/types.
+    // Answering that request with the booking hands an object to code expecting a list.
+    vi.fn(async (input: RequestInfo | URL) => {
+      const body = String(input).includes('/api/tables/types')
+        ? [{ code: 'SNOOKER', label: 'Snooker' }]
+        : booking;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }),
   );
 }
 
@@ -119,7 +126,10 @@ describe('BookingPage', () => {
             { status: 502, headers: { 'Content-Type': 'application/json' } },
           );
         }
-        return new Response(JSON.stringify(aBooking({ status: 'PENDING_PAYMENT' })), {
+        const body = url.includes('/api/tables/types')
+          ? [{ code: 'SNOOKER', label: 'Snooker' }]
+          : aBooking({ status: 'PENDING_PAYMENT' });
+        return new Response(JSON.stringify(body), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         });

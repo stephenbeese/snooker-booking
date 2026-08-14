@@ -22,6 +22,9 @@ public record BookingResponse(
         String reference,
         long tableId,
         String tableName,
+        // The type's code. The label is editable and served by /api/tables/types, so sending it
+        // here as well would be a second copy to go stale when a manager renames a type.
+        String tableType,
         LocalDate date,
         LocalTime startTime,
         LocalTime endTime,
@@ -54,6 +57,7 @@ public record BookingResponse(
                 booking.getReference(),
                 booking.getSnookerTable().getId(),
                 booking.getSnookerTable().getName(),
+                booking.getSnookerTable().getTableType(),
                 clock.toLocalDate(booking.getStartAt()),
                 clock.toLocalTime(booking.getStartAt()),
                 clock.toLocalTime(booking.getEndAt()),

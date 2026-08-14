@@ -80,9 +80,8 @@ describe('AdminDiaryPage', () => {
     ]);
     renderWithRouter(<AdminDiaryPage />, { route: '/admin/diary', path: '/admin/diary' });
 
-    const block = await screen.findByRole('link', { name: /Jo Bloggs/ });
+    const block = await screen.findByRole('button', { name: /Jo Bloggs/ });
     expect(block.closest('td')).toHaveAttribute('colspan', '2');
-    expect(block).toHaveAttribute('href', '/admin/bookings/SNK-DIARY1');
   });
 
   it('leaves the slot of a cancelled booking free to sell', async () => {
@@ -120,7 +119,7 @@ describe('AdminDiaryPage', () => {
     renderWithRouter(<AdminDiaryPage />, { route: '/admin/diary', path: '/admin/diary' });
 
     expect(await screen.findByRole('columnheader', { name: '10:00' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Early Bird/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Early Bird/ })).toBeInTheDocument();
   });
 
   it('filters to one table without losing the time axis', async () => {
@@ -192,7 +191,95 @@ describe('AdminDiaryPage', () => {
     ]);
     renderWithRouter(<AdminDiaryPage />, { route: '/admin/diary', path: '/admin/diary' });
 
-    const block = await screen.findByRole('link', { name: /Phone Caller/ });
+    const block = await screen.findByRole('button', { name: /Phone Caller/ });
     expect(within(block).getByText(/£12\.00 due/)).toBeInTheDocument();
+  });
+
+  // The diary is a place staff work down a day. Sending them to another page for each booking
+  // lost the day and made them navigate back to it, so the record opens over the grid instead.
+  describe('the booking dialog', () => {
+    /** As mockApi, plus the single-booking fetch the dialog makes. */
+    function mockApiWithDetail(availability: DayAvailability, bookings: AdminBooking[]) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          // Order matters: /api/admin/bookings/day is itself prefixed by the detail path, so
+          // testing the detail branch first would answer the day request with one booking.
+          const body = url.includes('/api/tables/types')
+            ? TABLE_TYPES
+            : url.includes('/api/admin/bookings/day')
+              ? bookings
+              : url.includes('/api/admin/bookings/')
+                ? bookings[0]
+                : availability;
+          return new Response(JSON.stringify(body), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }),
+      );
+    }
+
+    it('opens the booking over the grid, and records it in the URL', async () => {
+      mockApiWithDetail(openDay(), [
+        makeAdminBooking({
+          reference: 'SNK-DIARY1',
+          customerName: 'Jo Bloggs',
+          startTime: '10:00:00',
+          durationMinutes: 60,
+        }),
+      ]);
+      renderWithRouter(<AdminDiaryPage />, { route: '/admin/diary', path: '/admin/diary' });
+
+      await userEvent.click(await screen.findByRole('button', { name: /Jo Bloggs/ }));
+
+      const dialog = await screen.findByRole('dialog');
+      expect(await within(dialog).findByText('SNK-DIARY1')).toBeInTheDocument();
+      // The way out to the full page, for a booking someone wants to keep in front of them.
+      expect(within(dialog).getByRole('link', { name: /Open full page/ })).toHaveAttribute(
+        'href',
+        '/admin/bookings/SNK-DIARY1',
+      );
+    });
+
+    it('closes on Escape', async () => {
+      mockApiWithDetail(openDay(), [
+        makeAdminBooking({
+          reference: 'SNK-DIARY1',
+          customerName: 'Jo Bloggs',
+          startTime: '10:00:00',
+          durationMinutes: 60,
+        }),
+      ]);
+      renderWithRouter(<AdminDiaryPage />, { route: '/admin/diary', path: '/admin/diary' });
+
+      await userEvent.click(await screen.findByRole('button', { name: /Jo Bloggs/ }));
+      await screen.findByRole('dialog');
+
+      await userEvent.keyboard('{Escape}');
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    });
+
+    it('opens the booking named by the URL on first render', async () => {
+      // A refresh with ?booking= present must come back to the same record, which is the whole
+      // reason the reference lives in the query string.
+      mockApiWithDetail(openDay(), [
+        makeAdminBooking({
+          reference: 'SNK-DIARY1',
+          customerName: 'Jo Bloggs',
+          startTime: '10:00:00',
+          durationMinutes: 60,
+        }),
+      ]);
+      renderWithRouter(<AdminDiaryPage />, {
+        route: '/admin/diary?booking=SNK-DIARY1',
+        path: '/admin/diary',
+      });
+
+      const dialog = await screen.findByRole('dialog');
+      expect(await within(dialog).findByText('SNK-DIARY1')).toBeInTheDocument();
+    });
   });
 });

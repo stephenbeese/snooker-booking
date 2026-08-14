@@ -38,6 +38,8 @@ export interface AdminBooking {
   reference: string;
   tableId: number;
   tableName: string;
+  /** The type's code. Caption it with `useTableTypeLabel`, which reads the club's own labels. */
+  tableType: TableType;
   date: string;
   startTime: string;
   endTime: string;

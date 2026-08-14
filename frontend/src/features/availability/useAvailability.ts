@@ -57,5 +57,10 @@ export function useTableTypes() {
  */
 export function useTableTypeLabel(): (code: TableType) => string {
   const { data } = useTableTypes();
-  return (code) => data?.find((type) => type.code === code)?.label ?? code;
+  // Array.isArray rather than a truthiness check: this is a lookup for captioning a name, and
+  // it must never be the reason a page fails to render. `data` is whatever the endpoint
+  // answered, so a proxy error page or a misrouted response would otherwise throw here and
+  // take the whole booking page down with it.
+  const types = Array.isArray(data) ? data : [];
+  return (code) => types.find((type) => type.code === code)?.label ?? code;
 }

@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import { PageShell } from '@/components/ui/PageShell';
+import { useTableTypeLabel } from '@/features/availability/useAvailability';
 import { formatSlotTime, todayIso } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
 import { StatusBadge } from './components/StatusBadge';
@@ -137,12 +138,19 @@ function Stat({
 }
 
 function DiaryRow({ booking }: { booking: AdminBooking }) {
+  const typeLabel = useTableTypeLabel();
+
   return (
     <li className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-card border border-ink-200 bg-white px-4 py-3 shadow-card">
       <span className="w-28 font-mono text-sm text-felt-900">
         {formatSlotTime(booking.startTime)}–{formatSlotTime(booking.endTime)}
       </span>
-      <span className="font-medium text-felt-900">{booking.tableName}</span>
+      <span className="font-medium text-felt-900">
+        {booking.tableName}
+        <span className="ml-2 text-xs font-normal text-fg-muted">
+          {typeLabel(booking.tableType)}
+        </span>
+      </span>
       <span className="text-sm text-ink-600">{booking.customerName}</span>
       <span className="ml-auto flex items-center gap-3">
         <StatusBadge status={booking.status} />

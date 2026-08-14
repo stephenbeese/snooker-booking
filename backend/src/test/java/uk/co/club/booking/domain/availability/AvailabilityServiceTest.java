@@ -221,6 +221,54 @@ class AvailabilityServiceTest {
     }
 
     @Test
+    void theAxisAndEveryRowAreTrimmedTogether() {
+        // Whatever the edges do, the header and the cells beneath it must agree. A trim applied
+        // to slotTimes but not to the rows — or to one row and not another — slides every cell
+        // under the wrong time, which is worse than any amount of dead grid.
+        DayAvailability day = serviceAt(14, 15).availability(DATE, null, null);
+
+        assertThat(day.slotTimes()).isNotEmpty();
+        for (TableAvailability row : day.tables()) {
+            assertThat(row.slots()).hasSameSizeAs(day.slotTimes());
+            for (int i = 0; i < row.slots().size(); i++) {
+                assertThat(row.slots().get(i).startTime()).isEqualTo(day.slotTimes().get(i));
+            }
+        }
+    }
+
+    @Test
+    void aFullyBookedDayStillRendersEveryColumn() {
+        // The one case the edge trim must never touch. A column every table has sold is the
+        // busiest hour of the day, not a dead end — dropping it would report the club's hours
+        // as narrower than they are, and a fully booked day would come back as an empty grid
+        // that reads as broken rather than as busy.
+        Booking allDay = TestFixtures.booking(
+                table1, local(10, 0), local(23, 0), BookingStatus.CONFIRMED);
+        when(bookingRepository.findOverlapping(any(), any(), any())).thenReturn(List.of(allDay));
+
+        DayAvailability day = service.availability(DATE, null, null);
+
+        assertThat(day.slotTimes()).hasSize(26).startsWith(LocalTime.of(10, 0));
+        assertThat(day.tables().getFirst().slots()).hasSize(26);
+        assertThat(slotAt(day, LocalTime.of(10, 0)).reason()).isEqualTo(UnavailableReason.BOOKED);
+    }
+
+    @Test
+    void maintenanceDoesNotTrimTheEdgesOfTheDay() {
+        // Maintenance is structural for one table but not for the club: another table may be
+        // sellable in that column, and even when none is, the hour is still trading time.
+        when(blockRepository.findOverlapping(any(), any()))
+                .thenReturn(List.of(
+                        TestFixtures.block(table1, local(10, 0), local(11, 0), "Recloth")));
+
+        DayAvailability day = service.availability(DATE, null, null);
+
+        assertThat(day.slotTimes()).startsWith(LocalTime.of(10, 0));
+        assertThat(slotAt(day, LocalTime.of(10, 0)).reason())
+                .isEqualTo(UnavailableReason.MAINTENANCE);
+    }
+
+    @Test
     void liveHoldBlocksTheSlotButLapsedHoldDoesNot() {
         Booking liveHold = TestFixtures.pendingHold(
                 table1, local(16, 0), local(17, 0), NOW.plusSeconds(600));
