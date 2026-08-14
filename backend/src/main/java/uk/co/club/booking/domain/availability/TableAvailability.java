@@ -1,7 +1,6 @@
 package uk.co.club.booking.domain.availability;
 
 import java.util.List;
-import uk.co.club.booking.domain.table.TableType;
 
 /**
  * One row of the availability grid.
@@ -18,7 +17,7 @@ import uk.co.club.booking.domain.table.TableType;
 public record TableAvailability(
         long tableId,
         String tableName,
-        TableType tableType,
+        String tableType,
         boolean tableActive,
         int hourlyRatePence,
         boolean varyingRate,

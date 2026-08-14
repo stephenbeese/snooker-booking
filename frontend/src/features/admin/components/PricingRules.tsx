@@ -3,9 +3,11 @@ import { useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Button } from '@/components/ui/Button';
+import { Select } from '@/components/ui/Select';
 import { CheckboxDropdown } from '@/components/ui/CheckboxDropdown';
 import { TextField } from '@/components/ui/TextField';
 import { ApiError } from '@/lib/apiError';
+import { useTableTypeLabel, useTableTypes } from '@/features/availability/useAvailability';
 import { formatPence, penceToPounds, poundsToPence } from '@/lib/money';
 import { useDeletePricingRule, usePricingRules, useSavePricingRule } from '../useAdmin';
 import type { PricingRule, TableType, Weekday } from '../types';
@@ -18,12 +20,6 @@ const WEEKDAY_LABEL: Record<Weekday, string> = {
   FRIDAY: 'Friday',
   SATURDAY: 'Saturday',
   SUNDAY: 'Sunday',
-};
-
-const TABLE_TYPE_LABEL: Record<TableType, string> = {
-  SNOOKER: 'Snooker',
-  ENGLISH_POOL: 'English pool',
-  AMERICAN_POOL: 'American pool',
 };
 
 /** '' is the wire's null: a select cannot hold null, and "any" is what null means here. */
@@ -108,11 +104,16 @@ function describeDays(days: Weekday[]): string | null {
     .join(', ');
 }
 
-/** What a rule applies to, in a sentence. */
-function appliesTo(rule: PricingRule): string {
+/**
+ * What a rule applies to, in a sentence.
+ *
+ * <p>Takes the label lookup as an argument rather than calling the hook: this is a pure
+ * function used inside a map, and type labels are server data since Phase 7.
+ */
+function appliesTo(rule: PricingRule, typeLabel: (code: string) => string): string {
   if (rule.catchAll) return 'Everything';
   return [
-    rule.tableType ? TABLE_TYPE_LABEL[rule.tableType] : null,
+    rule.tableType ? typeLabel(rule.tableType) : null,
     describeDays(rule.daysOfWeek),
     rule.startTime && rule.endTime
       ? `${rule.startTime.slice(0, 5)}–${rule.endTime.slice(0, 5)}`
@@ -158,6 +159,8 @@ function isShadowed(rules: PricingRule[], rule: PricingRule): boolean {
  */
 export function PricingRules() {
   const { data: rules, isPending, isError, error } = usePricingRules();
+  const { data: tableTypes } = useTableTypes();
+  const typeLabel = useTableTypeLabel();
   const saveRule = useSavePricingRule();
   const deleteRule = useDeletePricingRule();
 
@@ -322,7 +325,7 @@ export function PricingRules() {
             {all.map((rule) => (
               <tr key={rule.id} className="border-b border-ink-100 align-middle">
                 <td className="py-3 pr-4 font-medium text-felt-900">{rule.name}</td>
-                <td className="py-3 pr-4">{appliesTo(rule)}</td>
+                <td className="py-3 pr-4">{appliesTo(rule, typeLabel)}</td>
                 <td className="py-3 pr-4 tabular-nums">{formatPence(rule.hourlyRatePence)}</td>
                 <td className="py-3 pr-4 tabular-nums">{rule.priority}</td>
                 <td className="py-3 pr-4">
@@ -419,26 +422,14 @@ export function PricingRules() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label
-                htmlFor="pricing-table-type"
-                className="block text-sm font-medium text-felt-900"
-              >
-                Table type
-              </label>
-              <select
-                id="pricing-table-type"
-                className="mt-1.5 block w-full rounded-lg bg-white px-3.5 py-2.5 text-sm text-ink-900 ring-1 ring-inset ring-ink-300 focus:ring-2 focus:ring-inset focus:ring-felt-600 focus:outline-none"
-                {...register('tableType')}
-              >
+            <Select label="Table type" {...register('tableType')}>
                 <option value={ANY}>Any table</option>
-                {Object.entries(TABLE_TYPE_LABEL).map(([value, label]) => (
+                {(tableTypes ?? []).map(({ code: value, label }) => (
                   <option key={value} value={value}>
                     {label}
                   </option>
                 ))}
-              </select>
-            </div>
+            </Select>
 
             {/* Controller rather than register(): this is a button-and-popover, not a native
                 input, so there is no DOM element for react-hook-form to bind to directly. */}

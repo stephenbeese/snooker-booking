@@ -1,7 +1,6 @@
 package uk.co.club.booking.domain.admin.web.dto;
 
 import uk.co.club.booking.domain.table.SnookerTable;
-import uk.co.club.booking.domain.table.TableType;
 
 /**
  * A table as staff see it.
@@ -13,7 +12,7 @@ import uk.co.club.booking.domain.table.TableType;
 public record AdminTableResponse(
         long id,
         String name,
-        TableType tableType,
+        String tableType,
         int displayOrder,
         boolean active,
         String notes) {

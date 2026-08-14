@@ -157,6 +157,149 @@ class SettingsAffectAvailabilityIT extends AbstractIntegrationTest {
     }
 
     @Nested
+    @DisplayName("special opening hours")
+    class Overrides {
+
+        @Test
+        @DisplayName("closing one date closes it without touching the same weekday elsewhere")
+        void closingOneDateIsSpecificToThatDate() {
+            LocalDate sameWeekdayNextWeek = day.plusWeeks(1);
+            assertThat(availabilityFor(day).clubOpen()).isTrue();
+
+            settingsService.saveOpeningHoursOverride(day, true, null, null, "Private function");
+
+            assertThat(availabilityFor(day).clubOpen()).isFalse();
+            // The whole point of a date override rather than a weekday one: next Tuesday is
+            // unaffected by this Tuesday being closed.
+            assertThat(availabilityFor(sameWeekdayNextWeek).clubOpen())
+                    .as("the same weekday a week later")
+                    .isTrue();
+        }
+
+        @Test
+        @DisplayName("a date closed by an override also refuses bookings through the API")
+        void closingADateBlocksNewBookings() {
+            // This is the trap the OpeningHoursResolver exists to close. The grid and the
+            // validator used to resolve opening hours independently, so an override taught to
+            // only one of them would hide the date on the booking page while the API went on
+            // accepting bookings for it — and nobody would find out until a customer arrived
+            // at a locked door holding a confirmation.
+            settingsService.saveOpeningHoursOverride(day, true, null, null, "Christmas Day");
+
+            assertThat(availabilityFor(day).clubOpen()).as("hidden on the grid").isFalse();
+            assertThatThrownBy(() -> book(LocalTime.of(14, 0), 60))
+                    .as("and refused by the API")
+                    .isInstanceOf(BusinessRuleException.class);
+        }
+
+        @Test
+        @DisplayName("shortened override hours are enforced on both the grid and the API")
+        void shortenedHoursAreEnforcedBothWays() {
+            // The same disagreement in its subtler form: the override narrows the day rather
+            // than closing it, so the grid could look right while the validator still used the
+            // full weekday window for the hours the override removed.
+            settingsService.saveOpeningHoursOverride(
+                    day, false, LocalTime.of(18, 0), LocalTime.of(22, 0), "Boxing Day");
+
+            DayAvailability after = availabilityFor(day);
+            assertThat(after.openingTime()).isEqualTo(LocalTime.of(18, 0));
+            assertThat(after.slotTimes())
+                    .isNotEmpty()
+                    .allSatisfy(time ->
+                            assertThat(time).isBetween(LocalTime.of(18, 0), LocalTime.of(22, 0)));
+
+            // 14:00 is inside the ordinary 10:00–23:00 weekday window and outside the override.
+            assertThatThrownBy(() -> book(LocalTime.of(14, 0), 60))
+                    .isInstanceOf(BusinessRuleException.class);
+            // And a time the override does permit still works, so the rule narrows rather than
+            // simply breaking the day.
+            assertThat(book(LocalTime.of(19, 0), 60).getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        }
+
+        @Test
+        @DisplayName("removing an override returns the date to its weekday hours")
+        void removingAnOverrideRestoresTheWeekday() {
+            settingsService.saveOpeningHoursOverride(day, true, null, null, "Cancelled event");
+            assertThat(availabilityFor(day).clubOpen()).isFalse();
+
+            settingsService.deleteOpeningHoursOverride(day);
+
+            DayAvailability after = availabilityFor(day);
+            assertThat(after.clubOpen()).isTrue();
+            assertThat(after.openingTime()).isEqualTo(LocalTime.of(10, 0));
+        }
+
+        @Test
+        @DisplayName("saving the same date twice replaces it rather than adding a second")
+        void savingTwiceUpserts() {
+            settingsService.saveOpeningHoursOverride(day, true, null, null, "First guess");
+            settingsService.saveOpeningHoursOverride(
+                    day, false, LocalTime.of(12, 0), LocalTime.of(18, 0), "Corrected");
+
+            assertThat(settingsService.openingHoursOverrides())
+                    .filteredOn(override -> override.getDate().equals(day))
+                    .as("one row per date, never two contradicting each other")
+                    .hasSize(1)
+                    .first()
+                    .satisfies(override -> {
+                        assertThat(override.isClosed()).isFalse();
+                        assertThat(override.getOpenTime()).isEqualTo(LocalTime.of(12, 0));
+                    });
+
+            assertThat(availabilityFor(day).openingTime()).isEqualTo(LocalTime.of(12, 0));
+        }
+
+        @Test
+        @DisplayName("closing a date warns about the bookings already on it, but keeps them")
+        void closingADateWarnsWithoutCancelling() {
+            var booking = book(LocalTime.of(14, 0), 60);
+
+            List<SettingsService.Warning> warnings =
+                    settingsService.saveOpeningHoursOverride(day, true, null, null, "Staff party");
+
+            assertThat(warnings)
+                    .extracting(SettingsService.Warning::reference)
+                    .contains(booking.getReference());
+            assertThat(bookingService.requireByReference(booking.getReference()).getStatus())
+                    .isEqualTo(BookingStatus.CONFIRMED);
+        }
+
+        @Test
+        @DisplayName("a booking on another date is not reported as affected")
+        void warningsAreScopedToTheDate() {
+            // warningsForOverride filters by date. Without that filter every future booking in
+            // the club would be listed as affected by closing one afternoon, and staff would
+            // learn to ignore the warnings entirely.
+            var elsewhere = book(LocalTime.of(14, 0), 60);
+
+            List<SettingsService.Warning> warnings = settingsService.saveOpeningHoursOverride(
+                    day.plusDays(1), true, null, null, "A different day");
+
+            assertThat(warnings)
+                    .extracting(SettingsService.Warning::reference)
+                    .doesNotContain(elsewhere.getReference());
+        }
+
+        @Test
+        @DisplayName("an open override with no times is refused")
+        void refusesHalfConfiguredOverride() {
+            assertThatThrownBy(() ->
+                            settingsService.saveOpeningHoursOverride(day, false, null, null, null))
+                    .isInstanceOf(BusinessRuleException.class)
+                    .hasMessageContaining("opening and a closing time");
+        }
+
+        @Test
+        @DisplayName("an override closing before it opens is refused")
+        void refusesInvertedOverride() {
+            assertThatThrownBy(() -> settingsService.saveOpeningHoursOverride(
+                            day, false, LocalTime.of(20, 0), LocalTime.of(12, 0), null))
+                    .isInstanceOf(BusinessRuleException.class)
+                    .hasMessageContaining("after opening time");
+        }
+    }
+
+    @Nested
     @DisplayName("booking rules")
     class Rules {
 

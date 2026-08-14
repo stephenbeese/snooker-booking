@@ -1,6 +1,12 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
-import { fetchAdminAvailability, fetchAvailability, type AvailabilityQuery } from './api';
+import {
+  fetchAdminAvailability,
+  fetchAvailability,
+  fetchTableTypes,
+  type AvailabilityQuery,
+} from './api';
+import type { TableType } from './types';
 
 export function useAvailability({ date, durationMinutes, tableIds }: AvailabilityQuery) {
   return useQuery({
@@ -26,4 +32,30 @@ export function useAdminAvailability({ date, durationMinutes, tableIds }: Availa
     placeholderData: keepPreviousData,
     staleTime: 15_000,
   });
+}
+
+/**
+ * The club's table types, for labelling and for filling pickers.
+ *
+ * <p>Long `staleTime`: types change when a manager adds one, which is roughly never compared
+ * with how often this is read — every grid, filter and form renders from it.
+ */
+export function useTableTypes() {
+  return useQuery({
+    queryKey: queryKeys.tableTypes(),
+    queryFn: fetchTableTypes,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * A code→label lookup that degrades to the code itself.
+ *
+ * <p>Falling back to the raw code matters: a table can carry a type that has since been
+ * withdrawn, and that type is absent from this list. Rendering the code is ugly but truthful,
+ * where rendering "undefined" — or nothing at all — is neither.
+ */
+export function useTableTypeLabel(): (code: TableType) => string {
+  const { data } = useTableTypes();
+  return (code) => data?.find((type) => type.code === code)?.label ?? code;
 }

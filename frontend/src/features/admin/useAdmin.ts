@@ -2,6 +2,14 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { queryKeys } from '@/lib/queryKeys';
 import type { Role } from '@/features/auth/types';
 import {
+  createTableType,
+  deleteOpeningHoursOverride,
+  fetchAdminTableTypes,
+  fetchOpeningHoursOverrides,
+  reorderTables,
+  saveOpeningHoursOverride,
+  setTableTypeActive,
+  updateTableType,
   cancelBookingAsAdmin,
   changeUserRole,
   createAdminUser,
@@ -125,6 +133,10 @@ function useInvalidateClubStructure() {
     await queryClient.invalidateQueries({ queryKey: ['admin'] });
     await queryClient.invalidateQueries({ queryKey: ['availability'] });
     await queryClient.invalidateQueries({ queryKey: queryKeys.tables() });
+    // The public type list too. Renaming a type through the admin endpoint would otherwise
+    // leave every grid and filter rendering the old label until its own long staleTime
+    // expired — which is five minutes of staff seeing the change not take effect.
+    await queryClient.invalidateQueries({ queryKey: queryKeys.tableTypes() });
   };
 }
 
@@ -147,6 +159,63 @@ export function useSetTableActive() {
     mutationFn: ({ id, active }: { id: number; active: boolean }) => setTableActive(id, active),
     onSuccess: invalidate,
   });
+}
+
+export function useReorderTables() {
+  const invalidate = useInvalidateClubStructure();
+  return useMutation({ mutationFn: reorderTables, onSuccess: invalidate });
+}
+
+/** Every type including withdrawn ones. Admin-only; the pickers use `useTableTypes`. */
+export function useAdminTableTypes() {
+  return useQuery({
+    queryKey: queryKeys.adminTableTypes(),
+    queryFn: fetchAdminTableTypes,
+  });
+}
+
+export function useCreateTableType() {
+  const invalidate = useInvalidateClubStructure();
+  return useMutation({
+    mutationFn: ({ label, displayOrder }: { label: string; displayOrder?: number }) =>
+      createTableType(label, displayOrder),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdateTableType() {
+  const invalidate = useInvalidateClubStructure();
+  return useMutation({
+    mutationFn: ({ code, label }: { code: string; label: string }) =>
+      updateTableType(code, label),
+    onSuccess: invalidate,
+  });
+}
+
+export function useSetTableTypeActive() {
+  const invalidate = useInvalidateClubStructure();
+  return useMutation({
+    mutationFn: ({ code, active }: { code: string; active: boolean }) =>
+      setTableTypeActive(code, active),
+    onSuccess: invalidate,
+  });
+}
+
+export function useOpeningHoursOverrides() {
+  return useQuery({
+    queryKey: queryKeys.adminOpeningHoursOverrides(),
+    queryFn: fetchOpeningHoursOverrides,
+  });
+}
+
+export function useSaveOpeningHoursOverride() {
+  const invalidate = useInvalidateClubStructure();
+  return useMutation({ mutationFn: saveOpeningHoursOverride, onSuccess: invalidate });
+}
+
+export function useDeleteOpeningHoursOverride() {
+  const invalidate = useInvalidateClubStructure();
+  return useMutation({ mutationFn: deleteOpeningHoursOverride, onSuccess: invalidate });
 }
 
 export function useCreateMaintenanceBlock() {

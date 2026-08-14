@@ -13,7 +13,15 @@ export type UnavailableReason =
   | 'TOO_FAR_IN_ADVANCE'
   | 'INSUFFICIENT_REMAINING_TIME';
 
-export type TableType = 'SNOOKER' | 'ENGLISH_POOL' | 'AMERICAN_POOL';
+/**
+ * A table type's code, e.g. "SNOOKER".
+ *
+ * <p>A bare string rather than a union since Phase 7: types are rows a manager can add, so a
+ * closed union here would be a second source of truth that a newly added type falsifies —
+ * and `Record<TableType, string>` label maps would stop compiling every time the club took
+ * up a new format. Labels come from `GET /api/tables/types`.
+ */
+export type TableType = string;
 
 export interface Slot {
   /** Club-local start, e.g. "14:00:00". Matches the grid's time axis. */
@@ -69,4 +77,10 @@ export interface DayAvailability {
   /** Set when the whole day is unbookable (closed, past, too far ahead). */
   dayUnavailableReason: UnavailableReason | null;
   tables: TableAvailability[];
+}
+
+/** A table type as the UI renders it: the stored code, and what to show for it. */
+export interface TableTypeOption {
+  code: TableType;
+  label: string;
 }

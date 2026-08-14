@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import uk.co.club.booking.domain.table.SnookerTable;
 import uk.co.club.booking.domain.table.SnookerTableRepository;
+import uk.co.club.booking.domain.table.TableTypeService;
 import uk.co.club.booking.domain.table.web.dto.TableResponse;
 import uk.co.club.booking.security.AppUserPrincipal;
 
@@ -26,9 +27,12 @@ import uk.co.club.booking.security.AppUserPrincipal;
 public class TableController {
 
     private final SnookerTableRepository tableRepository;
+    private final TableTypeService tableTypeService;
 
-    public TableController(SnookerTableRepository tableRepository) {
+    public TableController(
+            SnookerTableRepository tableRepository, TableTypeService tableTypeService) {
         this.tableRepository = tableRepository;
+        this.tableTypeService = tableTypeService;
     }
 
     @GetMapping
@@ -39,4 +43,25 @@ public class TableController {
                 : tableRepository.findAllByActiveTrueOrderByDisplayOrderAscIdAsc();
         return tables.stream().map(TableResponse::from).toList();
     }
+
+    /**
+     * The types a table can be, with the labels to show for them.
+     *
+     * <p>Read-only and public, which is why it lives here rather than on the ADMIN-only
+     * management endpoint: since Phase 7 the codes are data, so every screen that renders a
+     * type — the booking grid, the diary filter, the telephone form — must look up its label
+     * rather than hold a hardcoded map that a newly added type would be missing from.
+     *
+     * <p>Only active types. An inactive one still appears on the tables that carry it, but it
+     * must not be offered as a choice, and this list is what fills the pickers.
+     */
+    @GetMapping("/types")
+    public List<TableTypeView> types() {
+        return tableTypeService.findActive().stream()
+                .map(type -> new TableTypeView(type.getCode(), type.getLabel()))
+                .toList();
+    }
+
+    /** Just enough to render a type: what it is called, and what to display. */
+    public record TableTypeView(String code, String label) {}
 }

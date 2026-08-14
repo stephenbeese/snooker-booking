@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyShort;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import java.time.Clock;
@@ -31,10 +32,13 @@ import uk.co.club.booking.common.error.NotFoundException;
 import uk.co.club.booking.common.time.ClubClock;
 import uk.co.club.booking.domain.availability.SlotGenerator;
 import uk.co.club.booking.domain.club.BookingSettingsRepository;
+import uk.co.club.booking.domain.club.OpeningHoursOverrideRepository;
 import uk.co.club.booking.domain.club.OpeningHoursRepository;
+import uk.co.club.booking.domain.club.OpeningHoursResolver;
 import uk.co.club.booking.domain.table.MaintenanceBlockRepository;
 import uk.co.club.booking.domain.table.SnookerTable;
 import uk.co.club.booking.domain.table.SnookerTableRepository;
+import uk.co.club.booking.domain.table.TableTypeEntity;
 import uk.co.club.booking.support.TestFixtures;
 
 /**
@@ -60,6 +64,7 @@ class BookingValidatorTest {
     @Mock private BookingRepository bookingRepository;
     @Mock private MaintenanceBlockRepository blockRepository;
     @Mock private OpeningHoursRepository openingHoursRepository;
+    @Mock private OpeningHoursOverrideRepository overrideRepository;
     @Mock private BookingSettingsRepository bookingSettingsRepository;
 
     private BookingValidator validator;
@@ -70,13 +75,20 @@ class BookingValidatorTest {
     void setUp() {
         Instant now = clubTime(LocalTime.of(9, 0));
         clubClock = new ClubClock(Clock.fixed(now, LONDON), "Europe/London");
+        // A real resolver over mocked repositories rather than a mocked resolver: these tests
+        // are about which window the validator enforces, and stubbing the resolver would stub
+        // out the very precedence (override beats weekday) that decides the answer.
+        //
+        // Lenient because most tests here never reach the override lookup — they fail on an
+        // earlier rule — and strict stubbing would report this as unnecessary in each of them.
+        lenient().when(overrideRepository.findById(any())).thenReturn(Optional.empty());
         validator = new BookingValidator(
                 tableRepository,
                 bookingRepository,
                 blockRepository,
-                openingHoursRepository,
+                new OpeningHoursResolver(
+                        openingHoursRepository, overrideRepository, new SlotGenerator(clubClock)),
                 bookingSettingsRepository,
-                new SlotGenerator(clubClock),
                 clubClock);
         table = TestFixtures.table(1L, "Table 1");
     }
@@ -301,7 +313,7 @@ class BookingValidatorTest {
             when(bookingSettingsRepository.findSingleton())
                     .thenReturn(Optional.of(TestFixtures.bookingSettings()));
             SnookerTable inactive = TestFixtures.table(
-                    1L, "Table 1", uk.co.club.booking.domain.table.TableType.SNOOKER, false);
+                    1L, "Table 1", TableTypeEntity.SNOOKER, false);
             when(tableRepository.findById(1L)).thenReturn(Optional.of(inactive));
 
             // BookingPolicy has no field to waive this, by design; the test documents that
@@ -473,7 +485,7 @@ class BookingValidatorTest {
         when(bookingSettingsRepository.findSingleton())
                 .thenReturn(Optional.of(TestFixtures.bookingSettings()));
         SnookerTable inactive = TestFixtures.table(
-                1L, "Table 1", uk.co.club.booking.domain.table.TableType.SNOOKER, false);
+                1L, "Table 1", TableTypeEntity.SNOOKER, false);
         when(tableRepository.findById(1L)).thenReturn(Optional.of(inactive));
 
         // No opening-hours stub, deliberately. The table check runs first, so the validator

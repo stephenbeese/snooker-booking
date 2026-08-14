@@ -2,6 +2,7 @@ package uk.co.club.booking.domain.club;
 
 import java.time.DayOfWeek;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -19,7 +20,7 @@ import uk.co.club.booking.common.time.ClubClock;
 import uk.co.club.booking.domain.booking.Booking;
 import uk.co.club.booking.domain.booking.BookingRepository;
 import uk.co.club.booking.domain.booking.BookingStatus;
-import uk.co.club.booking.domain.table.TableType;
+import uk.co.club.booking.domain.table.TableTypeService;
 
 /**
  * Editing the settings that drive the booking engine.
@@ -53,23 +54,29 @@ public class SettingsService {
 
     private final ClubSettingsRepository clubSettingsRepository;
     private final OpeningHoursRepository openingHoursRepository;
+    private final OpeningHoursOverrideRepository overrideRepository;
     private final BookingSettingsRepository bookingSettingsRepository;
     private final PricingRuleRepository pricingRuleRepository;
     private final BookingRepository bookingRepository;
+    private final TableTypeService tableTypeService;
     private final ClubClock clubClock;
 
     public SettingsService(
             ClubSettingsRepository clubSettingsRepository,
             OpeningHoursRepository openingHoursRepository,
+            OpeningHoursOverrideRepository overrideRepository,
             BookingSettingsRepository bookingSettingsRepository,
             PricingRuleRepository pricingRuleRepository,
             BookingRepository bookingRepository,
+            TableTypeService tableTypeService,
             ClubClock clubClock) {
         this.clubSettingsRepository = clubSettingsRepository;
         this.openingHoursRepository = openingHoursRepository;
+        this.overrideRepository = overrideRepository;
         this.bookingSettingsRepository = bookingSettingsRepository;
         this.pricingRuleRepository = pricingRuleRepository;
         this.bookingRepository = bookingRepository;
+        this.tableTypeService = tableTypeService;
         this.clubClock = clubClock;
     }
 
@@ -206,6 +213,124 @@ public class SettingsService {
         return warnings;
     }
 
+    // ------------------------------------------------------- special (date) opening hours
+
+    /**
+     * Overrides from today onwards.
+     *
+     * <p>Past overrides are deliberately not listed. They cannot affect any future booking, and
+     * a list that accumulates every past Christmas buries the ones staff can still act on.
+     */
+    @Transactional(readOnly = true)
+    public List<OpeningHoursOverride> openingHoursOverrides() {
+        return overrideRepository.findByDateGreaterThanEqualOrderByDateAsc(
+                clubClock.toLocalDate(clubClock.now()));
+    }
+
+    /**
+     * Creates or replaces the override for a date.
+     *
+     * <p>Upsert rather than separate create/update endpoints: the date is the identity, so
+     * "set the hours for 25 December" is one intention however many times it is expressed, and
+     * a create that collides with an existing row would be a conflict staff can do nothing
+     * useful with except retry as an update.
+     *
+     * @return future bookings the override would no longer permit — advisory, never blocking,
+     *     for the same reason as {@link #updateOpeningHours}: the club may be closing precisely
+     *     because of an event and intend to ring those customers
+     */
+    @Transactional
+    public List<Warning> saveOpeningHoursOverride(
+            LocalDate date, boolean closed, LocalTime openTime, LocalTime closeTime, String note) {
+
+        // Mirrors the CHECK in V14, so a half-configured override is a 422 naming the problem
+        // rather than a 500 out of the driver.
+        if (!closed) {
+            if (openTime == null || closeTime == null) {
+                throw new BusinessRuleException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "An open day needs both an opening and a closing time.");
+            }
+            if (!closeTime.isAfter(openTime)) {
+                throw new BusinessRuleException(
+                        ErrorCode.VALIDATION_FAILED, "Closing time must be after opening time.");
+            }
+        }
+
+        List<Warning> warnings = warningsForOverride(date, closed, openTime, closeTime);
+
+        OpeningHoursOverride override =
+                overrideRepository.findById(date).orElseGet(() -> new OpeningHoursOverride(date));
+        override.setClosed(closed);
+        // Times are kept on a closed day for the same reason as the weekly hours: reopening
+        // restores what was there rather than presenting staff with an empty form.
+        if (!closed) {
+            override.setOpenTime(openTime);
+            override.setCloseTime(closeTime);
+        }
+        override.setNote(trimToNull(note));
+        overrideRepository.saveAndFlush(override);
+
+        log.info(
+                "Opening hours override saved for {} (closed={}); {} future booking(s) affected",
+                date,
+                closed,
+                warnings.size());
+        return warnings;
+    }
+
+    /**
+     * Removes an override, returning the date to its weekday hours.
+     *
+     * <p>A genuine delete, unlike tables and cafe items: an override is a rule, not a record of
+     * anything that happened, and nothing references it. Removing it restores the ordinary
+     * weekday answer, which is exactly what staff mean by "cancel the special hours".
+     */
+    @Transactional
+    public void deleteOpeningHoursOverride(LocalDate date) {
+        if (!overrideRepository.existsById(date)) {
+            throw new NotFoundException(
+                    ErrorCode.NOT_FOUND, "There are no special hours set for that date.");
+        }
+        overrideRepository.deleteById(date);
+        log.info("Opening hours override removed for {}", date);
+    }
+
+    /**
+     * Future bookings on that one date which the override would no longer permit.
+     *
+     * <p>The date-keyed analogue of {@link #warningsForNewHours}. Kept separate rather than
+     * generalised: that method answers for seven weekdays at once and this one for a single
+     * calendar date, and folding them together would obscure both.
+     */
+    private List<Warning> warningsForOverride(
+            LocalDate date, boolean closed, LocalTime openTime, LocalTime closeTime) {
+        List<Warning> warnings = new ArrayList<>();
+        for (Booking booking : futureBookings()) {
+            LocalDate startLocal = clubClock.toLocalDate(booking.getStartAt());
+            if (!startLocal.equals(date)) {
+                continue;
+            }
+            LocalTime start = clubClock.toLocalTime(booking.getStartAt());
+            LocalTime end = clubClock.toLocalTime(booking.getEndAt());
+
+            if (closed) {
+                warnings.add(new Warning(
+                        booking.getReference(),
+                        "The club would be closed on " + date + ", when this booking starts."));
+            } else if (start.isBefore(openTime) || end.isAfter(closeTime)) {
+                warnings.add(new Warning(
+                        booking.getReference(),
+                        "Runs " + start + "–" + end + " on " + date + ", outside the new hours of "
+                                + openTime + "–" + closeTime + "."));
+            }
+            if (warnings.size() >= MAX_WARNINGS) {
+                break;
+            }
+        }
+        return warnings;
+    }
+
     // ---------------------------------------------------------------- booking rules
 
     @Transactional(readOnly = true)
@@ -326,7 +451,7 @@ public class SettingsService {
     public PricingRule savePricingRule(
             Long id,
             String name,
-            TableType tableType,
+            String tableType,
             java.util.Collection<DayOfWeek> daysOfWeek,
             LocalTime startTime,
             LocalTime endTime,
@@ -341,6 +466,13 @@ public class SettingsService {
         if (startTime != null && endTime != null && !endTime.isAfter(startTime)) {
             throw new BusinessRuleException(
                     ErrorCode.VALIDATION_FAILED, "The end time must be after the start time.");
+        }
+        // Null means "any type" and is the catch-all case, so only a named type is checked.
+        // Before V15 this column had no constraint at all: a rule naming a type that did not
+        // exist saved happily and then never matched anything, so staff configured a rate,
+        // saw the fallback price, and had nothing to tell them why.
+        if (tableType != null) {
+            tableTypeService.requireAssignable(tableType);
         }
 
         PricingRule rule = id == null

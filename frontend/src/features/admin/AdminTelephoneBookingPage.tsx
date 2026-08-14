@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { z } from 'zod';
 import { Button } from '@/components/ui/Button';
+import { Select } from '@/components/ui/Select';
 import { TextField } from '@/components/ui/TextField';
 import { AvailabilityGrid } from '@/features/availability/components/AvailabilityGrid';
 import type { Slot } from '@/features/availability/types';
@@ -185,15 +186,7 @@ export function AdminTelephoneBookingPage() {
         <div className="grid gap-5 sm:grid-cols-2">
           <TextField label="Date" type="date" error={errors.date?.message} {...register('date')} />
 
-          <div>
-            <label htmlFor="phoneDuration" className="block text-sm font-medium text-felt-900">
-              Duration
-            </label>
-            <select
-              id="phoneDuration"
-              className="mt-1.5 block w-full rounded-lg bg-white px-3.5 py-2.5 text-sm text-ink-900 ring-1 ring-inset ring-ink-300 focus:ring-2 focus:ring-inset focus:ring-felt-600 focus:outline-none"
-              {...register('durationMinutes')}
-            >
+          <Select label="Duration" {...register('durationMinutes')}>
               {/* From the server, never derived here. A hardcoded list drifts the moment
                   someone edits the club's min/max/increment settings.
 
@@ -207,17 +200,12 @@ export function AdminTelephoneBookingPage() {
                   </option>
                 ),
               )}
-            </select>
-          </div>
+            </Select>
         </div>
 
-        <div>
-          <label htmlFor="gridTableFilter" className="block text-sm font-medium text-felt-900">
-            Show
-          </label>
-          <select
-            id="gridTableFilter"
-            className="mt-1.5 block w-full rounded-lg bg-white px-3.5 py-2.5 text-sm text-ink-900 ring-1 ring-inset ring-ink-300 focus:ring-2 focus:ring-inset focus:ring-felt-600 focus:outline-none sm:max-w-xs"
+        <Select
+            label="Show"
+            className="sm:max-w-xs"
             value={filterTableId ?? ''}
             onChange={(event) =>
               setFilterTableId(event.target.value === '' ? null : Number(event.target.value))
@@ -229,8 +217,7 @@ export function AdminTelephoneBookingPage() {
                 {table.name}
               </option>
             ))}
-          </select>
-        </div>
+          </Select>
 
         <div aria-live="polite" aria-busy={availabilityPending}>
           {availabilityPending ? (
@@ -251,26 +238,14 @@ export function AdminTelephoneBookingPage() {
         </div>
 
         <div className="grid gap-5 sm:grid-cols-2">
-          <div>
-            <label htmlFor="phoneTable" className="block text-sm font-medium text-felt-900">
-              Table
-            </label>
-            <select
-              id="phoneTable"
-              className="mt-1.5 block w-full rounded-lg bg-white px-3.5 py-2.5 text-sm text-ink-900 ring-1 ring-inset ring-ink-300 focus:ring-2 focus:ring-inset focus:ring-felt-600 focus:outline-none"
-              {...register('tableId')}
-            >
+          <Select label="Table" error={errors.tableId?.message} {...register('tableId')}>
               <option value="">Choose a table…</option>
               {activeTables.map((table) => (
                 <option key={table.id} value={table.id}>
                   {table.name}
                 </option>
               ))}
-            </select>
-            {errors.tableId && (
-              <p className="mt-1.5 text-xs font-medium text-rose-700">{errors.tableId.message}</p>
-            )}
-          </div>
+            </Select>
 
           {/* Still editable. The grid fills it in, and staff may overwrite it: the backend
               lets them book a time the customer grid would refuse, and the picker must not

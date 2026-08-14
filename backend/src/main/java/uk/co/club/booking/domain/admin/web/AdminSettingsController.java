@@ -1,7 +1,9 @@
 package uk.co.club.booking.domain.admin.web;
 
 import jakarta.validation.Valid;
+import java.time.LocalDate;
 import java.util.List;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -83,6 +85,43 @@ public class AdminSettingsController {
                         .toList());
 
         return SettingsUpdateResponse.of(openingHours(), warnings);
+    }
+
+    // ------------------------------------------------------- special (date) opening hours
+
+    @GetMapping("/opening-hours/overrides")
+    public List<SettingsResponses.DateHours> openingHoursOverrides() {
+        return settingsService.openingHoursOverrides().stream()
+                .map(SettingsResponses.DateHours::from)
+                .toList();
+    }
+
+    /**
+     * Creates or replaces the special hours for a date.
+     *
+     * <p>PUT rather than POST because it is idempotent on the date: sending the same override
+     * twice leaves the same single row, where a POST would have to invent a conflict for the
+     * second attempt.
+     */
+    @PutMapping("/opening-hours/overrides")
+    public SettingsUpdateResponse<List<SettingsResponses.DateHours>> saveOpeningHoursOverride(
+            @Valid @RequestBody SettingsRequests.OpeningHoursOverrideInput request) {
+
+        var warnings = settingsService.saveOpeningHoursOverride(
+                request.date(),
+                request.closed(),
+                request.openTime(),
+                request.closeTime(),
+                request.note());
+
+        return SettingsUpdateResponse.of(openingHoursOverrides(), warnings);
+    }
+
+    @DeleteMapping("/opening-hours/overrides/{date}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteOpeningHoursOverride(
+            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        settingsService.deleteOpeningHoursOverride(date);
     }
 
     // ---------------------------------------------------------------- booking rules

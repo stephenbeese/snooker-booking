@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Button } from '@/components/ui/Button';
+import { Select } from '@/components/ui/Select';
 import { TextField } from '@/components/ui/TextField';
 import { ApiError } from '@/lib/apiError';
 import { formatSlotTime } from '@/lib/datetime';
@@ -109,26 +110,14 @@ export function AdminMaintenancePage() {
       >
         <h2 className="text-lg font-semibold text-felt-900">Block a table</h2>
 
-        <div>
-          <label htmlFor="blockTable" className="block text-sm font-medium text-felt-900">
-            Table
-          </label>
-          <select
-            id="blockTable"
-            className="mt-1.5 block w-full rounded-lg bg-white px-3.5 py-2.5 text-sm text-ink-900 ring-1 ring-inset ring-ink-300 focus:ring-2 focus:ring-inset focus:ring-felt-600 focus:outline-none"
-            {...register('tableId')}
-          >
+        <Select label="Table" error={errors.tableId?.message} {...register('tableId')}>
             <option value="">Choose a table…</option>
             {activeTables.map((table) => (
               <option key={table.id} value={table.id}>
                 {table.name}
               </option>
             ))}
-          </select>
-          {errors.tableId && (
-            <p className="mt-1.5 text-xs font-medium text-rose-700">{errors.tableId.message}</p>
-          )}
-        </div>
+        </Select>
 
         <TextField label="Date" type="date" error={errors.date?.message} {...register('date')} />
         <TextField

@@ -27,12 +27,14 @@ import uk.co.club.booking.domain.booking.BookingRepository;
 import uk.co.club.booking.domain.booking.BookingStatus;
 import uk.co.club.booking.domain.club.BookingSettings;
 import uk.co.club.booking.domain.club.BookingSettingsRepository;
+import uk.co.club.booking.domain.club.OpeningHoursOverrideRepository;
 import uk.co.club.booking.domain.club.OpeningHoursRepository;
+import uk.co.club.booking.domain.club.OpeningHoursResolver;
 import uk.co.club.booking.domain.club.PricingService;
 import uk.co.club.booking.domain.table.MaintenanceBlockRepository;
 import uk.co.club.booking.domain.table.SnookerTable;
 import uk.co.club.booking.domain.table.SnookerTableRepository;
-import uk.co.club.booking.domain.table.TableType;
+import uk.co.club.booking.domain.table.TableTypeEntity;
 import uk.co.club.booking.support.TestFixtures;
 
 /**
@@ -51,6 +53,7 @@ class AvailabilityServiceTest {
     @Mock private BookingRepository bookingRepository;
     @Mock private MaintenanceBlockRepository blockRepository;
     @Mock private OpeningHoursRepository openingHoursRepository;
+    @Mock private OpeningHoursOverrideRepository overrideRepository;
     @Mock private BookingSettingsRepository bookingSettingsRepository;
     @Mock private PricingService pricingService;
 
@@ -61,11 +64,15 @@ class AvailabilityServiceTest {
     @BeforeEach
     void setUp() {
         clubClock = new ClubClock(Clock.fixed(NOW, ZoneOffset.UTC), "Europe/London");
+        // A real resolver over the mocked repositories, for the same reason as
+        // BookingValidatorTest: the grid's window is what these tests are about, and a mocked
+        // resolver would stub out the override-beats-weekday precedence that decides it.
+        when(overrideRepository.findById(any())).thenReturn(Optional.empty());
         service = new AvailabilityService(
                 tableRepository,
                 bookingRepository,
                 blockRepository,
-                openingHoursRepository,
+                resolverFor(clubClock),
                 bookingSettingsRepository,
                 new SlotGenerator(clubClock),
                 pricingService,
@@ -183,7 +190,7 @@ class AvailabilityServiceTest {
 
     @Test
     void inactiveTableRowIsReturnedButEverySlotIsUnavailable() {
-        SnookerTable inactive = TestFixtures.table(2L, "Table 2", TableType.SNOOKER, false);
+        SnookerTable inactive = TestFixtures.table(2L, "Table 2", TableTypeEntity.SNOOKER, false);
         when(tableRepository.findAllById(any())).thenReturn(List.of(inactive));
 
         DayAvailability day = service.availability(DATE, null, List.of(2L));
@@ -365,11 +372,17 @@ class AvailabilityServiceTest {
                 tableRepository,
                 bookingRepository,
                 blockRepository,
-                openingHoursRepository,
+                resolverFor(midDay),
                 bookingSettingsRepository,
                 new SlotGenerator(midDay),
                 pricingService,
                 midDay);
+    }
+
+    /** The real resolver, reading the same mocked repositories the tests stub. */
+    private OpeningHoursResolver resolverFor(ClubClock clock) {
+        return new OpeningHoursResolver(
+                openingHoursRepository, overrideRepository, new SlotGenerator(clock));
     }
 
     @Test

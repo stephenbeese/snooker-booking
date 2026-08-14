@@ -61,7 +61,8 @@ public abstract class AbstractIntegrationTest {
         jdbcTemplate.execute(
                 """
                 TRUNCATE TABLE payment_exception, payment, booking, maintenance_block,
-                               password_reset_token, snooker_table, app_user
+                               password_reset_token, snooker_table, app_user,
+                               opening_hours_override
                 RESTART IDENTITY CASCADE
                 """);
 
@@ -130,5 +131,29 @@ public abstract class AbstractIntegrationTest {
         // every other rule by cascade, but the surviving seeded rule keeps whatever days a
         // test gave it — leaving it applying on Mondays only for every class that follows.
         jdbcTemplate.execute("DELETE FROM pricing_rule_day");
+
+        // Table types became data in V15, so they are reference rows like opening_hours rather
+        // than something to truncate — the three seeded codes must survive, because every
+        // table fixture references one. Deleting the extras and restoring the seeded three
+        // stops a test that adds "Chinese pool", renames Snooker, or deactivates a type from
+        // changing what every later class can assign. Ordered after the snooker_table
+        // TRUNCATE above, which is what releases the foreign key.
+        jdbcTemplate.execute(
+                "DELETE FROM table_type WHERE code NOT IN ('SNOOKER','ENGLISH_POOL','AMERICAN_POOL')");
+        jdbcTemplate.execute(
+                """
+                UPDATE table_type
+                   SET label = CASE code
+                                   WHEN 'SNOOKER'       THEN 'Snooker'
+                                   WHEN 'ENGLISH_POOL'  THEN 'English pool'
+                                   ELSE 'American pool'
+                               END,
+                       display_order = CASE code
+                                           WHEN 'SNOOKER'      THEN 0
+                                           WHEN 'ENGLISH_POOL' THEN 1
+                                           ELSE 2
+                                       END,
+                       active = TRUE
+                """);
     }
 }

@@ -7,6 +7,12 @@ import { AdminDiaryPage } from './AdminDiaryPage';
 import type { AdminBooking } from './types';
 import type { DayAvailability } from '@/features/availability/types';
 
+/** What GET /api/tables/types answers. Server data since Phase 7, not a hardcoded union. */
+const TABLE_TYPES = [
+  { code: 'SNOOKER', label: 'Snooker' },
+  { code: 'ENGLISH_POOL', label: 'English pool' },
+];
+
 function mockApi(availability: DayAvailability, bookings: AdminBooking[]) {
   const calls: string[] = [];
   vi.stubGlobal(
@@ -14,7 +20,14 @@ function mockApi(availability: DayAvailability, bookings: AdminBooking[]) {
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       calls.push(url);
-      const body = url.includes('/api/admin/bookings/day') ? bookings : availability;
+      // Types before availability: the filter's options come from /api/tables/types, and
+      // without its own branch it would fall through and be handed the availability object,
+      // where the component's .map on it throws and the whole page fails to render.
+      const body = url.includes('/api/tables/types')
+        ? TABLE_TYPES
+        : url.includes('/api/admin/bookings/day')
+          ? bookings
+          : availability;
       return new Response(JSON.stringify(body), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },

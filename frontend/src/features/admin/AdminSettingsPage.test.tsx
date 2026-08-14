@@ -14,6 +14,22 @@ const WEEK = [
   'SUNDAY',
 ].map((day) => ({ day, closed: false, openTime: '10:00:00', closeTime: '23:00:00' }));
 
+/** One special date, so the section has something to list. */
+const OVERRIDES = [
+  {
+    date: '2026-12-25',
+    closed: true,
+    openTime: null,
+    closeTime: null,
+    note: 'Christmas Day',
+  },
+];
+
+const TABLE_TYPES = [
+  { code: 'SNOOKER', label: 'Snooker', displayOrder: 0, active: true },
+  { code: 'ENGLISH_POOL', label: 'English pool', displayOrder: 1, active: true },
+];
+
 const RULES = {
   minDurationMinutes: 30,
   maxDurationMinutes: 240,
@@ -68,9 +84,17 @@ function mockApi(onHoursPut: () => Response = () => json({ settings: WEEK, warni
       const method = (init?.method ?? 'GET').toUpperCase();
       calls.push({ url, method, body: typeof init?.body === 'string' ? init.body : null });
 
+      // Narrowest first, exactly as SecurityConfig orders its matchers. '/opening-hours'
+      // is a prefix of '/opening-hours/overrides', so checking the shorter one first would
+      // hand the overrides list the seven-day week — and the section then renders a date
+      // that is not there.
+      if (url.includes('/opening-hours/overrides')) {
+        return method === 'GET' ? json(OVERRIDES) : json({ settings: OVERRIDES, warnings: [] });
+      }
       if (url.includes('/opening-hours')) {
         return method === 'GET' ? json(WEEK) : onHoursPut();
       }
+      if (url.includes('/table-types')) return json(TABLE_TYPES);
       if (url.includes('/booking-rules')) {
         return method === 'GET' ? json(RULES) : json({ settings: RULES, warnings: [] });
       }
@@ -165,7 +189,10 @@ describe('AdminSettingsPage', () => {
             422,
           );
         }
+        // Narrowest first, as in mockApi above.
+        if (url.includes('/opening-hours/overrides')) return json(OVERRIDES);
         if (url.includes('/opening-hours')) return json(WEEK);
+        if (url.includes('/table-types')) return json(TABLE_TYPES);
         if (url.includes('/booking-rules')) return json(RULES);
         if (url.includes('/pricing-rules')) return json(PRICING);
         if (url.includes('/settings/club')) return json(CLUB);
@@ -193,5 +220,68 @@ describe('AdminSettingsPage', () => {
     expect(await screen.findByText('Standard hourly rate')).toBeInTheDocument();
     expect(screen.getByText('Everything')).toBeInTheDocument();
     expect(screen.getByText('£12.00')).toBeInTheDocument();
+  });
+
+  it('lists the special dates alongside the weekly hours, not instead of them', async () => {
+    // Both sections read a path beginning /opening-hours. If the override list were served
+    // the weekly rows, this section would render seven undated entries and the weekly one
+    // would lose its days — which is exactly what a prefix match produces.
+    mockApi();
+    render();
+
+    expect(await screen.findByText('Christmas Day')).toBeInTheDocument();
+    expect(screen.getByLabelText('Monday opening time')).toBeInTheDocument();
+  });
+
+  it('sends the date and reason when special hours are saved', async () => {
+    const calls = mockApi();
+    const user = userEvent.setup();
+    render();
+
+    await screen.findByText('Christmas Day');
+
+    await user.type(screen.getByLabelText('Date'), '2026-12-26');
+    await user.type(screen.getByLabelText('Reason'), 'Boxing Day');
+
+    const reason = screen.getByLabelText('Reason');
+    const section = reason.closest('section');
+    await user.click(within(section!).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      const put = calls.find(
+        (call) => call.method === 'PUT' && call.url.includes('/opening-hours/overrides'),
+      );
+      expect(put?.body).toContain('2026-12-26');
+      expect(put?.body).toContain('Boxing Day');
+    });
+  });
+
+  it('offers the table types the server knows about, not a hardcoded list', async () => {
+    // The point of item 14: a type a manager adds must appear here without a deployment.
+    mockApi();
+    render();
+
+    expect(await screen.findByText('English pool')).toBeInTheDocument();
+    // The code is shown too, because it is what pricing rules and the API refer to.
+    expect(screen.getByText('ENGLISH_POOL')).toBeInTheDocument();
+  });
+
+  it('sends the label alone when a table type is added', async () => {
+    // No code field: it is derived server-side, and a form with both invites a code that
+    // disagrees with its label.
+    const calls = mockApi();
+    const user = userEvent.setup();
+    render();
+
+    await user.type(await screen.findByLabelText('New type'), 'Chinese pool');
+    await user.click(screen.getByRole('button', { name: 'Add type' }));
+
+    await waitFor(() => {
+      const post = calls.find(
+        (call) => call.method === 'POST' && call.url.includes('/table-types'),
+      );
+      expect(post?.body).toContain('Chinese pool');
+      expect(post?.body).not.toContain('CHINESE_POOL');
+    });
   });
 });

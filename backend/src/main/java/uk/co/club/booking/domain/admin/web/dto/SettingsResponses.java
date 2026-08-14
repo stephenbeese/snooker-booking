@@ -1,13 +1,14 @@
 package uk.co.club.booking.domain.admin.web.dto;
 
 import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Set;
 import uk.co.club.booking.domain.club.BookingSettings;
 import uk.co.club.booking.domain.club.ClubSettings;
 import uk.co.club.booking.domain.club.OpeningHours;
+import uk.co.club.booking.domain.club.OpeningHoursOverride;
 import uk.co.club.booking.domain.club.PricingRule;
-import uk.co.club.booking.domain.table.TableType;
 
 /** Settings as staff see them. Entities never leave the service layer. */
 public final class SettingsResponses {
@@ -55,6 +56,25 @@ public final class SettingsResponses {
         }
     }
 
+    /**
+     * Special hours for one date.
+     *
+     * <p>Times are returned even on a closed date, for the same reason as {@link DayHours}:
+     * staff reopening the date get its previous hours back rather than an empty form.
+     */
+    public record DateHours(
+            LocalDate date, boolean closed, LocalTime openTime, LocalTime closeTime, String note) {
+
+        public static DateHours from(OpeningHoursOverride override) {
+            return new DateHours(
+                    override.getDate(),
+                    override.isClosed(),
+                    override.getOpenTime(),
+                    override.getCloseTime(),
+                    override.getNote());
+        }
+    }
+
     public record BookingRules(
             int minDurationMinutes,
             int maxDurationMinutes,
@@ -79,7 +99,7 @@ public final class SettingsResponses {
     public record PricingRuleResponse(
             long id,
             String name,
-            TableType tableType,
+            String tableType,
             /** Empty means every day. Ordered Monday-first so the UI need not sort. */
             Set<DayOfWeek> daysOfWeek,
             LocalTime startTime,

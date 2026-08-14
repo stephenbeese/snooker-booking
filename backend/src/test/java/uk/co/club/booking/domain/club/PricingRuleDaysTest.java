@@ -7,7 +7,6 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
-import uk.co.club.booking.domain.table.TableType;
 
 /**
  * Day matching after V12, where a rule covers a <em>set</em> of days.
@@ -35,7 +34,7 @@ class PricingRuleDaysTest {
         PricingRule everyDay = rule();
 
         for (DayOfWeek day : DayOfWeek.values()) {
-            assertThat(everyDay.matches(TableType.SNOOKER, day, NOON))
+            assertThat(everyDay.matches("SNOOKER", day, NOON))
                     .as("an unrestricted rule must apply on %s", day)
                     .isTrue();
         }
@@ -46,8 +45,8 @@ class PricingRuleDaysTest {
         PricingRule weekdayEvenings = rule(
                 DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY);
 
-        assertThat(weekdayEvenings.matches(TableType.SNOOKER, DayOfWeek.MONDAY, NOON)).isTrue();
-        assertThat(weekdayEvenings.matches(TableType.SNOOKER, DayOfWeek.THURSDAY, NOON)).isTrue();
+        assertThat(weekdayEvenings.matches("SNOOKER", DayOfWeek.MONDAY, NOON)).isTrue();
+        assertThat(weekdayEvenings.matches("SNOOKER", DayOfWeek.THURSDAY, NOON)).isTrue();
     }
 
     @Test
@@ -57,9 +56,9 @@ class PricingRuleDaysTest {
         PricingRule weekdays = rule(
                 DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY);
 
-        assertThat(weekdays.matches(TableType.SNOOKER, DayOfWeek.FRIDAY, NOON)).isFalse();
-        assertThat(weekdays.matches(TableType.SNOOKER, DayOfWeek.SATURDAY, NOON)).isFalse();
-        assertThat(weekdays.matches(TableType.SNOOKER, DayOfWeek.SUNDAY, NOON)).isFalse();
+        assertThat(weekdays.matches("SNOOKER", DayOfWeek.FRIDAY, NOON)).isFalse();
+        assertThat(weekdays.matches("SNOOKER", DayOfWeek.SATURDAY, NOON)).isFalse();
+        assertThat(weekdays.matches("SNOOKER", DayOfWeek.SUNDAY, NOON)).isFalse();
     }
 
     @Test
@@ -70,7 +69,7 @@ class PricingRuleDaysTest {
         rule.setDaysOfWeek(null);
 
         assertThat(rule.getDaysOfWeek()).isEmpty();
-        assertThat(rule.matches(TableType.SNOOKER, DayOfWeek.WEDNESDAY, NOON)).isTrue();
+        assertThat(rule.matches("SNOOKER", DayOfWeek.WEDNESDAY, NOON)).isTrue();
     }
 
     @Test
@@ -91,8 +90,8 @@ class PricingRuleDaysTest {
         rule.setDaysOfWeek(Set.of(DayOfWeek.SUNDAY));
 
         assertThat(rule.getDaysOfWeek()).containsExactly(DayOfWeek.SUNDAY);
-        assertThat(rule.matches(TableType.SNOOKER, DayOfWeek.MONDAY, NOON)).isFalse();
-        assertThat(rule.matches(TableType.SNOOKER, DayOfWeek.SUNDAY, NOON)).isTrue();
+        assertThat(rule.matches("SNOOKER", DayOfWeek.MONDAY, NOON)).isFalse();
+        assertThat(rule.matches("SNOOKER", DayOfWeek.SUNDAY, NOON)).isTrue();
     }
 
     @Test
@@ -100,19 +99,19 @@ class PricingRuleDaysTest {
         // Each narrowing field is an AND, not an OR: a Saturday-evening snooker rule must not
         // apply to a pool table, nor on a Saturday morning.
         PricingRule rule = rule(DayOfWeek.SATURDAY);
-        rule.setTableType(TableType.SNOOKER);
+        rule.setTableType("SNOOKER");
         rule.setStartTime(LocalTime.of(18, 0));
         rule.setEndTime(LocalTime.of(23, 0));
 
-        assertThat(rule.matches(TableType.SNOOKER, DayOfWeek.SATURDAY, LocalTime.of(19, 0)))
+        assertThat(rule.matches("SNOOKER", DayOfWeek.SATURDAY, LocalTime.of(19, 0)))
                 .isTrue();
-        assertThat(rule.matches(TableType.ENGLISH_POOL, DayOfWeek.SATURDAY, LocalTime.of(19, 0)))
+        assertThat(rule.matches("ENGLISH_POOL", DayOfWeek.SATURDAY, LocalTime.of(19, 0)))
                 .as("wrong table type")
                 .isFalse();
-        assertThat(rule.matches(TableType.SNOOKER, DayOfWeek.SATURDAY, LocalTime.of(11, 0)))
+        assertThat(rule.matches("SNOOKER", DayOfWeek.SATURDAY, LocalTime.of(11, 0)))
                 .as("outside the time window")
                 .isFalse();
-        assertThat(rule.matches(TableType.SNOOKER, DayOfWeek.SUNDAY, LocalTime.of(19, 0)))
+        assertThat(rule.matches("SNOOKER", DayOfWeek.SUNDAY, LocalTime.of(19, 0)))
                 .as("wrong day")
                 .isFalse();
     }

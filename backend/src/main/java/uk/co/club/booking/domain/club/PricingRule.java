@@ -4,8 +4,6 @@ import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GenerationType;
@@ -19,7 +17,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
-import uk.co.club.booking.domain.table.TableType;
 
 /**
  * An hourly rate, optionally narrowed to a table type, weekday or time window.
@@ -40,9 +37,13 @@ public class PricingRule {
     @Column(nullable = false)
     private String name;
 
-    @Enumerated(EnumType.STRING)
+    /**
+     * The {@code code} of a table type, or null meaning "any type" — which is what makes a rule
+     * a catch-all. Data rather than an enum since V15; the foreign key added there is what stops
+     * a rule naming a type that does not exist and then silently matching nothing.
+     */
     @Column(name = "table_type")
-    private TableType tableType;
+    private String tableType;
 
     /**
      * The days this rule applies to. <strong>Empty means every day</strong>, matching what a
@@ -91,11 +92,11 @@ public class PricingRule {
         this.name = name;
     }
 
-    public TableType getTableType() {
+    public String getTableType() {
         return tableType;
     }
 
-    public void setTableType(TableType tableType) {
+    public void setTableType(String tableType) {
         this.tableType = tableType;
     }
 
@@ -187,8 +188,12 @@ public class PricingRule {
      * Whether this rule applies to a booking of the given type starting at the given
      * club-local day and time. Null narrowing fields match anything.
      */
-    public boolean matches(TableType type, DayOfWeek day, LocalTime localStart) {
-        if (tableType != null && tableType != type) {
+    public boolean matches(String type, DayOfWeek day, LocalTime localStart) {
+        // equals, not !=. While these were enum constants, identity comparison was correct and
+        // idiomatic; since V15 they are strings, where != compares references and would be true
+        // for two equal codes that are not the same object — so every narrowed rule would stop
+        // matching and the club would silently charge the catch-all rate for everything.
+        if (tableType != null && !tableType.equals(type)) {
             return false;
         }
         // Empty means every day, exactly as a null day_of_week did before V12. Testing

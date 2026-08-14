@@ -120,6 +120,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET,
                                 "/api/availability",
                                 "/api/tables",
+                                // The type labels the grid renders. GET only, and listed
+                                // explicitly because "/api/tables" alone does not cover it —
+                                // an unlisted path would fall through to anyRequest() and the
+                                // booking page would lose its labels for anyone logged out.
+                                "/api/tables/types",
                                 "/api/club")
                         .permitAll()
                         // Admin rules come before anyRequest(), which matches everything
@@ -148,6 +153,15 @@ public class SecurityConfig {
                                 "/api/admin/settings/**",
                                 "/api/admin/tables",
                                 "/api/admin/tables/**",
+                                // Table types are club configuration, not the day job: adding
+                                // one changes what every table and pricing rule may be, so it
+                                // sits with tables rather than with bookings. Listed
+                                // separately because "/api/admin/tables/**" does NOT match
+                                // "/api/admin/table-types" — the hyphen makes it a different
+                                // path segment, and relying on the resemblance would silently
+                                // hand this to STAFF.
+                                "/api/admin/table-types",
+                                "/api/admin/table-types/**",
                                 "/api/admin/users",
                                 "/api/admin/users/**")
                         .hasRole("ADMIN")
