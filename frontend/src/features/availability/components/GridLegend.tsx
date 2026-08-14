@@ -1,3 +1,8 @@
+interface GridLegendProps {
+  /** Shown as a closing note, e.g. "23:00". Omitted where the day publishes no closing time. */
+  closingTime?: string | null;
+}
+
 const ITEMS = [
   { label: 'Available', className: 'bg-felt-100' },
   // A wide swatch, not a square: the selection is now a bar across several cells, and a
@@ -9,15 +14,26 @@ const ITEMS = [
   { label: 'Unavailable', className: 'bg-ink-100' },
 ];
 
-export function GridLegend() {
+export function GridLegend({ closingTime }: GridLegendProps = {}) {
   return (
-    <ul className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-fg-muted">
+    <ul className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-fg-muted">
       {ITEMS.map((item) => (
         <li key={item.label} className="flex items-center gap-1.5">
           <span aria-hidden className={`inline-block h-3 w-3 rounded ${item.className}`} />
           {item.label}
         </li>
       ))}
+      {/* Named in words as well as hatched in the grid, so the closing time is legible
+          without having to scroll to the far end of a full day's timeline. */}
+      {closingTime && (
+        <li className="flex items-center gap-1.5 font-medium text-ink-600">
+          <span
+            aria-hidden
+            className="inline-block h-3 w-3 rounded border-l-2 border-ink-300 bg-[repeating-linear-gradient(135deg,var(--color-ink-100)_0px,var(--color-ink-100)_3px,transparent_3px,transparent_6px)]"
+          />
+          Closes {closingTime}
+        </li>
+      )}
     </ul>
   );
 }

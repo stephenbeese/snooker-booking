@@ -21,9 +21,21 @@ interface SlotCellProps {
    */
   spanEndTime?: string | undefined;
   onSelect: (slot: Slot) => void;
+  /** Begins a drag. The grid decides what a drag means; the cell only reports where it started. */
+  onExtendStart?: ((slot: Slot) => void) | undefined;
+  /** The pointer has reached this cell mid-drag. */
+  onExtendTo?: ((slot: Slot) => void) | undefined;
 }
 
-export function SlotCell({ slot, span, spanLabel, spanEndTime, onSelect }: SlotCellProps) {
+export function SlotCell({
+  slot,
+  span,
+  spanLabel,
+  spanEndTime,
+  onSelect,
+  onExtendStart,
+  onExtendTo,
+}: SlotCellProps) {
   const time = formatSlotTime(slot.startTime);
   const { className, label, interactive, text } = slotAppearance(slot, time, span);
 
@@ -50,6 +62,30 @@ export function SlotCell({ slot, span, spanLabel, spanEndTime, onSelect }: SlotC
       title={accessibleLabel}
       className={className}
       onClick={() => onSelect(slot)}
+      // Pointer events, not mouse events, so the drag works with a finger and a stylus too.
+      onPointerDown={(event) => {
+        if (!interactive || !onExtendStart) {
+          return;
+        }
+        // A button implicitly captures the pointer on contact, which would send every
+        // subsequent move to THIS cell and stop `onPointerEnter` firing on the ones the
+        // pointer crosses — the drag would silently never extend. Releasing the capture is
+        // what makes the gesture reach the rest of the row.
+        //
+        // Feature-detected rather than called outright: jsdom implements neither method, and
+        // an unguarded call throws straight out of the pointerdown handler — which in a
+        // browser missing the API would take the ordinary click down with it.
+        const target = event.currentTarget;
+        if (
+          typeof target.hasPointerCapture === 'function' &&
+          typeof target.releasePointerCapture === 'function' &&
+          target.hasPointerCapture(event.pointerId)
+        ) {
+          target.releasePointerCapture(event.pointerId);
+        }
+        onExtendStart(slot);
+      }}
+      onPointerEnter={() => onExtendTo?.(slot)}
     >
       {/* A non-breaking space rather than nothing, so a blank middle cell keeps the row's
           height instead of collapsing and breaking the bar it is part of. */}

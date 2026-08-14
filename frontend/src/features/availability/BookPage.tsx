@@ -17,6 +17,7 @@ import {
   todayIso,
 } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
+import { clampedDuration } from './rangeSelection';
 import { AvailabilityGrid } from './components/AvailabilityGrid';
 import { DateSelector } from './components/DateSelector';
 import { DurationPicker } from './components/DurationPicker';
@@ -134,6 +135,37 @@ export function BookPage() {
     // A fresh choice invalidates whatever the last attempt said.
     setBookingError(null);
     setDroppedReason(null);
+
+    // Clicking a cell that cannot hold the current duration shortens the booking to what fits
+    // there, rather than being refused. Done together with the selection: setting only the
+    // selection would leave it failing `staleSelection` on the very next render, which clears
+    // it — the click would appear to do nothing at all.
+    if (slot.bookableForRequestedDuration === false && data) {
+      const fits = clampedDuration(slot, data.durationOptions);
+      if (fits === null) {
+        return;
+      }
+      setDurationMinutes(fits);
+      setSelected({ tableId, startAt: slot.startAt });
+      setDroppedReason(
+        `${formatSlotTime(slot.startTime)} only fits ${formatDuration(fits)}, so the duration was shortened.`,
+      );
+      return;
+    }
+
+    setSelected({ tableId, startAt: slot.startAt });
+  }
+
+  /**
+   * A start and an end picked on the grid — two clicks, or a drag.
+   *
+   * <p>The duration arrives already snapped to one the club sells; the grid resolves that, so
+   * this only has to trust it and set both halves at once.
+   */
+  function handleSelectRange(tableId: number, slot: Slot, minutes: number) {
+    setBookingError(null);
+    setDroppedReason(null);
+    setDurationMinutes(minutes);
     setSelected({ tableId, startAt: slot.startAt });
   }
 
@@ -233,6 +265,7 @@ export function BookPage() {
               durationMinutes={durationMinutes}
               typeLabel={typeLabel}
               onSelect={handleSelect}
+              onSelectRange={handleSelectRange}
             />
           </div>
         )}

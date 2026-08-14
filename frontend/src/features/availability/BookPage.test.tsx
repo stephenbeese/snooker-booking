@@ -181,6 +181,76 @@ describe('BookPage', () => {
   // was untestable: the page clears the selection before such a cell can ever render, so the
   // assertion held whether or not the ordering bug was present.
 
+  it('shortens the booking rather than ignoring a click on a slot that will not fit', async () => {
+    // These cells used to be dead ends: 4 hours requested, 1 hour left before closing, click
+    // refused. Now the click is honoured and the duration gives way — the customer named a
+    // start time, which is the part they care about.
+    //
+    // The subtlety is that setting the selection alone would not survive: the slot fails
+    // `bookableForRequestedDuration` at 240, so the stale-selection guard would clear it on
+    // the very next render and the click would look like it did nothing. The duration has to
+    // move with it.
+    const tooShort = makeAvailability({
+      durationOptions: LONG_OPTIONS,
+      requestedDurationMinutes: 240,
+      slotTimes: ['10:00:00'],
+      tables: [
+        makeTable({
+          slots: [
+            makeSlot({
+              startTime: '10:00:00',
+              bookableForRequestedDuration: false,
+              maxDurationMinutes: 60,
+              pricePenceForRequestedDuration: null,
+            }),
+          ],
+        }),
+      ],
+    });
+    mockAvailability({ '240': tooShort, '60': bookableAt(60, 1200) });
+    renderWithRouter(<BookPage />, { route: '/book', path: '/book' });
+
+    await userEvent.selectOptions(await screen.findByLabelText('Duration'), '240');
+    await userEvent.click(await screen.findByRole('button', { name: /10:00 — Up to 1 hour/ }));
+
+    // The selection survived, priced at the duration that actually fits.
+    const summary = await screen.findByRole('complementary');
+    expect(summary).toHaveTextContent('10:00–11:00');
+    expect(summary).toHaveTextContent('£12.00');
+    // And the duration control agrees, rather than still claiming 4 hours.
+    await waitFor(() => expect(screen.getByLabelText('Duration')).toHaveValue('60'));
+  });
+
+  it('says why the booking got shorter, rather than silently changing it', async () => {
+    // A duration that changes itself without explanation reads as a bug — especially as the
+    // price changes with it.
+    const tooShort = makeAvailability({
+      durationOptions: LONG_OPTIONS,
+      requestedDurationMinutes: 240,
+      slotTimes: ['10:00:00'],
+      tables: [
+        makeTable({
+          slots: [
+            makeSlot({
+              startTime: '10:00:00',
+              bookableForRequestedDuration: false,
+              maxDurationMinutes: 60,
+            }),
+          ],
+        }),
+      ],
+    });
+    mockAvailability({ '240': tooShort, '60': bookableAt(60, 1200) });
+    renderWithRouter(<BookPage />, { route: '/book', path: '/book' });
+
+    await userEvent.selectOptions(await screen.findByLabelText('Duration'), '240');
+    await userEvent.click(await screen.findByRole('button', { name: /10:00 — Up to 1 hour/ }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '10:00 only fits 1 hour, so the duration was shortened.',
+    );
+  });
+
   it('clears the dropped-selection message once a fresh slot is picked', async () => {
     // A message about a selection two selections ago is noise that outlives its cause.
     const tooLong = makeAvailability({

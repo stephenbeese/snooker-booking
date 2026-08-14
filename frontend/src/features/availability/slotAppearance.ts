@@ -116,10 +116,23 @@ export function slotAppearance(
         : slot.maxDurationMinutes > 0
           ? `Up to ${formatDuration(slot.maxDurationMinutes)} only`
           : 'Does not fit';
+    // Interactive despite not fitting, and deliberately still faded. Clicking one shortens the
+    // booking to what actually fits here rather than refusing the click — the customer has
+    // pointed at a start time, and the duration is the negotiable part. The faded look is kept
+    // exactly as it was so the row still reads at a glance as "these are the short ones";
+    // only the behaviour changed.
+    //
+    // `maxDurationMinutes > 0` is the line between "shorter would work" and "nothing fits".
+    // When the club has ten minutes left before closing there is nothing to clamp to, so the
+    // cell stays genuinely dead rather than offering a click that cannot produce a booking.
+    const clampable = slot.reason === null && slot.maxDurationMinutes > 0;
     return {
-      className: `${BASE} ${STANDALONE} bg-felt-50 text-felt-700/50 cursor-not-allowed`,
-      label: `${time} — ${label}`,
-      interactive: false,
+      className: `${BASE} ${STANDALONE} bg-felt-50 text-felt-700/50 ${
+        clampable ? 'cursor-pointer hover:bg-felt-200 hover:text-felt-800' : 'cursor-not-allowed'
+      }`,
+      // The label says what the click will DO, since the cell looks unavailable but is not.
+      label: clampable ? `${time} — ${label}, click to shorten to it` : `${time} — ${label}`,
+      interactive: clampable,
       text: time,
     };
   }

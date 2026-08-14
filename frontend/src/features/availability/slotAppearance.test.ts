@@ -35,7 +35,7 @@ describe('slotAppearance', () => {
     expect(appearance.text).toBe('');
   });
 
-  it('still refuses a lone selected cell that no longer fits the duration', () => {
+  it('strips the selected look from a lone cell that no longer fits the duration', () => {
     // The other half of the ordering, and the reason it cannot simply be reversed. A single-
     // cell span IS the anchor, and the anchor's own bookability is the server's verdict on the
     // whole booking — so it must keep losing its selected look when the customer lengthens the
@@ -49,8 +49,26 @@ describe('slotAppearance', () => {
 
     const appearance = slotAppearance(slot, '14:00', null);
 
-    expect(appearance.interactive).toBe(false);
-    expect(appearance.label).toBe('14:00 — Up to 1 hour 30 mins only');
+    expect(appearance.className).not.toContain('bg-felt-700');
+    expect(appearance.className).toContain('bg-felt-50');
+  });
+
+  it('offers a shorter booking rather than refusing a cell that does not fit', () => {
+    // These cells used to be dead: 90 minutes requested, 60 available, click ignored. The
+    // customer has named a start time, and the duration is the part that can give way — so
+    // the click is accepted and shortens the booking instead.
+    const slot = makeSlot({
+      startTime: '14:00:00',
+      bookableForRequestedDuration: false,
+      maxDurationMinutes: 90,
+    });
+
+    const appearance = slotAppearance(slot, '14:00', null);
+
+    expect(appearance.interactive).toBe(true);
+    // Still faded — the user asked for the colour to stay put, so only the behaviour moved.
+    expect(appearance.className).toContain('bg-felt-50');
+    expect(appearance.label).toBe('14:00 — Up to 1 hour 30 mins only, click to shorten to it');
   });
 
   it.each([
@@ -96,8 +114,24 @@ describe('slotAppearance', () => {
 
     const appearance = slotAppearance(slot, '22:00', null);
 
+    expect(appearance.label).toBe('22:00 — Up to 1 hour only, click to shorten to it');
+  });
+
+  it('leaves a cell dead when no shorter booking would fit either', () => {
+    // The boundary of the clamp. `reason` is set only when NOTHING fits, so there is no
+    // duration to shorten to — offering a click here would promise a booking the server
+    // refuses, which is worse than the cell being visibly unusable.
+    const slot = makeSlot({
+      startTime: '22:30:00',
+      reason: 'INSUFFICIENT_REMAINING_TIME',
+      bookableForRequestedDuration: false,
+      maxDurationMinutes: 0,
+    });
+
+    const appearance = slotAppearance(slot, '22:30', null);
+
     expect(appearance.interactive).toBe(false);
-    expect(appearance.label).toBe('22:00 — Up to 1 hour only');
+    expect(appearance.className).toContain('cursor-not-allowed');
   });
 
   it('uses the reason when no duration fits at all', () => {
