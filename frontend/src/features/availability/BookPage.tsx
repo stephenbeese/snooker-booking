@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { Button } from '@/components/ui/Button';
 import { useCurrentUser } from '@/features/auth/useAuth';
 import { useCreateBooking } from '@/features/booking/useBookings';
+import { useClub } from '@/features/club/useClub';
 import { ApiError } from '@/lib/apiError';
 import {
   addMinutesToTime,
@@ -42,6 +43,9 @@ export function BookPage() {
   });
 
   const { data: user } = useCurrentUser();
+  // For the date picker's upper bound. The club publishes the window it actually sells; a
+  // number hardcoded here would disagree the moment an admin changed it.
+  const { data: club } = useClub();
   const createBooking = useCreateBooking();
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [droppedReason, setDroppedReason] = useState<string | null>(null);
@@ -138,7 +142,11 @@ export function BookPage() {
       </header>
 
       <div className="mt-8 flex flex-wrap items-center gap-4 rounded-card border border-ink-200 bg-white p-4 shadow-card">
-        <DateSelector date={date} onChange={changeDate} />
+        <DateSelector
+          date={date}
+          maxAdvanceDays={club?.maxAdvanceDays}
+          onChange={changeDate}
+        />
         {data && (
           <DurationPicker
             options={data.durationOptions}
@@ -196,21 +204,33 @@ export function BookPage() {
               <h2 className="text-xs font-medium uppercase tracking-wide text-felt-700">
                 Your selection
               </h2>
-              <p className="mt-1 text-lg font-semibold tracking-tight text-felt-900">
-                {selectedTable.tableName} ·{' '}
-                {durationMinutes === null
-                  ? formatSlotTime(selectedSlot.startTime)
-                  : `${formatSlotTime(selectedSlot.startTime)}–${addMinutesToTime(
-                      selectedSlot.startTime,
-                      durationMinutes,
-                    )}`}
-              </p>
-              <p className="mt-0.5 text-sm text-felt-800">
-                {formatDateLong(date)}
-                {durationMinutes !== null && ` · ${formatDuration(durationMinutes)}`}
-                {selectedSlot.pricePenceForRequestedDuration !== null &&
-                  ` · ${formatPence(selectedSlot.pricePenceForRequestedDuration)}`}
-              </p>
+              {/* A labelled list rather than one run-on line. Every fact a customer is about
+                  to pay for — which table, which day, what time, how long, how much — is
+                  named, so nothing has to be inferred from position or a separator dot. */}
+              <dl className="mt-2 flex flex-wrap gap-x-6 gap-y-2">
+                <SelectionFact label="Table" value={selectedTable.tableName} />
+                <SelectionFact label="Date" value={formatDateLong(date)} />
+                <SelectionFact
+                  label="Time"
+                  value={
+                    durationMinutes === null
+                      ? formatSlotTime(selectedSlot.startTime)
+                      : `${formatSlotTime(selectedSlot.startTime)}–${addMinutesToTime(
+                          selectedSlot.startTime,
+                          durationMinutes,
+                        )}`
+                  }
+                />
+                {durationMinutes !== null && (
+                  <SelectionFact label="Duration" value={formatDuration(durationMinutes)} />
+                )}
+                {selectedSlot.pricePenceForRequestedDuration !== null && (
+                  <SelectionFact
+                    label="Total"
+                    value={formatPence(selectedSlot.pricePenceForRequestedDuration)}
+                  />
+                )}
+              </dl>
             </div>
 
             {user ? (
@@ -258,6 +278,16 @@ export function BookPage() {
           )}
         </aside>
       )}
+    </div>
+  );
+}
+
+/** One labelled fact in the selection summary. */
+function SelectionFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-xs font-medium uppercase tracking-wide text-felt-700">{label}</dt>
+      <dd className="mt-0.5 text-base font-semibold tracking-tight text-felt-900">{value}</dd>
     </div>
   );
 }

@@ -1,6 +1,7 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { addDays, todayIso } from '@/lib/datetime';
 import { makeAvailability, makeSlot, makeTable } from '@/test/factories';
 import { renderWithRouter } from '@/test/renderWithProviders';
 import type { DayAvailability } from './types';
@@ -11,7 +12,11 @@ import { BookPage } from './BookPage';
  * at 60 minutes and what it says at 240 — which is the whole point: every bug in this file
  * was a case of the page trusting a stale answer after the duration changed.
  */
-function mockAvailability(byDuration: Record<string, DayAvailability>, user = LOGGED_IN) {
+function mockAvailability(
+  byDuration: Record<string, DayAvailability>,
+  user = LOGGED_IN,
+  clubAdvanceDays = 45,
+) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL) => {
@@ -25,10 +30,35 @@ function mockAvailability(byDuration: Record<string, DayAvailability>, user = LO
         const payload = byDuration[duration] ?? byDuration['none'];
         return json(payload);
       }
+      // The club's own booking window, which caps the date picker. Deliberately not 30: the
+      // bug this guards against was a hardcoded 30 that happened to match the seed data, so a
+      // fixture using 30 would pass either way.
+      if (url.includes('/api/club')) {
+        return json({ ...CLUB, maxAdvanceDays: clubAdvanceDays });
+      }
       return new Response(null, { status: 204 });
     }),
   );
 }
+
+/** The club as `GET /api/club` returns it. Only `maxAdvanceDays` matters to this page. */
+const CLUB = {
+  name: 'The Snooker Club',
+  description: null,
+  contact: {
+    addressLine1: null,
+    addressLine2: null,
+    city: null,
+    postcode: null,
+    phone: null,
+    email: null,
+    website: null,
+  },
+  openingHours: [],
+  fromHourlyRatePence: 1200,
+  minDurationMinutes: 30,
+  maxAdvanceDays: 45,
+};
 
 const LOGGED_IN = {
   id: 1,
@@ -185,6 +215,33 @@ describe('BookPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /10:30 — available/ }));
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it("lets the customer reach the whole window the club sells, not a fixed month", async () => {
+    // The item 19 defect, at the level that actually mattered: DateSelector had a sane cap all
+    // along, but BookPage never passed one, so the 30-day default silently overrode a club
+    // selling 45 days ahead. Testing the component alone would not have caught the missing prop.
+    mockAvailability({ '60': bookableAt(60, 1200) }, LOGGED_IN, 45);
+    renderWithRouter(<BookPage />, { route: '/book', path: '/book' });
+
+    const input = await screen.findByLabelText('Booking date');
+    await waitFor(() => expect(input).toHaveAttribute('max', addDays(todayIso(), 45)));
+  });
+
+  it('names each part of the selection rather than running them together', async () => {
+    // Item 19's visual pass. The customer is one click from paying, so what they are buying is
+    // labelled — table, date, time, duration, total — instead of being inferred from the order
+    // of things separated by dots.
+    mockAvailability({ '60': bookableAt(60, 1200) });
+    renderWithRouter(<BookPage />, { route: '/book', path: '/book' });
+
+    await userEvent.click(await screen.findByRole('button', { name: /10:00 — available/ }));
+
+    const summary = await screen.findByRole('complementary');
+    for (const label of ['Table', 'Date', 'Time', 'Duration', 'Total']) {
+      expect(within(summary).getByText(label)).toBeInTheDocument();
+    }
+    expect(within(summary).getByText('£12.00')).toBeInTheDocument();
   });
 
   it('explains why booking is unavailable when no duration is chosen', async () => {

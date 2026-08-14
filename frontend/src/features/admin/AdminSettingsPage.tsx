@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
+import { useToast } from '@/components/ui/Toast';
 import { ApiError } from '@/lib/apiError';
 import { PricingRules } from './components/PricingRules';
 import { SettingsWarnings } from './components/SettingsWarnings';
@@ -78,6 +79,7 @@ export function AdminSettingsPage() {
 function OpeningHoursSection() {
   const { data, isPending } = useOpeningHours();
   const mutation = useUpdateOpeningHours();
+  const toast = useToast();
   const [days, setDays] = useState<DayHours[]>([]);
   const [warnings, setWarnings] = useState<SettingsWarning[]>([]);
 
@@ -94,7 +96,11 @@ function OpeningHoursSection() {
   async function save() {
     setWarnings([]);
     const result = await mutation.mutateAsync(days).catch(() => null);
-    if (result) setWarnings(result.warnings);
+    if (!result) return;
+    setWarnings(result.warnings);
+    // The toast confirms the save happened at all. The warnings block below says which
+    // bookings it stranded, and stays put — that is not something to read in five seconds.
+    toast('Opening hours saved.');
   }
 
   if (isPending) return <Section title="Opening hours">Loading…</Section>;
@@ -176,17 +182,42 @@ function SpecialHoursSection() {
   const { data, isPending } = useOpeningHoursOverrides();
   const save = useSaveOpeningHoursOverride();
   const remove = useDeleteOpeningHoursOverride();
+  const toast = useToast();
   const [draft, setDraft] = useState<DateHours>(BLANK_OVERRIDE);
   const [warnings, setWarnings] = useState<SettingsWarning[]>([]);
 
   async function onSave() {
     setWarnings([]);
     if (!draft.date) return;
+    // Clear the other operation's error first. SaveRow renders `save.error ?? remove.error`,
+    // so a failed remove would otherwise leave its message sitting above a save that then
+    // succeeded — the same trap PricingRules documents between its own two mutations.
+    remove.reset();
     const result = await save.mutateAsync(draft).catch(() => null);
-    if (result) {
-      setWarnings(result.warnings);
-      setDraft(BLANK_OVERRIDE);
+    if (!result) return;
+    setWarnings(result.warnings);
+    // Names the date. The form clears itself on success, so without it there is nothing left
+    // on screen saying which date was just saved.
+    toast(`Special hours saved for ${formatDateLong(draft.date)}.`);
+    setDraft(BLANK_OVERRIDE);
+  }
+
+  async function onRemove(date: string) {
+    // The mirror of onSave above: a failed save must not leave its banner over a successful
+    // removal.
+    save.reset();
+    // The delete resolves to void, so success is signalled by not throwing rather than by a
+    // returned value — hence a try/catch instead of the `.catch(() => null)` used above,
+    // where `undefined` and `null` would be indistinguishable.
+    try {
+      await remove.mutateAsync(date);
+    } catch {
+      // The failure is already rendered inline by SaveRow, which reads remove.error.
+      return;
     }
+    // The row vanishes from a list that may be long. A confirmation naming the date is the
+    // difference between "that worked" and "did I just delete the wrong one?".
+    toast(`Special hours removed for ${formatDateLong(date)}.`);
   }
 
   if (isPending) return <Section title="Special opening hours">Loading…</Section>;
@@ -219,7 +250,7 @@ function SpecialHoursSection() {
                 size="sm"
                 className="ml-auto"
                 disabled={remove.isPending}
-                onClick={() => remove.mutate(override.date)}
+                onClick={() => void onRemove(override.date)}
               >
                 Remove
               </Button>
@@ -325,12 +356,27 @@ function TableTypesSection() {
   const { data, isPending } = useAdminTableTypes();
   const create = useCreateTableType();
   const setActive = useSetTableTypeActive();
+  const toast = useToast();
   const [label, setLabel] = useState('');
 
   async function add() {
     if (!label.trim()) return;
     const created = await create.mutateAsync({ label: label.trim() }).catch(() => null);
-    if (created) setLabel('');
+    if (!created) return;
+    setLabel('');
+    // Names the derived code: it is what pricing rules and the API refer to, and this is the
+    // only moment the manager sees the label they typed turn into one.
+    toast(`Table type “${created.label}” added as ${created.code}.`);
+  }
+
+  async function toggleActive(code: string, active: boolean) {
+    const updated = await setActive.mutateAsync({ code, active }).catch(() => null);
+    if (!updated) return;
+    toast(
+      active
+        ? `“${updated.label}” restored and available again.`
+        : `“${updated.label}” withdrawn. Existing tables keep it.`,
+    );
   }
 
   if (isPending) return <Section title="Table types">Loading…</Section>;
@@ -358,7 +404,7 @@ function TableTypesSection() {
               size="sm"
               className="ml-auto"
               disabled={setActive.isPending}
-              onClick={() => setActive.mutate({ code: type.code, active: !type.active })}
+              onClick={() => void toggleActive(type.code, !type.active)}
             >
               {type.active ? 'Withdraw' : 'Restore'}
             </Button>
@@ -409,6 +455,7 @@ const RULE_FIELDS: { key: keyof BookingRules; label: string; hint: string }[] = 
 function BookingRulesSection() {
   const { data, isPending } = useBookingRules();
   const mutation = useUpdateBookingRules();
+  const toast = useToast();
   const [rules, setRules] = useState<BookingRules | null>(null);
   const [warnings, setWarnings] = useState<SettingsWarning[]>([]);
 
@@ -420,7 +467,9 @@ function BookingRulesSection() {
     if (!rules) return;
     setWarnings([]);
     const result = await mutation.mutateAsync(rules).catch(() => null);
-    if (result) setWarnings(result.warnings);
+    if (!result) return;
+    setWarnings(result.warnings);
+    toast('Booking rules saved.');
   }
 
   if (isPending || !rules) return <Section title="Booking rules">Loading…</Section>;
@@ -480,8 +529,8 @@ const CLUB_FIELDS: { key: keyof ClubDetails; label: string; type?: string }[] = 
 function ClubDetailsSection() {
   const { data, isPending } = useClubDetails();
   const mutation = useUpdateClubDetails();
+  const toast = useToast();
   const [club, setClub] = useState<ClubDetails | null>(null);
-  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (data) setClub(data);
@@ -489,9 +538,11 @@ function ClubDetailsSection() {
 
   async function save() {
     if (!club) return;
-    setSaved(false);
+    // Previously a local `saved` boolean rendering a permanent line under this one section.
+    // The toast replaces it: the same confirmation, in the same place as every other save on
+    // the page, and it does not linger over a form the user has since edited again.
     const result = await mutation.mutateAsync(club).catch(() => null);
-    if (result) setSaved(true);
+    if (result) toast('Club details saved.');
   }
 
   if (isPending || !club) return <Section title="Club details">Loading…</Section>;
@@ -519,11 +570,6 @@ function ClubDetailsSection() {
         pending={mutation.isPending}
         error={messageOf(mutation.error, 'Could not save the club details.')}
       />
-      {saved && !mutation.error && (
-        <p role="status" className="mt-3 text-sm font-medium text-felt-800">
-          Club details saved.
-        </p>
-      )}
     </Section>
   );
 }

@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { TextField } from '@/components/ui/TextField';
+import { useToast } from '@/components/ui/Toast';
 import { ApiError } from '@/lib/apiError';
 import { useTableTypeLabel, useTableTypes } from '@/features/availability/useAvailability';
 import {
@@ -46,6 +47,7 @@ export function AdminTablesPage() {
   const updateTable = useUpdateTable();
   const setActive = useSetTableActive();
   const reorder = useReorderTables();
+  const toast = useToast();
 
   const [editing, setEditing] = useState<AdminTable | null>(null);
   const [dragging, setDragging] = useState<number | null>(null);
@@ -60,7 +62,12 @@ export function AdminTablesPage() {
     if (!tables || to < 0 || to >= tables.length) return;
     const ids = tables.map((table) => table.id);
     ids.splice(to, 0, ...ids.splice(from, 1));
-    reorder.mutate(ids);
+    reorder.mutate(ids, {
+      // Rows visibly move either way — a drag rearranges them on screen whether or not the
+      // PUT succeeded. Without this there is nothing distinguishing "saved" from "will snap
+      // back on the next refetch".
+      onSuccess: () => toast('Table order saved.'),
+    });
   }
 
   /** Drops the dragged table onto the target's position. */
@@ -107,14 +114,30 @@ export function AdminTablesPage() {
     try {
       if (editing) {
         await updateTable.mutateAsync({ id: editing.id, input });
+        // Named, because editing collapses the form back to "Add a table" — leaving no trace
+        // on screen of which table was just changed.
+        toast(`${input.name} saved.`);
       } else {
         await createTable.mutateAsync(input);
+        toast(`${input.name} added.`);
       }
       setEditing(null);
       reset();
     } catch {
       // Surfaced from the mutation error below.
     }
+  }
+
+  async function toggleOnSale(table: AdminTable) {
+    const updated = await setActive
+      .mutateAsync({ id: table.id, active: !table.active })
+      .catch(() => null);
+    if (!updated) return;
+    toast(
+      updated.active
+        ? `${updated.name} is back on sale.`
+        : `${updated.name} taken off sale. Existing bookings still stand.`,
+    );
   }
 
   const mutationError = createTable.error ?? updateTable.error ?? setActive.error;
@@ -279,7 +302,7 @@ export function AdminTablesPage() {
                     variant="secondary"
                     size="sm"
                     disabled={setActive.isPending}
-                    onClick={() => setActive.mutate({ id: table.id, active: !table.active })}
+                    onClick={() => void toggleOnSale(table)}
                   >
                     {table.active ? 'Take off sale' : 'Put on sale'}
                   </Button>

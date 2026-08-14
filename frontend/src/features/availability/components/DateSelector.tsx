@@ -2,15 +2,26 @@ import { addDays, formatDateLong, todayIso } from '@/lib/datetime';
 
 interface DateSelectorProps {
   date: string;
-  maxAdvanceDays?: number;
+  /**
+   * How far ahead the club sells, from `GET /api/club`.
+   *
+   * <p>No default. It previously defaulted to 30, which silently disagreed with the server
+   * whenever an admin changed the booking window: at 60 the input's `max` still stopped at 30
+   * and the forward arrow disabled halfway through the range the club was actually selling.
+   * A default here is a second source of truth for a number the server already publishes.
+   */
+  maxAdvanceDays: number | undefined;
   onChange: (date: string) => void;
 }
 
-export function DateSelector({ date, maxAdvanceDays = 30, onChange }: DateSelectorProps) {
+export function DateSelector({ date, maxAdvanceDays, onChange }: DateSelectorProps) {
   const today = todayIso();
-  const max = addDays(today, maxAdvanceDays);
+  // Undefined only while the club query is in flight. Leaving `max` unset for that moment is
+  // the honest option — capping at a guessed number would block dates that are genuinely
+  // bookable, and the server rejects anything beyond the real window anyway.
+  const max = maxAdvanceDays === undefined ? undefined : addDays(today, maxAdvanceDays);
   const atStart = date <= today;
-  const atEnd = date >= max;
+  const atEnd = max !== undefined && date >= max;
 
   return (
     <div className="flex items-center gap-2">
@@ -35,7 +46,7 @@ export function DateSelector({ date, maxAdvanceDays = 30, onChange }: DateSelect
           type="date"
           value={date}
           min={today}
-          max={max}
+          {...(max === undefined ? {} : { max })}
           onChange={(event) => onChange(event.target.value)}
           className="rounded-lg border border-ink-300 px-3 py-2 text-sm text-ink-900"
         />

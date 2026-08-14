@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { TextField } from '@/components/ui/TextField';
+import { useToast } from '@/components/ui/Toast';
 import { ApiError } from '@/lib/apiError';
 import { formatSlotTime } from '@/lib/datetime';
 import {
@@ -57,6 +58,7 @@ export function AdminMaintenancePage() {
   const { data: blocks, isPending, isError, error } = useMaintenanceBlocks(from, to);
   const createBlock = useCreateMaintenanceBlock();
   const deleteBlock = useDeleteMaintenanceBlock();
+  const toast = useToast();
 
   const {
     register,
@@ -78,9 +80,23 @@ export function AdminMaintenancePage() {
         reason: values.notes.trim() || null,
       });
       reset({ date: values.date, startTime: '09:00', endTime: '12:00', notes: '' });
+      // The new block joins a list that may be filtered to a range not covering it, so the
+      // row appearing is not something staff can rely on seeing.
+      toast(`Table blocked on ${values.date}, ${values.startTime}–${values.endTime}.`);
     } catch {
       // Surfaced below.
     }
+  }
+
+  async function removeBlock(id: number) {
+    // Resolves to void, so success is "did not throw" — see the same shape in AdminSettingsPage.
+    try {
+      await deleteBlock.mutateAsync(id);
+    } catch {
+      // Surfaced below, from deleteBlock.error.
+      return;
+    }
+    toast('Maintenance block removed. The table is back on sale for that time.');
   }
 
   const mutationError = createBlock.error ?? deleteBlock.error;
@@ -197,7 +213,7 @@ export function AdminMaintenancePage() {
                     variant="secondary"
                     size="sm"
                     disabled={deleteBlock.isPending}
-                    onClick={() => deleteBlock.mutate(block.id)}
+                    onClick={() => void removeBlock(block.id)}
                   >
                     Remove
                   </Button>
