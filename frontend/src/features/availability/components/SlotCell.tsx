@@ -42,6 +42,16 @@ export function SlotCell({
   // The far end of the bar shows when the booking finishes, not when its last cell begins.
   const shown = (span === 'end' || span === 'only') && spanEndTime ? spanEndTime : text;
 
+  // Inside a booking the middle cells print nothing, so that a run reads as one bar rather
+  // than a column of separate times — which leaves nothing to aim at when picking a new end
+  // time on a selection you already have. The time is rendered anyway and merely made
+  // invisible, so hovering brings it back.
+  //
+  // Done in CSS rather than with an onMouseEnter/state pair: the browser already tracks which
+  // cell the pointer is over, and a `hoveredStartAt` in React state would re-render the whole
+  // grid on every cell the pointer crosses to arrive at the same pixels.
+  const revealTimeOnHover = span === 'middle';
+
   // Inside a booking, every cell says what the booking is rather than repeating "selected"
   // four times over. The start keeps its own time in the label so the anchor stays findable.
   const accessibleLabel =
@@ -89,7 +99,24 @@ export function SlotCell({
     >
       {/* A non-breaking space rather than nothing, so a blank middle cell keeps the row's
           height instead of collapsing and breaking the bar it is part of. */}
-      {shown === '' ? ' ' : shown}
+      {revealTimeOnHover ? (
+        // `opacity`, not conditional text: the cell keeps identical layout hovered or not, so
+        // revealing the time cannot nudge the bar around. `aria-hidden` because the button
+        // already carries the whole booking's range as its accessible name — announcing this
+        // cell's own start time on top of that would say the booking twice.
+        // `group-hover`, not `hover`: the span is only as wide as the text, so hovering the
+        // rest of the cell would leave the time hidden while the pointer is plainly on it.
+        <span
+          aria-hidden
+          className="opacity-0 transition-opacity duration-150 group-hover:opacity-75"
+        >
+          {time}
+        </span>
+      ) : shown === '' ? (
+        ' '
+      ) : (
+        shown
+      )}
     </button>
   );
 }

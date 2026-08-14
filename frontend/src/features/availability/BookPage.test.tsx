@@ -221,6 +221,43 @@ describe('BookPage', () => {
     await waitFor(() => expect(screen.getByLabelText('Duration')).toHaveValue('60'));
   });
 
+  it('never lengthens the booking when picking a start that cannot hold the current duration', async () => {
+    // The clamp asks the slot "what fits here", and on a roomy slot that answer is LONGER than
+    // what was asked for. Clamping to it regardless would book — and charge for — more time
+    // than the customer chose, just because they moved their start time.
+    //
+    // The case that surfaced it: a 2-hour request, clicking a cell that cannot START two hours
+    // because maintenance follows it. It must select the cell, not silently rewrite the
+    // duration upward.
+    const roomy = makeAvailability({
+      durationOptions: LONG_OPTIONS,
+      requestedDurationMinutes: 90,
+      slotTimes: ['10:00:00'],
+      tables: [
+        makeTable({
+          slots: [
+            makeSlot({
+              startTime: '10:00:00',
+              bookableForRequestedDuration: false,
+              // Four hours fit here — far more than the 90 minutes requested.
+              maxDurationMinutes: 240,
+            }),
+          ],
+        }),
+      ],
+    });
+    // Keyed on 60 as well: the page opens at an hour, so that is the first request made and
+    // without it the grid never renders at all.
+    mockAvailability({ '60': roomy, '90': roomy, '240': roomy });
+    renderWithRouter(<BookPage />, { route: '/book', path: '/book' });
+
+    await userEvent.selectOptions(await screen.findByLabelText('Duration'), '90');
+    await userEvent.click(await screen.findByRole('button', { name: /^10:00/ }));
+
+    // Still 90 minutes: the duration is the customer's, not the slot's.
+    expect(screen.getByLabelText('Duration')).toHaveValue('90');
+  });
+
   it('says why the booking got shorter, rather than silently changing it', async () => {
     // A duration that changes itself without explanation reads as a bug — especially as the
     // price changes with it.

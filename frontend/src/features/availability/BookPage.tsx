@@ -140,9 +140,16 @@ export function BookPage() {
     // there, rather than being refused. Done together with the selection: setting only the
     // selection would leave it failing `staleSelection` on the very next render, which clears
     // it — the click would appear to do nothing at all.
-    if (slot.bookableForRequestedDuration === false && data) {
+    //
+    // `durationMinutes !== null` keeps "Any" out of this. With no duration requested there is
+    // nothing to shorten, and every slot reports `bookableForRequestedDuration: null` anyway.
+    if (slot.bookableForRequestedDuration === false && durationMinutes !== null && data) {
       const fits = clampedDuration(slot, data.durationOptions);
-      if (fits === null) {
+      // Never lengthen. `clampedDuration` answers "what fits here", which on a roomy slot is
+      // larger than what was asked for — clamping to it would silently BOOK MORE time than the
+      // customer chose. Only a genuine shortening is a clamp.
+      if (fits === null || fits >= durationMinutes) {
+        setSelected({ tableId, startAt: slot.startAt });
         return;
       }
       setDurationMinutes(fits);

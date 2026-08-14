@@ -229,7 +229,27 @@ describe('AvailabilityGrid', () => {
     renderGrid(makeAvailability(), { tableId: 1, startAt: '2026-08-20T10:00:00Z' }, 90);
 
     const [, middle] = bookingCells();
-    expect(middle!.textContent?.trim()).toBe('');
+    // The time is present but invisible, rather than absent: it has to come back on hover so
+    // there is something to aim at when re-picking the end of the booking. What matters to
+    // this test is that it is not *shown* by default, which is what would make one booking
+    // read as a row of separate picks.
+    expect(middle!.querySelector('[aria-hidden]')!.className).toContain('opacity-0');
+  });
+
+  it('keeps the middle cell time in the DOM so hovering can reveal where you are aiming', () => {
+    // The middle of a run prints nothing, so the bar reads as one block rather than a column
+    // of separate times — but that leaves nothing to aim at when picking a new end time on a
+    // selection you already have. The time is rendered and merely made transparent, so the
+    // browser reveals it on hover with no React state and no re-render per cell crossed.
+    renderGrid(makeAvailability(), { tableId: 1, startAt: '2026-08-20T10:00:00Z' }, 90);
+
+    const [, middle] = bookingCells();
+    const hidden = middle!.querySelector('[aria-hidden]')!;
+    expect(hidden.textContent).toBe('10:30');
+    expect(hidden.className).toContain('opacity-0');
+    // Revealed by hovering the whole cell, not just the few pixels the text occupies.
+    expect(hidden.className).toContain('group-hover:opacity-75');
+    expect(middle!.className).toContain('group');
   });
 
   it('tells a screen reader what the whole booking covers, from any cell in it', () => {

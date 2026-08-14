@@ -32,7 +32,10 @@ const REASON_LABEL: Record<UnavailableReason, string> = {
   INSUFFICIENT_REMAINING_TIME: 'Not enough time before closing',
 };
 
-const BASE = 'h-10 w-full text-xs font-medium tabular-nums transition-all duration-150';
+// `group` so a cell can style its own contents on hover — the middle of a selected run hides
+// its time to keep the bar reading as one block, and reveals it on hover so there is something
+// to aim at when picking a new end time.
+const BASE = 'group h-10 w-full text-xs font-medium tabular-nums transition-all duration-150';
 
 /** Everything not part of a selected run is a standalone cell, so it rounds on all four sides. */
 const STANDALONE = 'rounded-lg';
