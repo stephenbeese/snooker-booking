@@ -4,14 +4,14 @@ import { slotAppearance } from './slotAppearance';
 
 describe('slotAppearance', () => {
   it('makes an available slot interactive', () => {
-    const appearance = slotAppearance(makeSlot({ startTime: '14:00:00' }), '14:00', false);
+    const appearance = slotAppearance(makeSlot({ startTime: '14:00:00' }), '14:00', null);
 
     expect(appearance.interactive).toBe(true);
     expect(appearance.label).toBe('14:00 — available');
   });
 
   it('marks the selected slot as such', () => {
-    const appearance = slotAppearance(makeSlot({ startTime: '14:00:00' }), '14:00', true);
+    const appearance = slotAppearance(makeSlot({ startTime: '14:00:00' }), '14:00', 'only');
 
     expect(appearance.label).toBe('14:00 — selected');
     expect(appearance.className).toContain('bg-felt-700');
@@ -27,7 +27,7 @@ describe('slotAppearance', () => {
       maxDurationMinutes: 90,
     });
 
-    const appearance = slotAppearance(slot, '14:00', true);
+    const appearance = slotAppearance(slot, '14:00', 'only');
 
     expect(appearance.interactive).toBe(false);
     expect(appearance.label).toBe('14:00 — Up to 1 hour 30 mins only');
@@ -42,7 +42,7 @@ describe('slotAppearance', () => {
   ] as const)('explains why a slot is unavailable: %s', (reason, expected) => {
     const slot = makeSlot({ startTime: '14:00:00', available: false, reason });
 
-    const appearance = slotAppearance(slot, '14:00', false);
+    const appearance = slotAppearance(slot, '14:00', null);
 
     expect(appearance.interactive).toBe(false);
     expect(appearance.label).toBe(`14:00 — ${expected}`);
@@ -52,12 +52,12 @@ describe('slotAppearance', () => {
     const booked = slotAppearance(
       makeSlot({ startTime: '14:00:00', available: false, reason: 'BOOKED' }),
       '14:00',
-      false,
+      null,
     );
     const maintenance = slotAppearance(
       makeSlot({ startTime: '14:00:00', available: false, reason: 'MAINTENANCE' }),
       '14:00',
-      false,
+      null,
     );
 
     expect(booked.className).not.toBe(maintenance.className);
@@ -74,7 +74,7 @@ describe('slotAppearance', () => {
       maxDurationMinutes: 60,
     });
 
-    const appearance = slotAppearance(slot, '22:00', false);
+    const appearance = slotAppearance(slot, '22:00', null);
 
     expect(appearance.interactive).toBe(false);
     expect(appearance.label).toBe('22:00 — Up to 1 hour only');
@@ -89,7 +89,7 @@ describe('slotAppearance', () => {
       maxDurationMinutes: 0,
     });
 
-    const appearance = slotAppearance(slot, '22:30', false);
+    const appearance = slotAppearance(slot, '22:30', null);
 
     expect(appearance.label).toBe('22:30 — Not enough time before closing');
   });
@@ -97,6 +97,6 @@ describe('slotAppearance', () => {
   it('keeps an available slot clickable when no duration was requested', () => {
     const slot = makeSlot({ startTime: '14:00:00', bookableForRequestedDuration: null });
 
-    expect(slotAppearance(slot, '14:00', false).interactive).toBe(true);
+    expect(slotAppearance(slot, '14:00', null).interactive).toBe(true);
   });
 });
