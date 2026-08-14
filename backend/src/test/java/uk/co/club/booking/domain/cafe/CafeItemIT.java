@@ -149,16 +149,15 @@ class CafeItemIT extends AbstractIntegrationTest {
     @Test
     @DisplayName("the public menu shows on-sale items to a signed-out visitor")
     void publicMenuIsReadableWithoutAnAccount() {
-        createItem(Map.of("name", "Flat white", "pricePence", 275));
+        createItem(Map.of("name", "Flat white", "pricePence", 275, "categoryCode", "HOT_DRINKS"));
 
         // A brand new client with no session: browsing the menu must not need an account, the
         // same as browsing availability.
-        @SuppressWarnings("unchecked")
-        ResponseEntity<List> response =
-                HttpClient.anonymous(rest).get("/api/cafe/items", List.class);
+        ResponseEntity<List> response = publicMenu();
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
-        assertThat(response.getBody()).hasSize(1);
+        assertThat(sectionLabels()).containsExactly("Hot drinks");
+        assertThat(itemsIn(0)).extracting(item -> item.get("name")).containsExactly("Flat white");
     }
 
     @Test
@@ -167,31 +166,142 @@ class CafeItemIT extends AbstractIntegrationTest {
         long id = createItem(Map.of("name", "Discontinued crisps", "pricePence", 120));
         admin.put("/api/admin/cafe/items/" + id + "/active?active=false", null, String.class);
 
-        @SuppressWarnings("unchecked")
-        ResponseEntity<List> publicMenu =
-                HttpClient.anonymous(rest).get("/api/cafe/items", List.class);
-
         // Both halves matter. Empty alone could mean the endpoint is broken; the admin list
         // still holding the item is what shows it was hidden rather than lost.
-        assertThat(publicMenu.getBody()).isEmpty();
+        assertThat(publicMenu().getBody()).isEmpty();
         assertThat(listItems()).hasSize(1);
     }
 
     @Test
     @DisplayName("the public menu withholds the fields only staff have a use for")
     void publicMenuOmitsStaffFields() {
-        createItem(Map.of("name", "Tea", "pricePence", 180));
+        createItem(Map.of("name", "Tea", "pricePence", 180, "categoryCode", "HOT_DRINKS"));
 
-        @SuppressWarnings("unchecked")
-        ResponseEntity<List> response =
-                HttpClient.anonymous(rest).get("/api/cafe/items", List.class);
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> item = (Map<String, Object>) response.getBody().get(0);
+        Map<String, Object> item = itemsIn(0).get(0);
         assertThat(item).containsKeys("name", "pricePence", "description", "imageUrl");
         // Everything served here is on sale by construction, and the order is the position in
         // the list. A field a customer has no use for is one that can leak a staff concern.
         assertThat(item).doesNotContainKeys("active", "displayOrder");
+    }
+
+    // ------------------------------------------------------------- categories
+
+    @Test
+    @DisplayName("the menu groups items into the club's own category order")
+    void publicMenuGroupsByCategory() {
+        // Created deliberately out of order: the sections must come back in the club's
+        // display_order, not in the order the items happened to be added.
+        createItem(Map.of("name", "Cheese toastie", "pricePence", 450, "categoryCode", "FOOD"));
+        createItem(Map.of("name", "Flat white", "pricePence", 275, "categoryCode", "HOT_DRINKS"));
+        createItem(Map.of("name", "Tea", "pricePence", 180, "categoryCode", "HOT_DRINKS"));
+
+        // Hot drinks is display_order 0 and Food is 5, so Hot drinks leads whatever the
+        // insertion order was. Empty categories are absent entirely.
+        assertThat(sectionLabels()).containsExactly("Hot drinks", "Food");
+        assertThat(itemsIn(0)).extracting(item -> item.get("name")).containsExactly("Flat white", "Tea");
+    }
+
+    @Test
+    @DisplayName("an uncategorised item is filed under Other, last")
+    void publicMenuFilesUncategorisedItemsLast() {
+        // Uncategorised is deliberately allowed — see V17 for why the column is nullable.
+        createItem(Map.of("name", "Pork scratchings", "pricePence", 150));
+        createItem(Map.of("name", "Flat white", "pricePence", 275, "categoryCode", "HOT_DRINKS"));
+
+        assertThat(sectionLabels()).containsExactly("Hot drinks", "Other");
+    }
+
+    @Test
+    @DisplayName("an item on a withdrawn category still appears, rather than vanishing")
+    void publicMenuKeepsItemsOfWithdrawnCategories() {
+        // The failure this guards: a category withdrawn while an on-sale item still carries it
+        // must not make that item invisible. Staff would see it listed and customers would not,
+        // with nothing on either screen explaining why.
+        long id = createItem(Map.of("name", "Mulled wine", "pricePence", 400, "categoryCode", "FOOD"));
+        // Withdrawing is refused while in use, so this goes round the service deliberately —
+        // it is the state a club could still reach by withdrawing before adding the item back.
+        jdbc.update("UPDATE cafe_category SET active = FALSE WHERE code = 'FOOD'");
+
+        assertThat(sectionLabels()).containsExactly("FOOD");
+        assertThat(itemsIn(0)).extracting(item -> item.get("name")).containsExactly("Mulled wine");
+        assertThat(id).isPositive();
+    }
+
+    @Test
+    @DisplayName("a category is derived from its label, and refuses a duplicate")
+    void createsCategoryFromLabel() {
+        @SuppressWarnings("unchecked")
+        ResponseEntity<Map> created = admin.post(
+                "/api/admin/cafe/categories", Map.of("label", "Wine & spirits, vintage"), Map.class);
+
+        assertThat(created.getStatusCode().value()).isEqualTo(201);
+        // Punctuation collapses to single underscores and the ends are trimmed — a code with a
+        // trailing underscore would be rejected by the CHECK.
+        assertThat(created.getBody().get("code")).isEqualTo("WINE_SPIRITS_VINTAGE");
+        assertThat(created.getBody().get("label")).isEqualTo("Wine & spirits, vintage");
+
+        ResponseEntity<String> duplicate = admin.post(
+                "/api/admin/cafe/categories", Map.of("label", "Hot drinks"), String.class);
+        assertThat(duplicate.getStatusCode().value()).isEqualTo(422);
+        assertThat(duplicate.getBody()).contains("already exists");
+    }
+
+    @Test
+    @DisplayName("a category in use cannot be withdrawn, and says how many items block it")
+    void refusesToWithdrawACategoryInUse() {
+        createItem(Map.of("name", "Flat white", "pricePence", 275, "categoryCode", "HOT_DRINKS"));
+
+        ResponseEntity<String> refused = admin.put(
+                "/api/admin/cafe/categories/HOT_DRINKS/active?active=false", null, String.class);
+
+        assertThat(refused.getStatusCode().value()).isEqualTo(422);
+        assertThat(refused.getBody()).contains("is 1 item");
+        // Still active: a refused withdrawal must not half-apply.
+        Boolean active = jdbc.queryForObject(
+                "SELECT active FROM cafe_category WHERE code = 'HOT_DRINKS'", Boolean.class);
+        assertThat(active).isTrue();
+    }
+
+    @Test
+    @DisplayName("an item cannot be filed under a category that is withdrawn or absent")
+    void refusesAnUnavailableCategory() {
+        ResponseEntity<String> unknown = admin.post(
+                "/api/admin/cafe/items",
+                Map.of("name", "Mystery", "pricePence", 100, "categoryCode", "NO_SUCH_THING"),
+                String.class);
+
+        // 422 naming the problem, not a 500 from the foreign key.
+        assertThat(unknown.getStatusCode().value()).isEqualTo(422);
+        assertThat(unknown.getBody()).contains("not available");
+
+        jdbc.update("UPDATE cafe_category SET active = FALSE WHERE code = 'SNACKS'");
+        assertThat(admin.statusOf(
+                        HttpMethod.POST,
+                        "/api/admin/cafe/items",
+                        Map.of("name", "Peanuts", "pricePence", 100, "categoryCode", "SNACKS")))
+                .isEqualTo(422);
+    }
+
+    @Test
+    @DisplayName("an item on a withdrawn category can still be edited without restoring it")
+    void editsAnItemWhoseCategoryWasWithdrawn() {
+        // Correcting a price must not require first restoring a section the club retired. This
+        // is why the category is only re-validated when it actually changes.
+        long id = createItem(Map.of("name", "Cola", "pricePence", 200, "categoryCode", "COLD_DRINKS"));
+        jdbc.update("UPDATE cafe_category SET active = FALSE WHERE code = 'COLD_DRINKS'");
+
+        Map<String, Object> edit = new HashMap<>();
+        edit.put("name", "Cola");
+        edit.put("pricePence", 220);
+        edit.put("categoryCode", "COLD_DRINKS");
+
+        assertThat(admin.put("/api/admin/cafe/items/" + id, edit, String.class)
+                        .getStatusCode()
+                        .value())
+                .isEqualTo(200);
+        Integer price =
+                jdbc.queryForObject("SELECT price_pence FROM cafe_item WHERE id = ?", Integer.class, id);
+        assertThat(price).isEqualTo(220);
     }
 
     @Test
@@ -215,5 +325,23 @@ class CafeItemIT extends AbstractIntegrationTest {
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> listItems() {
         return admin.get("/api/admin/cafe/items", List.class).getBody();
+    }
+
+    /** The menu as a signed-out visitor gets it: a list of sections, each with its items. */
+    @SuppressWarnings("unchecked")
+    private ResponseEntity<List> publicMenu() {
+        return HttpClient.anonymous(rest).get("/api/cafe/items", List.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> sectionLabels() {
+        return ((List<Map<String, Object>>) publicMenu().getBody())
+                .stream().map(section -> (String) section.get("label")).toList();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> itemsIn(int section) {
+        return (List<Map<String, Object>>)
+                ((List<Map<String, Object>>) publicMenu().getBody()).get(section).get("items");
     }
 }

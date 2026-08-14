@@ -2,7 +2,11 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { queryKeys } from '@/lib/queryKeys';
 import type { Role } from '@/features/auth/types';
 import {
+  createCafeCategory,
   createCafeItem,
+  fetchCafeCategories,
+  setCafeCategoryActive,
+  updateCafeCategory,
   createTableType,
   deleteOpeningHoursOverride,
   fetchCafeItems,
@@ -494,5 +498,44 @@ export function useUpdateCafeItem() {
 export function useSetCafeItemActive() {
   return useCafeMutation(({ id, active }: { id: number; active: boolean }) =>
     setCafeItemActive(id, active),
+  );
+}
+
+/** Every category including withdrawn ones. Admin-only; the item picker uses the active ones. */
+export function useCafeCategories() {
+  return useQuery({ queryKey: queryKeys.adminCafeCategories(), queryFn: fetchCafeCategories });
+}
+
+/**
+ * Category mutations invalidate the categories, the items and the public menu.
+ *
+ * <p>All three, because a rename changes the heading every item is filed under: leaving the item
+ * list alone would show staff the new category name in one panel and the old one beside it.
+ */
+function useCafeCategoryMutation<TArgs, TResult>(mutationFn: (args: TArgs) => Promise<TResult>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.adminCafeCategories() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.adminCafeItems() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.menu() });
+    },
+  });
+}
+
+export function useCreateCafeCategory() {
+  return useCafeCategoryMutation(({ label }: { label: string }) => createCafeCategory(label));
+}
+
+export function useUpdateCafeCategory() {
+  return useCafeCategoryMutation(({ code, label }: { code: string; label: string }) =>
+    updateCafeCategory(code, label),
+  );
+}
+
+export function useSetCafeCategoryActive() {
+  return useCafeCategoryMutation(({ code, active }: { code: string; active: boolean }) =>
+    setCafeCategoryActive(code, active),
   );
 }

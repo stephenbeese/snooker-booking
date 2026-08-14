@@ -98,10 +98,25 @@ ON CONFLICT (reference) DO NOTHING;
 -- A short menu so the cafe screen is not empty on first run, including one withdrawn item
 -- so the "taken off the menu" state is visible without an admin having to create it.
 -- Prices are integer pence, as everywhere else.
-INSERT INTO cafe_item (name, description, price_pence, display_order, active) VALUES
-    ('Flat white',   'Local roast, oat milk on request',  275, 0, TRUE),
-    ('Tea',          NULL,                                180, 1, TRUE),
-    ('Lager (pint)', NULL,                                480, 2, TRUE),
-    ('Cheese toastie', 'Served with salad',               450, 3, TRUE),
-    ('Bacon roll',   'Weekends only',                     395, 4, FALSE)
+-- Categories come from V17; these place the seeded items in them. One item is deliberately
+-- left uncategorised so the menu's "Other" section is exercised on first run.
+INSERT INTO cafe_item (name, description, price_pence, category_code, display_order, active) VALUES
+    ('Flat white',   'Local roast, oat milk on request',  275, 'HOT_DRINKS',     0, TRUE),
+    ('Tea',          NULL,                                180, 'HOT_DRINKS',     1, TRUE),
+    ('Lager (pint)', NULL,                                480, 'BEER_AND_CIDER', 2, TRUE),
+    ('Cheese toastie', 'Served with salad',               450, 'FOOD',           3, TRUE),
+    ('Bacon roll',   'Weekends only',                     395, 'FOOD',           4, FALSE),
+    ('Pork scratchings', NULL,                            150, NULL,             5, TRUE)
 ON CONFLICT (name) DO NOTHING;
+
+-- Files the items above into their categories on a database seeded before V17 existed.
+-- DO NOTHING above skips the whole row when the name is already there, so without this the
+-- categories would never reach a developer's existing database and the menu would show one
+-- undifferentiated "Other" section. Deliberately only touches rows that are still
+-- uncategorised, so a developer who has re-filed something by hand keeps their change.
+UPDATE cafe_item SET category_code = 'HOT_DRINKS'
+ WHERE name IN ('Flat white', 'Tea') AND category_code IS NULL;
+UPDATE cafe_item SET category_code = 'BEER_AND_CIDER'
+ WHERE name = 'Lager (pint)' AND category_code IS NULL;
+UPDATE cafe_item SET category_code = 'FOOD'
+ WHERE name IN ('Cheese toastie', 'Bacon roll') AND category_code IS NULL;

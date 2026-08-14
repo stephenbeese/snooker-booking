@@ -1,6 +1,7 @@
 package uk.co.club.booking.domain.cafe;
 
 import java.util.List;
+import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -27,9 +28,12 @@ public class CafeItemService {
     private static final Logger log = LoggerFactory.getLogger(CafeItemService.class);
 
     private final CafeItemRepository itemRepository;
+    private final CafeCategoryService categoryService;
 
-    public CafeItemService(CafeItemRepository itemRepository) {
+    public CafeItemService(
+            CafeItemRepository itemRepository, CafeCategoryService categoryService) {
         this.itemRepository = itemRepository;
+        this.categoryService = categoryService;
     }
 
     /** Every item, including withdrawn ones — staff need to see what they have taken off. */
@@ -64,9 +68,11 @@ public class CafeItemService {
             String description,
             int pricePence,
             String imageUrl,
+            String categoryCode,
             Integer displayOrder) {
         String trimmedName = requireName(name);
         requirePrice(pricePence);
+        String category = requireAssignableCategory(blankToNull(categoryCode));
 
         // Appends rather than colliding at 0, so a new item lands at the end of the menu instead
         // of silently sharing a position with whatever is already first.
@@ -74,6 +80,7 @@ public class CafeItemService {
         CafeItem item = new CafeItem(trimmedName, pricePence, order);
         item.setDescription(blankToNull(description));
         item.setImageUrl(blankToNull(imageUrl));
+        item.setCategoryCode(category);
 
         CafeItem created = saveTranslatingDuplicateName(item);
         log.info("Cafe item {} created", created.getId());
@@ -87,6 +94,7 @@ public class CafeItemService {
             String description,
             int pricePence,
             String imageUrl,
+            String categoryCode,
             Integer displayOrder) {
         CafeItem item = require(id);
         item.setName(requireName(name));
@@ -94,10 +102,33 @@ public class CafeItemService {
         item.setPricePence(pricePence);
         item.setDescription(blankToNull(description));
         item.setImageUrl(blankToNull(imageUrl));
+
+        // Only when the category actually changes. An item already filed under a category that
+        // has since been withdrawn must stay editable — otherwise correcting its price would be
+        // impossible without first restoring a section the club deliberately retired.
+        String category = blankToNull(categoryCode);
+        if (!Objects.equals(item.getCategoryCode(), category)) {
+            item.setCategoryCode(requireAssignableCategory(category));
+        }
+
         if (displayOrder != null) {
             item.setDisplayOrder(displayOrder);
         }
         return saveTranslatingDuplicateName(item);
+    }
+
+    /**
+     * Checks a category is one an item may be given, passing null straight through.
+     *
+     * <p>Null is uncategorised, which is always allowed. A named one is checked here rather than
+     * left to the V17 foreign key: an FK violation arrives as a {@code DataIntegrityViolation}
+     * and a 500, where this is a 422 naming the problem.
+     */
+    private String requireAssignableCategory(String categoryCode) {
+        if (categoryCode != null) {
+            categoryService.requireAssignable(categoryCode);
+        }
+        return categoryCode;
     }
 
     /**

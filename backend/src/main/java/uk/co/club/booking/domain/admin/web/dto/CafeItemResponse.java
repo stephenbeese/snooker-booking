@@ -18,6 +18,7 @@ public record CafeItemResponse(
         String description,
         int pricePence,
         String imageUrl,
+        String categoryCode,
         int displayOrder,
         boolean active) {
 
@@ -28,6 +29,7 @@ public record CafeItemResponse(
                 item.getDescription(),
                 item.getPricePence(),
                 item.getImageUrl(),
+                item.getCategoryCode(),
                 item.getDisplayOrder(),
                 item.isActive());
     }

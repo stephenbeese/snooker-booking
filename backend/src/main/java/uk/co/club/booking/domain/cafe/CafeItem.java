@@ -35,6 +35,16 @@ public class CafeItem {
     @Column(name = "image_url")
     private String imageUrl;
 
+    /**
+     * The {@code code} of a {@link CafeCategory}, or null for uncategorised.
+     *
+     * <p>Nullable deliberately: an item that fits no section is a real thing, and forcing a
+     * category would have needed a backfill guess for every item predating V17. The menu groups
+     * uncategorised items under "Other".
+     */
+    @Column(name = "category_code")
+    private String categoryCode;
+
     @Column(name = "display_order", nullable = false)
     private int displayOrder;
 
@@ -91,6 +101,14 @@ public class CafeItem {
 
     public void setImageUrl(String imageUrl) {
         this.imageUrl = imageUrl;
+    }
+
+    public String getCategoryCode() {
+        return categoryCode;
+    }
+
+    public void setCategoryCode(String categoryCode) {
+        this.categoryCode = categoryCode;
     }
 
     public int getDisplayOrder() {

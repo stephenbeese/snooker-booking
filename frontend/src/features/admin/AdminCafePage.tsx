@@ -3,11 +3,20 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Button } from '@/components/ui/Button';
+import { Select } from '@/components/ui/Select';
 import { TextField } from '@/components/ui/TextField';
 import { useToast } from '@/components/ui/Toast';
 import { ApiError } from '@/lib/apiError';
 import { formatPence, penceToPounds, poundsToPence } from '@/lib/money';
-import { useCafeItems, useCreateCafeItem, useSetCafeItemActive, useUpdateCafeItem } from './useAdmin';
+import {
+  useCafeCategories,
+  useCafeItems,
+  useCreateCafeCategory,
+  useCreateCafeItem,
+  useSetCafeCategoryActive,
+  useSetCafeItemActive,
+  useUpdateCafeItem,
+} from './useAdmin';
 import type { CafeItem } from './types';
 
 const schema = z.object({
@@ -27,11 +36,19 @@ const schema = z.object({
     .refine((value) => poundsToPence(value) !== null, 'Enter a price like 2.50')
     .refine((value) => (poundsToPence(value) ?? -1) >= 0, 'A price cannot be negative'),
   imageUrl: z.string().max(2000),
+  // Empty means uncategorised, which is deliberately allowed — see V17.
+  categoryCode: z.string(),
 });
 
 type FormValues = z.input<typeof schema>;
 
-const EMPTY: FormValues = { name: '', description: '', price: '', imageUrl: '' };
+const EMPTY: FormValues = {
+  name: '',
+  description: '',
+  price: '',
+  imageUrl: '',
+  categoryCode: '',
+};
 
 /**
  * The cafe and bar menu.
@@ -44,6 +61,7 @@ const EMPTY: FormValues = { name: '', description: '', price: '', imageUrl: '' }
  */
 export function AdminCafePage() {
   const { data: items, isPending, isError, error } = useCafeItems();
+  const { data: categories } = useCafeCategories();
   const createItem = useCreateCafeItem();
   const updateItem = useUpdateCafeItem();
   const setActive = useSetCafeItemActive();
@@ -68,6 +86,7 @@ export function AdminCafePage() {
             // parse back out again.
             price: penceToPounds(editing.pricePence),
             imageUrl: editing.imageUrl ?? '',
+            categoryCode: editing.categoryCode ?? '',
           }
         : EMPTY,
     );
@@ -84,6 +103,9 @@ export function AdminCafePage() {
       description: values.description.trim() || null,
       pricePence,
       imageUrl: values.imageUrl.trim() || null,
+      // Empty string to null: the server treats null as uncategorised, and "" would fail the
+      // foreign key as a category code that cannot exist.
+      categoryCode: values.categoryCode || null,
     };
 
     try {
@@ -111,6 +133,18 @@ export function AdminCafePage() {
     toast(
       updated.active ? `${updated.name} is back on the menu.` : `${updated.name} taken off the menu.`,
     );
+  }
+
+  /**
+   * The heading an item is filed under.
+   *
+   * <p>Falls back to the raw code rather than rendering nothing: an item can carry a category
+   * that has since been withdrawn, and a blank cell would leave staff unable to see what it is
+   * filed under or why it is not where they expected.
+   */
+  function categoryLabel(code: string | null): string {
+    if (code === null) return 'Uncategorised';
+    return categories?.find((category) => category.code === code)?.label ?? code;
   }
 
   const mutationError = createItem.error ?? updateItem.error ?? setActive.error;
@@ -160,6 +194,24 @@ export function AdminCafePage() {
           {...register('price')}
         />
 
+        <Select
+          label="Category"
+          hint="Optional. Uncategorised items appear under “Other” on the menu."
+          error={errors.categoryCode?.message}
+          {...register('categoryCode')}
+        >
+          <option value="">Uncategorised</option>
+          {(categories ?? [])
+            // Only assignable ones: the server refuses a withdrawn category, so offering it
+            // here would be an option that always fails.
+            .filter((category) => category.active)
+            .map((category) => (
+              <option key={category.code} value={category.code}>
+                {category.label}
+              </option>
+            ))}
+        </Select>
+
         <TextField
           label="Description"
           hint="Optional. Shown with the item."
@@ -202,6 +254,7 @@ export function AdminCafePage() {
             <tr className="border-b border-ink-200 text-left text-ink-600">
               <th scope="col" className="py-2 pr-4 font-medium">Item</th>
               <th scope="col" className="py-2 pr-4 font-medium">Price</th>
+              <th scope="col" className="py-2 pr-4 font-medium">Category</th>
               <th scope="col" className="py-2 pr-4 font-medium">Description</th>
               <th scope="col" className="py-2 pr-4 font-medium">Status</th>
               <th scope="col" className="py-2 font-medium">Actions</th>
@@ -215,6 +268,7 @@ export function AdminCafePage() {
               >
                 <td className="py-3 pr-4 font-medium">{item.name}</td>
                 <td className="py-3 pr-4">{formatPence(item.pricePence)}</td>
+                <td className="py-3 pr-4">{categoryLabel(item.categoryCode)}</td>
                 <td className="py-3 pr-4">{item.description ?? '—'}</td>
                 <td className="py-3 pr-4">{item.active ? 'On the menu' : 'Withdrawn'}</td>
                 <td className="py-3">
@@ -243,6 +297,107 @@ export function AdminCafePage() {
           </tbody>
         </table>
       )}
+
+      <CategoriesSection />
     </div>
+  );
+}
+
+/**
+ * The sections of the menu.
+ *
+ * <p>On this page rather than in Settings, next to the items it classifies: adding a category is
+ * usually something a manager realises they need halfway through adding an item, and sending them
+ * to another screen to do it loses the item they were typing.
+ */
+function CategoriesSection() {
+  const { data: categories, isPending } = useCafeCategories();
+  const create = useCreateCafeCategory();
+  const setActive = useSetCafeCategoryActive();
+  const toast = useToast();
+  const [label, setLabel] = useState('');
+
+  async function add() {
+    if (!label.trim()) return;
+    const created = await create.mutateAsync({ label: label.trim() }).catch(() => null);
+    if (!created) return;
+    setLabel('');
+    toast(`Category “${created.label}” added.`);
+  }
+
+  async function toggleActive(code: string, active: boolean) {
+    const updated = await setActive.mutateAsync({ code, active }).catch(() => null);
+    if (!updated) return;
+    toast(
+      active
+        ? `“${updated.label}” restored and available again.`
+        : `“${updated.label}” withdrawn. It will not be offered for new items.`,
+    );
+  }
+
+  const error = create.error ?? setActive.error;
+
+  return (
+    <section className="mt-12 rounded-card border border-ink-200 bg-white p-6 shadow-card">
+      <h2 className="text-lg font-semibold text-felt-900">Menu categories</h2>
+      <p className="mt-2 text-sm text-ink-600">
+        The sections the menu is grouped into, in the order customers see them. A category with
+        items in it cannot be withdrawn — move those items first.
+      </p>
+
+      {isPending ? (
+        <p className="mt-4 text-sm text-ink-600">Loading…</p>
+      ) : (
+        <ul className="mt-4 divide-y divide-ink-100">
+          {(categories ?? []).map((category) => (
+            <li key={category.code} className="flex flex-wrap items-center gap-3 py-2.5">
+              <span
+                className={`text-sm font-medium ${
+                  category.active ? 'text-felt-900' : 'text-ink-400'
+                }`}
+              >
+                {category.label}
+              </span>
+              {!category.active && <span className="text-xs text-ink-500">withdrawn</span>}
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="ml-auto"
+                disabled={setActive.isPending}
+                onClick={() => void toggleActive(category.code, !category.active)}
+              >
+                {category.active ? 'Withdraw' : 'Restore'}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="mt-5 flex flex-wrap items-end gap-3 border-t border-ink-100 pt-5">
+        <div className="grow">
+          <label htmlFor="new-cafe-category" className="block text-sm font-medium text-felt-900">
+            New category
+          </label>
+          <input
+            id="new-cafe-category"
+            type="text"
+            placeholder="Cocktails"
+            className="mt-1.5 w-full rounded-lg px-3 py-2 text-sm ring-1 ring-inset ring-ink-300"
+            value={label}
+            onChange={(event) => setLabel(event.target.value)}
+          />
+        </div>
+        <Button type="button" disabled={create.isPending || !label.trim()} onClick={add}>
+          {create.isPending ? 'Adding…' : 'Add category'}
+        </Button>
+      </div>
+
+      {error && (
+        <p role="alert" className="mt-4 text-sm font-medium text-rose-700">
+          {error instanceof ApiError ? error.message : 'Could not save that category.'}
+        </p>
+      )}
+    </section>
   );
 }

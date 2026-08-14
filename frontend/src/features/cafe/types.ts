@@ -15,3 +15,16 @@ export interface MenuItem {
   pricePence: number;
   imageUrl: string | null;
 }
+
+/**
+ * One section of the menu: a heading and the items under it.
+ *
+ * <p>Grouped by the server rather than here, because the section order is the club's own and a
+ * client regrouping a flat list would have to be told that order separately. `code` is null for
+ * the uncategorised section, which the server labels "Other" and always puts last.
+ */
+export interface MenuSection {
+  code: string | null;
+  label: string;
+  items: MenuItem[];
+}

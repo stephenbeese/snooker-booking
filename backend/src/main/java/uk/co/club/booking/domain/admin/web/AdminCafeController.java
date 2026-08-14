@@ -51,6 +51,7 @@ public class AdminCafeController {
                         request.description(),
                         request.pricePence(),
                         request.imageUrl(),
+                        request.categoryCode(),
                         request.displayOrder()));
     }
 
@@ -64,6 +65,7 @@ public class AdminCafeController {
                         request.description(),
                         request.pricePence(),
                         request.imageUrl(),
+                        request.categoryCode(),
                         request.displayOrder()));
     }
 

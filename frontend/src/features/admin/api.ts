@@ -11,6 +11,7 @@ import type {
   AdminTableType,
   AdminUser,
   AdminUserFilters,
+  CafeCategory,
   CafeItem,
   CafeItemInput,
   CreateUserInput,
@@ -389,4 +390,38 @@ export function setCafeItemActive(id: number, active: boolean): Promise<CafeItem
   return apiRequest<CafeItem>(`/api/admin/cafe/items/${id}/active?active=${active}`, {
     method: 'PUT',
   });
+}
+
+/** Every category including withdrawn ones. ADMIN-only, like the items themselves. */
+export function fetchCafeCategories(): Promise<CafeCategory[]> {
+  return apiRequest<CafeCategory[]>('/api/admin/cafe/categories');
+}
+
+export function createCafeCategory(
+  label: string,
+  displayOrder?: number,
+): Promise<CafeCategory> {
+  return apiRequest<CafeCategory>('/api/admin/cafe/categories', {
+    method: 'POST',
+    body: JSON.stringify({ label, displayOrder: displayOrder ?? null }),
+  });
+}
+
+/** Renames or reorders. The code cannot change — items reference it. */
+export function updateCafeCategory(
+  code: string,
+  label: string,
+  displayOrder?: number,
+): Promise<CafeCategory> {
+  return apiRequest<CafeCategory>(`/api/admin/cafe/categories/${encodeURIComponent(code)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ label, displayOrder: displayOrder ?? null }),
+  });
+}
+
+export function setCafeCategoryActive(code: string, active: boolean): Promise<CafeCategory> {
+  return apiRequest<CafeCategory>(
+    `/api/admin/cafe/categories/${encodeURIComponent(code)}/active?active=${active}`,
+    { method: 'PUT' },
+  );
 }

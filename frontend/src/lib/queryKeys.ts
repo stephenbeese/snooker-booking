@@ -60,4 +60,5 @@ export const queryKeys = {
   // invalidated by useInvalidateClubStructure: a price change moves nothing on the availability
   // grid, and sweeping it into that group would refetch the menu every time a table is renamed.
   adminCafeItems: () => ['admin', 'cafe', 'items'] as const,
+  adminCafeCategories: () => ['admin', 'cafe', 'categories'] as const,
 } as const;

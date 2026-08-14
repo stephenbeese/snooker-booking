@@ -12,7 +12,7 @@ import type { MenuItem } from './types';
  * they come down.
  */
 export function MenuPage() {
-  const { data: items, isPending, isError, error } = useMenu();
+  const { data: sections, isPending, isError, error } = useMenu();
 
   if (isPending) {
     return (
@@ -39,18 +39,27 @@ export function MenuPage() {
         Served all day at the counter. Prices include VAT.
       </p>
 
-      {items.length === 0 ? (
+      {sections.length === 0 ? (
         // Reachable whenever every item is withdrawn. Saying so plainly beats an empty page
         // that reads as broken.
         <p className="mt-10 text-ink-600">
           Nothing on the menu at the moment. Please ask at the counter.
         </p>
       ) : (
-        <ul className="mt-10 grid gap-4 sm:grid-cols-2">
-          {items.map((item) => (
-            <MenuCard key={item.id} item={item} />
-          ))}
-        </ul>
+        sections.map((section) => (
+          // Keyed on the label, not the code: the uncategorised section has a null code, and
+          // there is only ever one of it.
+          <section key={section.code ?? section.label} className="mt-10">
+            <h2 className="text-lg font-semibold tracking-tight text-felt-900">
+              {section.label}
+            </h2>
+            <ul className="mt-4 grid gap-4 sm:grid-cols-2">
+              {section.items.map((item) => (
+                <MenuCard key={item.id} item={item} />
+              ))}
+            </ul>
+          </section>
+        ))
       )}
 
       <p className="mt-12 text-sm text-ink-600">
@@ -79,7 +88,9 @@ function MenuCard({ item }: { item: MenuItem }) {
       )}
       <div className="min-w-0">
         <div className="flex items-baseline justify-between gap-3">
-          <h2 className="font-medium text-felt-900">{item.name}</h2>
+          {/* h3, not h2: the section heading above is the h2, and skipping a level breaks
+              heading navigation for anyone moving through the page with a screen reader. */}
+          <h3 className="font-medium text-felt-900">{item.name}</h3>
           <span className="shrink-0 tabular-nums text-felt-800">
             {formatPence(item.pricePence)}
           </span>

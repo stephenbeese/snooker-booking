@@ -187,6 +187,22 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
                     "/api/admin/cafe/items/1",
                     Map.of("name", "Boundary Coffee", "pricePence", 250)),
             new Endpoint(HttpMethod.PUT, "/api/admin/cafe/items/1/active?active=false", null),
+            // Menu categories. A genuine sub-path of /api/admin/cafe/**, so no separate matcher
+            // is needed — but listed here anyway, because that is a property of the path shape
+            // and these rows are what would notice if either ever moved.
+            new Endpoint(HttpMethod.GET, "/api/admin/cafe/categories", null),
+            new Endpoint(
+                    HttpMethod.POST,
+                    "/api/admin/cafe/categories",
+                    Map.of("label", "Boundary Category")),
+            new Endpoint(
+                    HttpMethod.PUT,
+                    "/api/admin/cafe/categories/HOT_DRINKS",
+                    Map.of("label", "Hot drinks")),
+            new Endpoint(
+                    HttpMethod.PUT,
+                    "/api/admin/cafe/categories/HOT_DRINKS/active?active=true",
+                    null),
             new Endpoint(HttpMethod.GET, "/api/admin/users", null),
             new Endpoint(HttpMethod.GET, "/api/admin/users/1", null),
             new Endpoint(

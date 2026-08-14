@@ -331,6 +331,16 @@ export interface CafeItem {
   description: string | null;
   pricePence: number;
   imageUrl: string | null;
+  /** The code of a `CafeCategory`, or null for uncategorised — deliberately allowed. */
+  categoryCode: string | null;
+  displayOrder: number;
+  active: boolean;
+}
+
+/** A section of the menu, as staff manage it. The code is immutable; the label is not. */
+export interface CafeCategory {
+  code: string;
+  label: string;
   displayOrder: number;
   active: boolean;
 }
@@ -341,5 +351,6 @@ export interface CafeItemInput {
   description?: string | null;
   pricePence: number;
   imageUrl?: string | null;
+  categoryCode?: string | null;
   displayOrder?: number | null;
 }

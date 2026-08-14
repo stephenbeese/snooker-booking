@@ -19,4 +19,6 @@ public record CafeItemRequest(
         @Size(max = 500) String description,
         @PositiveOrZero(message = "A price cannot be negative.") int pricePence,
         @Size(max = 2000) String imageUrl,
+        /** Null or empty means uncategorised, which is deliberately allowed. */
+        @Size(max = 60) String categoryCode,
         Integer displayOrder) {}

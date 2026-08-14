@@ -1,17 +1,31 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithRouter } from '@/test/renderWithProviders';
 import { MenuPage } from './MenuPage';
 
 const MENU = [
   {
-    id: 1,
-    name: 'Flat white',
-    description: 'Local roast',
-    pricePence: 275,
-    imageUrl: 'https://images.test/flat-white.jpg',
+    code: 'HOT_DRINKS',
+    label: 'Hot drinks',
+    items: [
+      {
+        id: 1,
+        name: 'Flat white',
+        description: 'Local roast',
+        pricePence: 275,
+        imageUrl: 'https://images.test/flat-white.jpg',
+      },
+      { id: 2, name: 'Tea', description: null, pricePence: 180, imageUrl: null },
+    ],
   },
-  { id: 2, name: 'Tea', description: null, pricePence: 180, imageUrl: null },
+  {
+    // The uncategorised section, which the server labels and always places last.
+    code: null,
+    label: 'Other',
+    items: [
+      { id: 3, name: 'Pork scratchings', description: null, pricePence: 150, imageUrl: null },
+    ],
+  },
 ];
 
 function json(body: unknown, status = 200) {
@@ -71,6 +85,27 @@ describe('MenuPage', () => {
 
     await screen.findByText('Flat white');
     expect(document.querySelector('img')).toHaveAttribute('alt', '');
+  });
+
+  it('renders a heading per section, in the order the server sent them', async () => {
+    // The order is the club's, held in display_order and applied by the server. Re-sorting
+    // here would be a second opinion about it.
+    mockMenu();
+    render();
+
+    await screen.findByText('Flat white');
+    const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+    expect(headings).toEqual(['Hot drinks', 'Other']);
+  });
+
+  it('keeps each item under its own section heading', async () => {
+    mockMenu();
+    render();
+
+    const other = (await screen.findByRole('heading', { name: 'Other' })).closest('section')!;
+    expect(within(other).getByText('Pork scratchings')).toBeInTheDocument();
+    // Not swept into the uncategorised section along with it.
+    expect(within(other).queryByText('Flat white')).toBeNull();
   });
 
   it('says so plainly when everything has been withdrawn', async () => {

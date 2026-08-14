@@ -155,5 +155,37 @@ public abstract class AbstractIntegrationTest {
                                        END,
                        active = TRUE
                 """);
+
+        // Cafe categories are reference rows seeded by V17, exactly like table types above, so
+        // they are restored rather than truncated. The cafe_item TRUNCATE has already released
+        // the foreign key. Without this a test that adds "Cocktails", renames a section or
+        // withdraws one leaves that state for every class that follows.
+        jdbcTemplate.execute(
+                """
+                DELETE FROM cafe_category
+                 WHERE code NOT IN ('HOT_DRINKS','COLD_DRINKS','BEER_AND_CIDER',
+                                    'WINE_AND_SPIRITS','SNACKS','FOOD')
+                """);
+        jdbcTemplate.execute(
+                """
+                UPDATE cafe_category
+                   SET label = CASE code
+                                   WHEN 'HOT_DRINKS'       THEN 'Hot drinks'
+                                   WHEN 'COLD_DRINKS'      THEN 'Cold drinks'
+                                   WHEN 'BEER_AND_CIDER'   THEN 'Beer & cider'
+                                   WHEN 'WINE_AND_SPIRITS' THEN 'Wine & spirits'
+                                   WHEN 'SNACKS'           THEN 'Snacks'
+                                   ELSE 'Food'
+                               END,
+                       display_order = CASE code
+                                           WHEN 'HOT_DRINKS'       THEN 0
+                                           WHEN 'COLD_DRINKS'      THEN 1
+                                           WHEN 'BEER_AND_CIDER'   THEN 2
+                                           WHEN 'WINE_AND_SPIRITS' THEN 3
+                                           WHEN 'SNACKS'           THEN 4
+                                           ELSE 5
+                                       END,
+                       active = TRUE
+                """);
     }
 }
