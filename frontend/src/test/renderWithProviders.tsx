@@ -2,16 +2,25 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, type RenderOptions } from '@testing-library/react';
 import type { ReactElement, ReactNode } from 'react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
+import { ToastProvider } from '@/components/ui/Toast';
 
 /**
  * Each test gets a fresh QueryClient with retries off, so a deliberate error case
  * fails once instead of retrying and timing out.
+ *
+ * <p>The ToastProvider is mounted here to mirror App.tsx: `useToast` throws without one, so
+ * a component that raises a confirmation would fail in tests for a reason that has nothing to
+ * do with what the test is checking.
  */
 export function renderWithProviders(ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) {
   const queryClient = newQueryClient();
 
   function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+    return (
+      <QueryClientProvider client={queryClient}>
+        <ToastProvider>{children}</ToastProvider>
+      </QueryClientProvider>
+    );
   }
 
   return { queryClient, ...render(ui, { wrapper: Wrapper, ...options }) };
@@ -35,7 +44,9 @@ export function renderWithRouter(
     router,
     ...render(
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <ToastProvider>
+          <RouterProvider router={router} />
+        </ToastProvider>
       </QueryClientProvider>,
     ),
   };

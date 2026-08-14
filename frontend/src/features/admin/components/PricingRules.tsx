@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { CheckboxDropdown } from '@/components/ui/CheckboxDropdown';
 import { TextField } from '@/components/ui/TextField';
+import { useToast } from '@/components/ui/Toast';
 import { ApiError } from '@/lib/apiError';
 import { useTableTypeLabel, useTableTypes } from '@/features/availability/useAvailability';
 import { formatPence, penceToPounds, poundsToPence } from '@/lib/money';
@@ -163,6 +164,7 @@ export function PricingRules() {
   const typeLabel = useTableTypeLabel();
   const saveRule = useSavePricingRule();
   const deleteRule = useDeletePricingRule();
+  const toast = useToast();
 
   /** null = not editing; a number = that rule's id; 'new' = the add form. */
   const [editing, setEditing] = useState<number | 'new' | null>(null);
@@ -231,6 +233,10 @@ export function PricingRules() {
         },
       });
       setEditing(null);
+      // Named and priced. A rule's effect depends on its priority against every other rule,
+      // so echoing back the rate that was actually stored is the one unambiguous confirmation
+      // available here.
+      toast(`Pricing rule “${String(values.name).trim()}” saved at ${formatPence(pence)}/hour.`);
     } catch {
       // Rendered from the mutation error below.
     }
@@ -243,6 +249,9 @@ export function PricingRules() {
     saveRule.reset();
     try {
       await deleteRule.mutateAsync(id);
+      // Deleting a rule can change what the club charges for slots it never mentioned, by
+      // letting a lower-priority rule through. Worth saying out loud.
+      toast('Pricing rule deleted.');
     } catch {
       // Rendered from the mutation error below.
     } finally {

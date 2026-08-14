@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
+import { useToast } from '@/components/ui/Toast';
 import { ApiError } from '@/lib/apiError';
 import { formatSlotTime } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
@@ -21,6 +22,7 @@ export function CancelBookingDialog({
   onClose: () => void;
 }) {
   const cancel = useCancelBooking();
+  const toast = useToast();
   const [reason, setReason] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
@@ -42,6 +44,10 @@ export function CancelBookingDialog({
     try {
       await cancel.mutateAsync({ reference: booking.reference, ...(reason ? { reason } : {}) });
       onClose();
+      // The dialog closing is otherwise the only sign anything happened, and it closes on
+      // Escape too. Naming the reference distinguishes "cancelled" from "changed my mind
+      // about cancelling".
+      toast(`Booking ${booking.reference} cancelled.`);
     } catch {
       // Rendered from the mutation's error state below.
     }

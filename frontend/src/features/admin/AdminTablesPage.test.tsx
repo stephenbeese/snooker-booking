@@ -173,4 +173,17 @@ describe('AdminTablesPage', () => {
     expect(await screen.findByRole('button', { name: 'Move Table 2 up' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Move Table 2 down' })).toBeInTheDocument();
   });
+
+  it('confirms that a new order was saved, not merely rearranged on screen', async () => {
+    // Rows move either way — dragging rearranges them locally whether or not the PUT landed.
+    // Without a confirmation there is nothing to distinguish a saved order from one that will
+    // snap back at the next refetch.
+    mockApi();
+    const user = userEvent.setup();
+    render();
+
+    await user.click(await screen.findByRole('button', { name: 'Move Table 1 down' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Table order saved');
+  });
 });

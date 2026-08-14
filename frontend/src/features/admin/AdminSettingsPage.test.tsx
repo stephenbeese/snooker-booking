@@ -266,6 +266,99 @@ describe('AdminSettingsPage', () => {
     expect(screen.getByText('ENGLISH_POOL')).toBeInTheDocument();
   });
 
+  it('does not leave a failed removal\'s error over a special-hours save that worked', async () => {
+    // Save and remove share one error banner in this section. Without each resetting the
+    // other, a refused removal leaves its message sitting above a save that then succeeded —
+    // so the save looks broken and staff try again.
+    let failRemoval = true;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? 'GET').toUpperCase();
+        if (url.includes('/opening-hours/overrides')) {
+          if (method === 'DELETE') {
+            return failRemoval
+              ? json({ code: 'CONFLICT', message: 'Bookings exist on that date.' }, 409)
+              : new Response(null, { status: 204 });
+          }
+          return method === 'GET' ? json(OVERRIDES) : json({ settings: OVERRIDES, warnings: [] });
+        }
+        if (url.includes('/opening-hours')) return method === 'GET' ? json(WEEK) : json({ settings: WEEK, warnings: [] });
+        if (url.includes('/table-types')) return json(TABLE_TYPES);
+        if (url.includes('/booking-rules')) return json(RULES);
+        if (url.includes('/pricing-rules')) return json(PRICING);
+        if (url.includes('/settings/club')) return json(CLUB);
+        return new Response(null, { status: 204 });
+      }),
+    );
+    const user = userEvent.setup();
+    render();
+
+    await screen.findByText('Christmas Day');
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(await screen.findByText(/Bookings exist on that date/)).toBeInTheDocument();
+
+    // Now save a new override, which succeeds.
+    failRemoval = false;
+    await user.type(screen.getByLabelText('Date'), '2026-12-26');
+    const section = screen.getByLabelText('Reason').closest('section');
+    await user.click(within(section!).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(screen.queryByText(/Bookings exist on that date/)).not.toBeInTheDocument(),
+    );
+  });
+
+  it('confirms a clean save, which previously produced no feedback at all', async () => {
+    // The gap item 18 exists to close: a settings save with no warnings changed nothing on
+    // screen, so staff could not tell a successful save from one that silently failed.
+    mockApi();
+    const user = userEvent.setup();
+    render();
+
+    await screen.findByLabelText('Monday opening time');
+    await user.click(screen.getByRole('checkbox', { name: 'Monday closed' }));
+    await user.click(screen.getAllByRole('button', { name: 'Save' })[0]!);
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Opening hours saved');
+  });
+
+  it('confirms the save and still lists the bookings it stranded', async () => {
+    // The two are not alternatives. The toast says the save happened; the warnings say which
+    // bookings it affected and must stay put — that is not a five-second read.
+    mockApi(() =>
+      json({
+        settings: WEEK,
+        warnings: [{ reference: 'SNK-ABC123', detail: 'The club would be closed on 2026-09-07.' }],
+      }),
+    );
+    const user = userEvent.setup();
+    render();
+
+    await screen.findByLabelText('Monday opening time');
+    await user.click(screen.getByRole('checkbox', { name: 'Monday closed' }));
+    await user.click(screen.getAllByRole('button', { name: 'Save' })[0]!);
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Opening hours saved');
+    expect(await screen.findByRole('alert')).toHaveTextContent('SNK-ABC123');
+  });
+
+  it('says nothing when the save was refused', async () => {
+    // A confirmation after a failure is worse than none: staff would leave believing the club
+    // had been reconfigured. The inline error is the only thing that should appear.
+    mockApi(() => json({ code: 'VALIDATION_FAILED', message: 'Closing time must follow opening time.' }, 422));
+    const user = userEvent.setup();
+    render();
+
+    await screen.findByLabelText('Monday opening time');
+    await user.click(screen.getByRole('checkbox', { name: 'Monday closed' }));
+    await user.click(screen.getAllByRole('button', { name: 'Save' })[0]!);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Closing time must follow');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
   it('sends the label alone when a table type is added', async () => {
     // No code field: it is derived server-side, and a form with both invites a code that
     // disagrees with its label.

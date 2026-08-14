@@ -182,6 +182,35 @@ describe('AdminBookingDetailPage', () => {
       expect(screen.getAllByText(/paid at the counter/i).length).toBeGreaterThan(0);
     });
 
+    it('confirms the amount taken, reading it before the panel disappears', async () => {
+      // The panel unmounts on success, because the server stops reporting anything payable —
+      // so amountOutstandingPence is 0 by the time the confirmation is built. Reading it after
+      // the mutation would announce "£0.00 recorded as paid", which is worse than silence on
+      // a screen staff use to reconcile a till.
+      mockApi(unpaidAtCounter());
+      const user = userEvent.setup();
+      renderDetail();
+
+      await user.click(await screen.findByRole('button', { name: /mark as paid/i }));
+
+      expect(await screen.findByRole('status')).toHaveTextContent('£12.00 recorded as paid');
+    });
+
+    it('says the money was waived rather than collected', async () => {
+      // The two outcomes settle the same booking but mean opposite things to the till. One
+      // message for both would make a comped session indistinguishable from a paid one.
+      mockApi(unpaidAtCounter());
+      const user = userEvent.setup();
+      renderDetail();
+
+      await user.click(await screen.findByRole('button', { name: /waive payment/i }));
+      await user.click(screen.getByRole('button', { name: /confirm waiver/i }));
+
+      const status = await screen.findByRole('status');
+      expect(status).toHaveTextContent('£12.00 waived');
+      expect(status).not.toHaveTextContent(/recorded as paid/);
+    });
+
     it('takes a second click to waive a payment', async () => {
       const calls = mockApi(unpaidAtCounter());
       const user = userEvent.setup();

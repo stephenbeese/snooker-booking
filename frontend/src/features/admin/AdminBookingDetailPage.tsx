@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { Button } from '@/components/ui/Button';
+import { useToast } from '@/components/ui/Toast';
 import { ApiError } from '@/lib/apiError';
 import { formatSlotTime } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
 import { PaymentBadge } from './components/PaymentBadge';
 import { StatusBadge } from './components/StatusBadge';
 import { useAdminBooking, useAdminCancelBooking, useRecordCounterPayment } from './useAdmin';
-import type { AdminBooking, PaymentStatus } from './types';
+import type { AdminBooking, CounterPaymentStatus, PaymentStatus } from './types';
 
 const SOURCE_LABEL: Record<AdminBooking['source'], string> = {
   ONLINE: 'Booked online',
@@ -133,7 +134,30 @@ export function AdminBookingDetailPage() {
  */
 function SettlePanel({ booking }: { booking: AdminBooking }) {
   const record = useRecordCounterPayment();
+  const toast = useToast();
   const [waiving, setWaiving] = useState(false);
+
+  /**
+   * Records the outcome and says so.
+   *
+   * <p>The amount is read before the mutation: on success the panel unmounts, because the
+   * server no longer reports anything payable — so `booking.amountOutstandingPence` is gone
+   * by the time the toast would otherwise read it.
+   */
+  function settle(status: CounterPaymentStatus) {
+    const amount = formatPence(booking.amountOutstandingPence);
+    record.mutate(
+      { reference: booking.reference, status },
+      {
+        onSuccess: () =>
+          toast(
+            status === 'PAID_AT_COUNTER'
+              ? `${amount} recorded as paid at the counter.`
+              : `${amount} waived. Nothing to collect.`,
+          ),
+      },
+    );
+  }
 
   if (!booking.payableAtCounter) {
     return null;
@@ -165,9 +189,7 @@ function SettlePanel({ booking }: { booking: AdminBooking }) {
       <div className="mt-4 flex flex-wrap gap-2">
         <Button
           disabled={record.isPending}
-          onClick={() =>
-            record.mutate({ reference: booking.reference, status: 'PAID_AT_COUNTER' })
-          }
+          onClick={() => settle('PAID_AT_COUNTER')}
         >
           {record.isPending ? 'Recording…' : 'Mark as paid'}
         </Button>
@@ -181,7 +203,7 @@ function SettlePanel({ booking }: { booking: AdminBooking }) {
             <Button
               variant="secondary"
               disabled={record.isPending}
-              onClick={() => record.mutate({ reference: booking.reference, status: 'WAIVED' })}
+              onClick={() => settle('WAIVED')}
             >
               Confirm waiver
             </Button>
@@ -205,8 +227,28 @@ function SettlePanel({ booking }: { booking: AdminBooking }) {
  */
 function CancelPanel({ booking }: { booking: AdminBooking }) {
   const cancel = useAdminCancelBooking();
+  const toast = useToast();
   const [confirming, setConfirming] = useState(false);
   const [reason, setReason] = useState('');
+
+  function confirmCancel() {
+    cancel.mutate(
+      {
+        reference: booking.reference,
+        ...(reason.trim() ? { reason: reason.trim() } : {}),
+      },
+      {
+        // This whole panel unmounts on success, since the booking stops being cancellable.
+        // Without a toast the only trace is a badge change further up the page.
+        onSuccess: (cancelled) =>
+          toast(
+            cancelled.amountOutstandingPence > 0 || cancelled.paymentStatus === 'SUCCEEDED'
+              ? `Booking ${cancelled.reference} cancelled and flagged for a refund decision.`
+              : `Booking ${cancelled.reference} cancelled. The table is back on sale.`,
+          ),
+      },
+    );
+  }
 
   if (!booking.cancellable) {
     return booking.cancellationBlockedReason && !booking.cancelledAt ? (
@@ -260,12 +302,7 @@ function CancelPanel({ booking }: { booking: AdminBooking }) {
             <Button
               variant="danger"
               disabled={cancel.isPending}
-              onClick={() =>
-                cancel.mutate({
-                  reference: booking.reference,
-                  ...(reason.trim() ? { reason: reason.trim() } : {}),
-                })
-              }
+              onClick={confirmCancel}
             >
               {cancel.isPending ? 'Cancelling…' : 'Confirm cancellation'}
             </Button>
