@@ -13,7 +13,7 @@ const EXACT: Record<string, string> = {
   '/register': 'Create an account',
   '/forgot-password': 'Reset your password',
   '/reset-password': 'Choose a new password',
-  '/profile': 'Your account',
+  '/profile': 'Your profile',
   '/bookings': 'Your bookings',
   '/admin': 'Staff dashboard',
   '/admin/bookings': 'All bookings',

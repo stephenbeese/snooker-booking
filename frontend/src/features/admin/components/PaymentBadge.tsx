@@ -1,3 +1,4 @@
+import { Badge } from '@/components/ui/Badge';
 import { formatPence } from '@/lib/money';
 import type { AdminBooking } from '../types';
 
@@ -14,10 +15,12 @@ import type { AdminBooking } from '../types';
  */
 export function PaymentBadge({ booking }: { booking: AdminBooking }) {
   if (booking.payableAtCounter) {
+    // font-semibold overrides the shared font-medium on purpose: this is the one badge that
+    // asks staff to act, and it has to win against the status badge sitting beside it.
     return (
-      <span className="inline-block whitespace-nowrap rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
+      <Badge tone="pending" className="font-semibold">
         Pay on arrival — {formatPence(booking.amountOutstandingPence)} due
-      </span>
+      </Badge>
     );
   }
 
@@ -36,9 +39,5 @@ export function PaymentBadge({ booking }: { booking: AdminBooking }) {
 }
 
 function Settled({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="inline-block whitespace-nowrap rounded-full bg-ink-100 px-2.5 py-0.5 text-xs font-medium text-ink-700">
-      {children}
-    </span>
-  );
+  return <Badge tone="neutral">{children}</Badge>;
 }
