@@ -125,6 +125,11 @@ public class SecurityConfig {
                                 // an unlisted path would fall through to anyRequest() and the
                                 // booking page would lose its labels for anyone logged out.
                                 "/api/tables/types",
+                                // The cafe menu as customers read it. GET only, and a different
+                                // path from the ADMIN-only /api/admin/cafe/** above: this one
+                                // serves active items alone, so a withdrawn item cannot reach
+                                // a customer even though both read the same table.
+                                "/api/cafe/items",
                                 "/api/club")
                         .permitAll()
                         // Admin rules come before anyRequest(), which matches everything

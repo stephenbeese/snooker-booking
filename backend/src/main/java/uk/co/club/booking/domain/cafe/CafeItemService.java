@@ -38,6 +38,18 @@ public class CafeItemService {
         return itemRepository.findAllByOrderByDisplayOrderAscIdAsc();
     }
 
+    /**
+     * What is on sale, for the public menu.
+     *
+     * <p>Separate from {@link #findAll} rather than a boolean parameter on it: a caller that
+     * passed the flag the wrong way round would show customers a withdrawn item, and two named
+     * methods cannot be got the wrong way round.
+     */
+    @Transactional(readOnly = true)
+    public List<CafeItem> findActive() {
+        return itemRepository.findByActiveTrueOrderByDisplayOrderAscIdAsc();
+    }
+
     @Transactional(readOnly = true)
     public CafeItem require(long id) {
         return itemRepository

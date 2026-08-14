@@ -471,7 +471,13 @@ function useCafeMutation<TArgs, TResult>(mutationFn: (args: TArgs) => Promise<TR
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.adminCafeItems() }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.adminCafeItems() });
+      // The customer-facing menu renders the same items. Without this an admin who corrects a
+      // price sees it change on the editor and not on /menu, for the five minutes that page's
+      // staleTime holds — and would reasonably conclude the save had not worked.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.menu() });
+    },
   });
 }
 

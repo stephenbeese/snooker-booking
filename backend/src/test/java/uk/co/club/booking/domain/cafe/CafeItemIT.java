@@ -147,6 +147,54 @@ class CafeItemIT extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("the public menu shows on-sale items to a signed-out visitor")
+    void publicMenuIsReadableWithoutAnAccount() {
+        createItem(Map.of("name", "Flat white", "pricePence", 275));
+
+        // A brand new client with no session: browsing the menu must not need an account, the
+        // same as browsing availability.
+        @SuppressWarnings("unchecked")
+        ResponseEntity<List> response =
+                HttpClient.anonymous(rest).get("/api/cafe/items", List.class);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getBody()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("a withdrawn item never reaches a customer, though staff still see it")
+    void publicMenuHidesWithdrawnItems() {
+        long id = createItem(Map.of("name", "Discontinued crisps", "pricePence", 120));
+        admin.put("/api/admin/cafe/items/" + id + "/active?active=false", null, String.class);
+
+        @SuppressWarnings("unchecked")
+        ResponseEntity<List> publicMenu =
+                HttpClient.anonymous(rest).get("/api/cafe/items", List.class);
+
+        // Both halves matter. Empty alone could mean the endpoint is broken; the admin list
+        // still holding the item is what shows it was hidden rather than lost.
+        assertThat(publicMenu.getBody()).isEmpty();
+        assertThat(listItems()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("the public menu withholds the fields only staff have a use for")
+    void publicMenuOmitsStaffFields() {
+        createItem(Map.of("name", "Tea", "pricePence", 180));
+
+        @SuppressWarnings("unchecked")
+        ResponseEntity<List> response =
+                HttpClient.anonymous(rest).get("/api/cafe/items", List.class);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> item = (Map<String, Object>) response.getBody().get(0);
+        assertThat(item).containsKeys("name", "pricePence", "description", "imageUrl");
+        // Everything served here is on sale by construction, and the order is the position in
+        // the list. A field a customer has no use for is one that can leak a staff concern.
+        assertThat(item).doesNotContainKeys("active", "displayOrder");
+    }
+
+    @Test
     @DisplayName("a new item lands at the end of the menu rather than colliding at zero")
     void appendsNewItemsToTheEnd() {
         createItem(Map.of("name", "First", "pricePence", 100));

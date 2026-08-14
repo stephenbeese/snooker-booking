@@ -19,6 +19,9 @@ export const queryKeys = {
     ['admin', 'availability', date, durationMinutes ?? null, tableIds ?? null] as const,
 
   club: () => ['club'] as const,
+  // The public menu: on-sale items only. Separate from adminCafeItems below, which includes
+  // withdrawn ones — sharing a key would serve a customer something taken off the menu.
+  menu: () => ['menu'] as const,
   tables: () => ['tables'] as const,
   // The public code→label list every screen renders types with. Separate from adminTableTypes
   // below: this one is readable by anyone and lists only active types, so sharing a key would

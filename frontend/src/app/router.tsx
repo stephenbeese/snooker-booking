@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router';
 import { AdminBookingDetailPage } from '@/features/admin/AdminBookingDetailPage';
 import { AdminBookingsPage } from '@/features/admin/AdminBookingsPage';
 import { AdminCafePage } from '@/features/admin/AdminCafePage';
+import { MenuPage } from '@/features/cafe/MenuPage';
 import { AdminCustomerDetailPage } from '@/features/admin/AdminCustomerDetailPage';
 import { AdminCustomersPage } from '@/features/admin/AdminCustomersPage';
 import { AdminDiaryPage } from '@/features/admin/AdminDiaryPage';
@@ -36,6 +37,9 @@ export const router = createBrowserRouter([
     children: [
       { path: '/', element: <HomePage /> },
       { path: '/book', element: <BookPage /> },
+      // Public: someone deciding whether to come down should not need an account to see what
+      // the bar sells.
+      { path: '/menu', element: <MenuPage /> },
       { path: '/login', element: <LoginPage /> },
       { path: '/register', element: <RegisterPage /> },
       // Public by necessity: someone who has lost their password has no session.
