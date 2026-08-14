@@ -243,9 +243,9 @@ public class AdminBookingController {
      * exists for. The acting user's id comes from the session and is stamped on the payment, so
      * the audit trail cannot be forged by the request body.
      *
-     * <p>Cancelling afterwards behaves as it does for a card payment: the booking now holds a
-     * settled payment, so {@code flagForRefundIfPaid} raises it for a refund decision rather than
-     * moving money on its own.
+     * <p>Cancelling afterwards raises a refund decision rather than moving money: counter cash
+     * and a waiver are settled payments, but neither has a card payment behind it to send back,
+     * so the automatic refund never applies to them.
      */
     @PostMapping("/bookings/{reference}/payment")
     public AdminBookingResponse recordPayment(

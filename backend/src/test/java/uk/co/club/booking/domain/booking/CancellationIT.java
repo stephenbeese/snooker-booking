@@ -18,7 +18,9 @@ import uk.co.club.booking.common.error.ErrorCode;
 import uk.co.club.booking.common.error.NotFoundException;
 import uk.co.club.booking.common.time.ClubClock;
 import uk.co.club.booking.domain.payment.PaymentExceptionRepository;
+import uk.co.club.booking.domain.payment.PaymentRepository;
 import uk.co.club.booking.domain.payment.PaymentService;
+import uk.co.club.booking.domain.payment.PaymentStatus;
 import uk.co.club.booking.support.AbstractIntegrationTest;
 import uk.co.club.booking.support.IntegrationFixtures;
 import uk.co.club.booking.support.StubCheckoutGateway;
@@ -41,6 +43,8 @@ class CancellationIT extends AbstractIntegrationTest {
     @Autowired private CancellationPolicy cancellationPolicy;
     @Autowired private PaymentService paymentService;
     @Autowired private PaymentExceptionRepository paymentExceptionRepository;
+    @Autowired private PaymentRepository paymentRepository;
+    @Autowired private StubCheckoutGateway checkoutGateway;
     @Autowired private IntegrationFixtures fixtures;
     @Autowired private ClubClock clubClock;
 
@@ -208,11 +212,13 @@ class CancellationIT extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("cancelling a paid booking raises a refund decision for staff")
-    void paidCancellationIsFlaggedForStaff() {
+    @DisplayName("cancelling a paid booking within the notice period refunds it automatically")
+    void paidCancellationWithinNoticeIsRefunded() {
         fixtures.cancellationNoticeHours(24);
         long tableId = fixtures.aTable("Table 1");
         long userId = fixtures.aCustomer("paid@test.local", "Password123!");
+        // Three days out against a 24-hour notice period: the customer has kept the club's own
+        // terms, so the money is owed rather than being a judgement for staff.
         Instant start = daysAheadAt(3, LocalTime.of(19, 0));
 
         // Through the real payment path, so the payment row is exactly what production writes.
@@ -226,7 +232,51 @@ class CancellationIT extends AbstractIntegrationTest {
         bookingService.cancel(paid, userId, false, "Changed my mind");
         boolean flagged = paymentService.flagForRefundIfPaid(paid);
 
+        assertThat(flagged).as("nothing is left for a human when the refund went through").isFalse();
+        assertThat(paymentExceptionRepository.findAll()).isEmpty();
+        // Filtered to this booking: the stub is shared across the class, so what other tests
+        // asked it to do is also in the list.
+        assertThat(checkoutGateway.refunds())
+                .filteredOn(refund -> refund.idempotencyKey().equals(paid.getReference()))
+                .singleElement()
+                .satisfies(refund ->
+                        // The full price back, keyed by the reference so a retry after a
+                        // timeout returns the original refund rather than sending it twice.
+                        assertThat(refund.amountPence()).isEqualTo(paid.getPricePence()));
+        assertThat(paymentRepository.findByBookingIdOrderByIdDesc(booking.getId()))
+                .first()
+                .satisfies(payment ->
+                        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.REFUNDED));
+    }
+
+    @Test
+    @DisplayName("cancelling a paid booking after the notice period raises a decision for staff")
+    void paidCancellationAfterNoticeIsFlaggedForStaff() {
+        long tableId = fixtures.aTable("Table 1");
+        long userId = fixtures.aCustomer("late@test.local", "Password123!");
+        Instant start = daysAheadAt(3, LocalTime.of(19, 0));
+
+        // Booked first, then the notice period is widened past it, which puts the booking
+        // inside the period without needing a start time close enough to "now" to fall outside
+        // the club's opening hours. Only staff may cancel it now. Whether the club keeps a
+        // late-cancellation fee, refunds anyway or offers a credit is a conversation — and that
+        // is exactly what must not be decided automatically.
+        fixtures.cancellationNoticeHours(24);
+        Booking booking = book(tableId, start, userId);
+        fixtures.cancellationNoticeHours(24 * 7);
+        paymentService.startCheckout(booking);
+        paymentService.markPaid(sessionIdOf(booking), null, "ch_test_late");
+
+        Booking paid = bookingService.requireById(booking.getId());
+        bookingService.cancel(paid, userId, true, "Called to cancel");
+        boolean flagged = paymentService.flagForRefundIfPaid(paid);
+
         assertThat(flagged).isTrue();
+        // Filtered to this booking rather than asserting the list is empty: the stub is shared
+        // across the class and carries what earlier tests asked it to do.
+        assertThat(checkoutGateway.refunds())
+                .as("a late cancellation must never move money on its own")
+                .noneMatch(refund -> refund.idempotencyKey().equals(paid.getReference()));
         assertThat(paymentExceptionRepository.findAll())
                 .singleElement()
                 .satisfies(exception -> {
@@ -235,6 +285,35 @@ class CancellationIT extends AbstractIntegrationTest {
                     // Unresolved: it is work for a human, and marking it done here would hide it.
                     assertThat(exception.getResolvedAt()).isNull();
                 });
+    }
+
+    @Test
+    @DisplayName("a refund the provider does not confirm still reaches a human")
+    void unconfirmedRefundIsFlaggedForStaff() {
+        // The worst case: the club owed the money, the cancellation has already happened, and
+        // the provider did not send it. Silently recording success here would leave a customer
+        // unpaid and the club believing otherwise.
+        fixtures.cancellationNoticeHours(24);
+        long tableId = fixtures.aTable("Table 1");
+        long userId = fixtures.aCustomer("norefund@test.local", "Password123!");
+        Instant start = daysAheadAt(3, LocalTime.of(19, 0));
+
+        Booking booking = book(tableId, start, userId);
+        paymentService.startCheckout(booking);
+        paymentService.markPaid(sessionIdOf(booking), null, "ch_test_norefund");
+        checkoutGateway.makeRefundUnavailable();
+
+        Booking paid = bookingService.requireById(booking.getId());
+        bookingService.cancel(paid, userId, false, "Changed my mind");
+        boolean flagged = paymentService.flagForRefundIfPaid(paid);
+
+        assertThat(flagged).isTrue();
+        assertThat(paymentExceptionRepository.findAll()).hasSize(1);
+        assertThat(paymentRepository.findByBookingIdOrderByIdDesc(booking.getId()))
+                .first()
+                .satisfies(payment -> assertThat(payment.getStatus())
+                        .as("the money never moved, so the payment is still settled")
+                        .isEqualTo(PaymentStatus.SUCCEEDED));
     }
 
     @Test

@@ -1,5 +1,6 @@
 package uk.co.club.booking.domain.payment;
 
+import com.stripe.model.Charge;
 import com.stripe.model.Event;
 import com.stripe.model.PaymentIntent;
 import com.stripe.model.StripeObject;
@@ -118,9 +119,21 @@ public class StripeWebhookProcessor {
     }
 
     private void handleRefund(Event event) {
-        // Refunds are issued by staff through the Stripe dashboard in the MVP; this records the
-        // outcome so our view of the money does not silently diverge from Stripe's.
-        log.info("Refund recorded for event {}", event.getId());
+        // Records the outcome so the club's view of the money cannot silently diverge from
+        // Stripe's. Both sources land here: refunds this application issues on a cancellation
+        // inside the notice period, and refunds staff issue by hand in the Stripe dashboard,
+        // which is still how anything needing a judgement is done.
+        deserialize(event, Charge.class).ifPresent(charge -> {
+            if (charge.getPaymentIntent() == null) {
+                log.warn("Refund event {} carries no payment intent", event.getId());
+                return;
+            }
+            // getAmountRefunded is cumulative across every refund on the charge, which is what
+            // makes "partial" mean partial: two half refunds are one whole one, and reading a
+            // single refund's amount would record the second as partial forever.
+            paymentService.markRefunded(
+                    charge.getPaymentIntent(), Math.toIntExact(charge.getAmountRefunded()));
+        });
     }
 
     /**

@@ -99,6 +99,33 @@ public class CancellationPolicy {
         return Decision.allowed(deadline);
     }
 
+    /**
+     * Whether cancelling this booking obliges the club to give the money back.
+     *
+     * <p>The club's terms are the notice period: a customer who cancels inside it has kept their
+     * side of the bargain, so the refund is owed rather than decided. Outside it the money stays
+     * a judgement — a late cancellation may fairly cost a fee, or be met with a credit — and
+     * {@code PaymentService} raises it for a human instead.
+     *
+     * <p>Computes the deadline itself rather than reading {@link Decision#cancellableUntil}.
+     * {@code evaluate} returns null there for an unpaid hold <em>and</em> for any staff
+     * cancellation, both of which bypass the notice period entirely; reusing that value would
+     * read a staff override past the deadline as though the customer had given proper notice,
+     * and refund every late cancellation staff ever put through.
+     *
+     * <p>Deliberately ignores {@code isStaff}: who typed the cancellation says nothing about
+     * whether the customer gave notice, which is the only question here.
+     */
+    public boolean qualifiesForAutomaticRefund(Booking booking) {
+        if (booking.getStatus().isTerminal() && booking.getStatus() != BookingStatus.CANCELLED) {
+            return false;
+        }
+        BookingSettings settings =
+                BookingSettings.require(bookingSettingsRepository.findSingleton());
+        Instant deadline = booking.getStartAt().minus(settings.cancellationNotice());
+        return !clubClock.now().isAfter(deadline);
+    }
+
     /** Throwing form, for the cancel endpoint itself. */
     public void requireCancellable(Booking booking, boolean isStaff) {
         Decision decision = evaluate(booking, isStaff);

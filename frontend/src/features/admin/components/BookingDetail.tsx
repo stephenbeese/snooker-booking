@@ -251,11 +251,16 @@ function CancelPanel({ booking }: { booking: AdminBooking }) {
       {
         // This whole panel unmounts on success, since the booking stops being cancellable.
         // Without a toast the only trace is a badge change further up the page.
+        // Reads the status the server came back with rather than predicting the outcome: a
+        // cancellation inside the notice period is refunded before this response is built, so
+        // guessing from the amount alone would report a refund decision that was already made.
         onSuccess: (cancelled) =>
           toast(
-            cancelled.amountOutstandingPence > 0 || cancelled.paymentStatus === 'SUCCEEDED'
-              ? `Booking ${cancelled.reference} cancelled and flagged for a refund decision.`
-              : `Booking ${cancelled.reference} cancelled. The table is back on sale.`,
+            cancelled.paymentStatus === 'REFUNDED'
+              ? `Booking ${cancelled.reference} cancelled and refunded in full.`
+              : cancelled.amountOutstandingPence > 0 || cancelled.paymentStatus === 'SUCCEEDED'
+                ? `Booking ${cancelled.reference} cancelled and flagged for a refund decision.`
+                : `Booking ${cancelled.reference} cancelled. The table is back on sale.`,
           ),
       },
     );
@@ -278,8 +283,9 @@ function CancelPanel({ booking }: { booking: AdminBooking }) {
     <section className="mt-8 rounded-card border border-rose-200 bg-rose-50 p-5">
       <h3 className="font-medium text-rose-900">Cancel this booking</h3>
       <p className="mt-1 text-sm text-rose-800">
-        This releases the table for someone else to book. If the customer has paid, the
-        cancellation is flagged for a refund decision — no money moves automatically.
+        This releases the table for someone else to book. A paid booking still inside the
+        notice period is refunded in full; after it, the refund is raised for someone to
+        decide.
       </p>
 
       {!confirming ? (

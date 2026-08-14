@@ -83,9 +83,12 @@ export function CancelBookingDialog({
         </div>
 
         {booking.status === 'CONFIRMED' && (
-          // Honest about the money rather than promising a refund the club has not decided on.
+          // Promising the refund plainly, because reaching this dialog means the server has
+          // already said the booking is cancellable — which for a customer means inside the
+          // notice period, where the club's own terms make the money owed rather than a
+          // decision. Staff cancelling later go through the admin screens, not this one.
           <p className="mt-4 text-sm text-ink-600">
-            This releases your table. If you have paid, the club will be in touch about a refund.
+            This releases your table. If you have paid, you will be refunded in full.
           </p>
         )}
 

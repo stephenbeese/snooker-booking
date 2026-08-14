@@ -19,6 +19,7 @@ import uk.co.club.booking.common.time.ClubClock;
 import uk.co.club.booking.domain.booking.Booking;
 import uk.co.club.booking.domain.booking.BookingService;
 import uk.co.club.booking.domain.booking.BookingStatus;
+import uk.co.club.booking.domain.booking.CancellationPolicy;
 
 /**
  * Takes payment for a held booking, and confirms it when the money arrives.
@@ -49,6 +50,7 @@ public class PaymentService {
     private final PaymentExceptionRepository paymentExceptionRepository;
     private final CheckoutGateway checkoutGateway;
     private final BookingService bookingService;
+    private final CancellationPolicy cancellationPolicy;
     private final ClubClock clubClock;
     private final String baseUrl;
 
@@ -70,6 +72,7 @@ public class PaymentService {
             PaymentExceptionRepository paymentExceptionRepository,
             CheckoutGateway checkoutGateway,
             BookingService bookingService,
+            CancellationPolicy cancellationPolicy,
             ClubClock clubClock,
             @Value("${app.base-url}") String baseUrl,
             ObjectProvider<PaymentService> self) {
@@ -77,6 +80,7 @@ public class PaymentService {
         this.paymentExceptionRepository = paymentExceptionRepository;
         this.checkoutGateway = checkoutGateway;
         this.bookingService = bookingService;
+        this.cancellationPolicy = cancellationPolicy;
         this.clubClock = clubClock;
         this.baseUrl = baseUrl;
         this.self = self;
@@ -438,18 +442,28 @@ public class PaymentService {
     }
 
     /**
-     * Flags a settled payment for staff after its booking was cancelled.
+     * Settles the money after a booking was cancelled: refunds it, or raises it for a human.
      *
-     * <p>Deliberately does <em>not</em> call Stripe. Refunding is a decision the club makes,
-     * not one this code makes on its behalf: the club may owe nothing (a late cancellation), may
-     * owe part of it (a cancellation fee), or may prefer to offer a credit. An automatic refund
-     * would pre-empt all three and is close to impossible to undo, whereas a flagged row costs a
-     * staff member one click.
+     * <p>A cancellation inside the club's notice period is refunded in full and automatically.
+     * That is not this code deciding what the club owes — the notice period <em>is</em> the
+     * club's own term, published to the customer and enforced by {@link CancellationPolicy},
+     * and a customer who met it has already been told they get their money back. Making them
+     * wait on someone noticing a flag was the gap.
+     *
+     * <p>Everything else still goes to a human, and deliberately: a late cancellation may fairly
+     * cost a fee or be met with a credit, and that is a conversation rather than a rule. So is
+     * any refund that did not visibly succeed.
+     *
+     * <p>Only Stripe money can be sent back through the gateway. {@code PAID_AT_COUNTER} and
+     * {@code WAIVED} are settled too — {@code isSettled()} covers all three — but there is no
+     * card payment behind them: one is cash in the till and the other was never taken. Branching
+     * on {@code isSettled()} alone would ask Stripe to refund a payment intent that does not
+     * exist.
      *
      * <p>Returns quietly when nothing was actually paid — cancelling an unpaid hold is the
      * common case and must not raise work for anybody.
      *
-     * @return true if a refund now needs a human decision
+     * @return true if the money now needs a human decision
      */
     @Transactional
     public boolean flagForRefundIfPaid(Booking booking) {
@@ -463,6 +477,40 @@ public class PaymentService {
         }
 
         Payment payment = settled.get();
+
+        if (payment.getStatus() == PaymentStatus.SUCCEEDED
+                && payment.getStripePaymentIntentId() != null
+                && cancellationPolicy.qualifiesForAutomaticRefund(booking)) {
+            Optional<CheckoutGateway.RefundResult> refunded = checkoutGateway.refund(
+                    payment.getStripePaymentIntentId(),
+                    payment.getAmountPence(),
+                    booking.getReference());
+
+            if (refunded.isPresent()) {
+                // Full or partial by what actually went back, not by what was asked for: the two
+                // can differ, and recording "refunded" for a partial one would hide money the
+                // club is still holding.
+                payment.setStatus(
+                        refunded.get().amountRefundedPence() >= payment.getAmountPence()
+                                ? PaymentStatus.REFUNDED
+                                : PaymentStatus.PARTIALLY_REFUNDED);
+                paymentRepository.save(payment);
+                log.info(
+                        "Booking {} cancelled within the notice period; refunded {}p ({})",
+                        booking.getReference(),
+                        refunded.get().amountRefundedPence(),
+                        refunded.get().refundId());
+                return false;
+            }
+
+            // The refund was owed and did not happen. This is the one case that most needs a
+            // person, so it falls through to the queue rather than being logged and forgotten.
+            log.warn(
+                    "Booking {} qualified for an automatic refund but the provider did not "
+                            + "confirm one; raising for staff",
+                    booking.getReference());
+        }
+
         paymentExceptionRepository.save(new PaymentException(
                 booking.getId(),
                 payment.getId(),
@@ -471,6 +519,52 @@ public class PaymentService {
                 "Booking {} cancelled with a settled payment; raised for staff refund decision",
                 booking.getReference());
         return true;
+    }
+
+    /**
+     * Records a refund Stripe has told us about, and closes any decision it settles.
+     *
+     * <p>Covers both directions. A refund this application issued arrives here as well as
+     * returning inline, and one a staff member issued by hand in the Stripe dashboard arrives
+     * here <em>only</em> — that is how they are done today, and without this the club's view of
+     * the money silently diverged from Stripe's.
+     *
+     * <p>Idempotent, like {@code confirmIfPending}: the event may be redelivered, and it may
+     * describe a refund already recorded inline. Writing the same status twice is harmless;
+     * resolving an already-resolved exception is guarded.
+     *
+     * @param amountRefundedPence the cumulative amount Stripe reports as refunded on the charge,
+     *     which is what distinguishes a partial refund from a full one
+     */
+    @Transactional
+    public void markRefunded(String paymentIntentId, int amountRefundedPence) {
+        Optional<Payment> maybePayment =
+                paymentRepository.findByStripePaymentIntentId(paymentIntentId);
+        if (maybePayment.isEmpty()) {
+            // A refund for a payment this club never recorded. Worth saying loudly: it means
+            // either a booking taken by another system or a payment row that went missing.
+            log.warn("Refund for unknown payment intent {}", paymentIntentId);
+            return;
+        }
+
+        Payment payment = maybePayment.get();
+        payment.setStatus(
+                amountRefundedPence >= payment.getAmountPence()
+                        ? PaymentStatus.REFUNDED
+                        : PaymentStatus.PARTIALLY_REFUNDED);
+        paymentRepository.save(payment);
+
+        // The money question is answered, so any queued decision about it is closed. Left open,
+        // staff would work a queue of refunds that had already been paid.
+        paymentExceptionRepository.findByResolvedAtIsNullOrderByCreatedAtAsc().stream()
+                .filter(exception -> exception.getPaymentId().equals(payment.getId()))
+                .forEach(exception -> exception.resolve(clubClock.now(), null));
+
+        log.info(
+                "Recorded a {}p refund against payment {} ({})",
+                amountRefundedPence,
+                payment.getId(),
+                payment.getStatus());
     }
 
     /** Expires the Stripe session behind a hold the sweeper is about to release. */
