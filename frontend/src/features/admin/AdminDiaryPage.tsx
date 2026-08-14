@@ -208,10 +208,32 @@ function DiaryGrid({
     <div className="mt-8 space-y-4">
       <Legend />
 
-      {/* Horizontal scroll on the wrapper, so the page body never scrolls sideways on a
-          phone — the same arrangement as the booking grid. */}
-      <div className="overflow-x-auto rounded-card border border-ink-200 bg-white p-4 shadow-card">
-        <table className="w-full border-separate border-spacing-1">
+      {/*
+        The same arrangement as the booking grid, which this used to only claim to be. Staff
+        read this screen against the one customers book on, so the two behaving differently is
+        itself the defect.
+
+        Two elements, and they have to stay two: the card pads, the inner element scrolls.
+        `position: sticky; left: 0` pins to the scroll container's PADDING box, so padding on
+        the scroller leaves an uncovered strip down the left that the time axis scrolls
+        through — which is what this had.
+
+        `w-fit max-w-full` so a quiet evening's few columns do not leave a wide empty band.
+      */}
+      <div className="w-fit max-w-full rounded-card border border-line bg-surface p-4 shadow-card">
+        <div className="overflow-x-auto">
+        {/*
+          border-collapse, not border-separate with a gutter. `border-spacing-1` leaves a 4px
+          transparent gap between every cell, which let slot times scroll visibly through the
+          seam beside the sticky table column — patched here, as in the booking grid, with
+          `shadow-[4px_0_0_0_white]` hacks painting over the gutter. Removing the gutter removes
+          the cause, and both hacks with it.
+
+          `w-max table-fixed` keeps a half-hour the same width whatever the day: under `w-full`
+          with auto layout the browser stretched six evening columns to 130px and squeezed a
+          full day's 26 down to 38px, so the same half-hour changed size with the time of day.
+        */}
+        <table className="w-max table-fixed border-collapse">
           <caption className="sr-only">
             Bookings for {availability.date}, times in {availability.timezone}
           </caption>
@@ -221,7 +243,7 @@ function DiaryGrid({
                   both, or a scrolling time slides over it. */}
               <th
                 scope="col"
-                className="sticky left-0 top-0 z-30 bg-white pr-2 text-left shadow-[4px_0_0_0_white]"
+                className="sticky left-0 top-0 z-30 bg-surface pr-2 text-left shadow-[inset_-1px_0_0_var(--color-line)]"
               >
                 <span className="sr-only">Table</span>
               </th>
@@ -229,7 +251,7 @@ function DiaryGrid({
                 <th
                   key={time}
                   scope="col"
-                  className="sticky top-0 z-10 min-w-16 bg-white pb-1 text-center text-xs font-normal tabular-nums text-ink-500"
+                  className="sticky top-0 z-10 w-16 bg-surface pb-1 text-center text-xs font-normal tabular-nums text-ink-500"
                 >
                   {time}
                 </th>
@@ -254,11 +276,11 @@ function DiaryGrid({
               return (
                 <tr key={table.tableId}>
                   {/* z-20 beats the time headers' z-10 so a table name is never overprinted.
-                      The white box-shadow paints the border-spacing gutter to its right,
-                      which would otherwise let cells scroll visibly through the seam. */}
+                      The inset shadow draws the column's right edge as part of the cell, so it
+                      travels with it instead of leaving a seam to scroll through. */}
                   <th
                     scope="row"
-                    className="sticky left-0 z-20 min-w-32 bg-white pr-3 text-left align-middle shadow-[4px_0_0_0_white]"
+                    className="sticky left-0 z-20 w-44 min-w-44 bg-surface pr-3 text-left align-middle shadow-[inset_-1px_0_0_var(--color-line)]"
                   >
                     <span className="block text-sm font-medium text-felt-900">
                       {table.tableName}
@@ -275,6 +297,7 @@ function DiaryGrid({
             })}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
@@ -297,12 +320,15 @@ function Cell({ cell }: { cell: DiaryCell }) {
     const { booking, span } = cell.block;
     return (
       <td colSpan={span} className="p-0">
+        {/* Inset rather than rounded: a booking is a run of half-hours, so it should fill them
+            edge to edge the way the customer grid's selection does. The ring separates it from
+            its neighbours now that there is no gutter to do that. */}
         <Link
           to={`/admin/bookings/${encodeURIComponent(booking.reference)}`}
-          className={`flex h-14 flex-col justify-center overflow-hidden rounded-md px-2 text-left ${
+          className={`flex h-14 flex-col justify-center overflow-hidden border-b border-line px-2 text-left ring-1 ring-inset ${
             booking.status === 'PENDING_PAYMENT'
-              ? 'bg-amber-100 hover:bg-amber-200'
-              : 'bg-felt-100 hover:bg-felt-200'
+              ? 'bg-amber-100 ring-amber-300 hover:bg-amber-200'
+              : 'bg-felt-100 ring-felt-300 hover:bg-felt-200'
           }`}
           title={`${booking.customerName} — ${booking.startTime.slice(0, 5)}, ${formatPence(booking.pricePence)}`}
         >
@@ -323,10 +349,19 @@ function Cell({ cell }: { cell: DiaryCell }) {
     );
   }
 
+  // No per-cell rounding, and a hairline instead of a gap.
+  //
+  // These used to be rounded boxes floating in a 4px gutter, so the gutter was doing the work
+  // of separating them. With it removed — it was letting the time axis scroll through the seam
+  // beside the table column — rounded cells butted together and their corners left a scatter of
+  // white marks across the grid. A 1px grid line reads as a timeline and costs no space.
   if (cell.kind === 'free') {
     return (
       <td className="p-0">
-        <div className="h-14 rounded-md bg-white ring-1 ring-inset ring-ink-200" title="Free" />
+        <div
+          className="h-14 border-b border-r border-line bg-surface"
+          title="Free"
+        />
       </td>
     );
   }
@@ -334,7 +369,7 @@ function Cell({ cell }: { cell: DiaryCell }) {
   const label = cell.reason ? (UNAVAILABLE_TITLE[cell.reason] ?? 'Unavailable') : 'Unavailable';
   return (
     <td className="p-0">
-      <div className="h-14 rounded-md bg-ink-100" title={label}>
+      <div className="h-14 border-b border-r border-line bg-ink-100" title={label}>
         <span className="sr-only">{label}</span>
       </div>
     </td>
@@ -344,10 +379,12 @@ function Cell({ cell }: { cell: DiaryCell }) {
 function Legend() {
   return (
     <ul className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-ink-600">
-      <LegendItem className="bg-felt-100">Booked</LegendItem>
-      <LegendItem className="bg-amber-100">Awaiting payment</LegendItem>
-      <LegendItem className="bg-white ring-1 ring-inset ring-ink-200">Free</LegendItem>
-      <LegendItem className="bg-ink-100">Unavailable</LegendItem>
+      <LegendItem className="bg-felt-100 ring-1 ring-inset ring-felt-300">Booked</LegendItem>
+      <LegendItem className="bg-amber-100 ring-1 ring-inset ring-amber-300">
+        Awaiting payment
+      </LegendItem>
+      <LegendItem className="bg-surface ring-1 ring-inset ring-line">Free</LegendItem>
+      <LegendItem className="bg-ink-100 ring-1 ring-inset ring-line">Unavailable</LegendItem>
     </ul>
   );
 }

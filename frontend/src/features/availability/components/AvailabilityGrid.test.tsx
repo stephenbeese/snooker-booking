@@ -324,6 +324,26 @@ describe('AvailabilityGrid', () => {
     expect(scroller.className).not.toMatch(/\bpl-\d/);
   });
 
+  it('sizes a half-hour the same whatever the day, rather than stretching to fill the card', () => {
+    // `w-full` made the cell width a function of how many columns there happened to be: a full
+    // trading day squeezed to 38px cells — too narrow for "22:30" — while six slots left at the
+    // end of an evening ballooned to 130px. `table-fixed` is what makes the column widths
+    // binding; under auto layout the browser treats them as suggestions and redistributes.
+    // jsdom does no layout, so this asserts the mechanism rather than the measurement.
+    const { container } = render(
+      <AvailabilityGrid
+        availability={makeAvailability()}
+        selected={null}
+        durationMinutes={null}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const table = container.querySelector('table')!;
+    expect(table.className).toContain('table-fixed');
+    expect(table.className).not.toContain('w-full');
+  });
+
   it('shows each table its type, which the row never used to say', () => {
     renderGrid(
       makeAvailability({ tables: [makeTable({ tableType: 'ENGLISH_POOL' })], slotTimes: ['10:00:00'] }),

@@ -135,7 +135,12 @@ export function AvailabilityGrid({
         column" defect in a different guise, and one that only appears once the grid is wide
         enough to scroll.
       */}
-      <div className="rounded-card border border-line bg-surface p-4 shadow-card">
+      {/*
+        `w-fit max-w-full`: the card shrinks to the grid on a quiet evening rather than leaving
+        a wide empty band to the right of six columns, and still fills the page — scrolling
+        inside itself — on a full trading day.
+      */}
+      <div className="w-fit max-w-full rounded-card border border-line bg-surface p-4 shadow-card">
         <div className="overflow-x-auto">
           {/*
             border-collapse, not border-separate with a gutter.
@@ -147,7 +152,20 @@ export function AvailabilityGrid({
             the gutter. Removing the gutter removes the cause of both — and is what lets a
             multi-cell selection render as one continuous bar instead of separated blocks.
           */}
-          <table className="w-full border-collapse">
+          {/*
+            `w-auto`, not `w-full`. With `w-full` the table stretched to fill the card, so the
+            cell width was a function of how many columns there happened to be: a full trading
+            day gave 64px cells, while late in the evening — six slots left — the same cells
+            ballooned to 130px. A half-hour is a half-hour, and it should occupy the same space
+            whatever time it is; the grid reading as a timeline depends on that.
+          */}
+          {/*
+            `table-fixed` is what makes the widths below binding. Under auto layout the browser
+            treats a column width as a suggestion and redistributes to fit the available space,
+            which is how a full day was squeezed to 38px cells — too narrow for "22:30" — while
+            a quiet evening stretched to 130px.
+          */}
+          <table className="w-max table-fixed border-collapse">
             <caption className="sr-only">
               Table availability for {availability.date}, times in {availability.timezone}
             </caption>
@@ -166,7 +184,9 @@ export function AvailabilityGrid({
                     key={time}
                     scope="col"
                     // Sticky vertically so the time axis survives scrolling down a tall grid.
-                    className="sticky top-0 z-10 min-w-16 bg-surface px-0.5 pb-2 text-center text-xs font-normal tabular-nums text-ink-500"
+                    // w-16, not min-w-16: a fixed width is what keeps a half-hour the same
+                    // size on a quiet evening as on a full day.
+                    className="sticky top-0 z-10 w-16 bg-surface px-0.5 pb-2 text-center text-xs font-normal tabular-nums text-ink-500"
                   >
                     {time.slice(0, 5)}
                   </th>
@@ -183,7 +203,7 @@ export function AvailabilityGrid({
                         cell, so it travels with it instead of leaving a seam to scroll through. */}
                     <th
                       scope="row"
-                      className="sticky left-0 z-20 min-w-36 bg-surface py-1 pr-3 text-left align-middle shadow-[inset_-1px_0_0_var(--color-line)]"
+                      className="sticky left-0 z-20 w-44 min-w-44 bg-surface py-1 pr-3 text-left align-middle shadow-[inset_-1px_0_0_var(--color-line)]"
                     >
                       <span className="block text-sm font-medium text-felt-900">
                         {table.tableName}

@@ -76,10 +76,34 @@ export function slotAppearance(
     };
   }
 
-  // Deliberately checked before the span: a cell that no longer fits the requested
-  // duration must stop looking selected, whatever was picked earlier. Showing it green and
-  // clickable is how a stale selection reaches the summary bar priced for the old duration.
+  // Checked BEFORE "does the requested duration fit", which is the opposite of what it looks
+  // like it should be.
   //
+  // `bookableForRequestedDuration` answers "could a booking of this length START here". For a
+  // 19:00–23:00 booking against a 23:00 close, every cell from 19:30 on answers false — and
+  // those are precisely the cells the booking occupies. Testing it first painted them as
+  // "doesn't fit", so a four-hour booking drew one dark cell at 19:00 followed by seven pale
+  // ones, each still printing its own time. The caller had already put them in the span; only
+  // the styling disagreed.
+  //
+  // Safe because the span is derived, not remembered: `spanFor` walks forward from the anchor
+  // over cells that are genuinely free and stops at the first that is not, and the anchor
+  // itself is still gated by the branch below. A stale selection therefore cannot arrive here
+  // with a span — it loses its anchor first, and with it every cell that followed.
+  if (span !== null) {
+    // No ring. The old one used `ring-offset-1`, which drew into the gutter between cells and
+    // read as a stray line beside the selection rather than a border around it; with the run
+    // rendered as a solid bar the fill is the affordance and needs no outline.
+    return {
+      className: `${BASE} ${SPAN_SHAPE[span]} bg-felt-700 text-white shadow-card`,
+      label: `${time} — selected`,
+      interactive: true,
+      // The middle of a run prints nothing: a column of times inside one continuous block
+      // reads as several separate selections rather than one booking.
+      text: span === 'middle' ? '' : time,
+    };
+  }
+
   // Free, but the requested duration does not fit. Visibly distinct from both bookable
   // and occupied, so the grid does not look broken when a late slot cannot be clicked.
   //
@@ -97,20 +121,6 @@ export function slotAppearance(
       label: `${time} — ${label}`,
       interactive: false,
       text: time,
-    };
-  }
-
-  if (span !== null) {
-    // No ring. The old one used `ring-offset-1`, which drew into the gutter between cells and
-    // read as a stray line beside the selection rather than a border around it; with the run
-    // rendered as a solid bar the fill is the affordance and needs no outline.
-    return {
-      className: `${BASE} ${SPAN_SHAPE[span]} bg-felt-700 text-white shadow-card`,
-      label: `${time} — selected`,
-      interactive: true,
-      // The middle of a run prints nothing: a column of times inside one continuous block
-      // reads as several separate selections rather than one booking.
-      text: span === 'middle' ? '' : time,
     };
   }
 
