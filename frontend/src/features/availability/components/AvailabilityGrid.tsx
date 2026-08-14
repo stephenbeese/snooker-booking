@@ -1,5 +1,7 @@
+import { useEffect, useRef } from 'react';
 import { addMinutesToTime, formatSlotTime } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
+import { durationForRange } from '../rangeSelection';
 import type { SpanPosition } from '../slotAppearance';
 import type { DayAvailability, Slot, TableAvailability, TableType } from '../types';
 import { GridLegend } from './GridLegend';
@@ -13,6 +15,15 @@ interface AvailabilityGridProps {
   /** Resolves a type code to the club's own label. Omitted where the caller has no types loaded. */
   typeLabel?: (code: TableType) => string;
   onSelect: (tableId: number, slot: Slot) => void;
+  /**
+   * A range gesture resolved to a start and a permitted duration — a second click on the row,
+   * or the release of a drag.
+   *
+   * <p>Separate from `onSelect` because it changes the requested duration as well as the
+   * selection, and only the page owns that. Omitted by callers that have no duration control
+   * to drive, where the grid falls back to plain single-cell picking.
+   */
+  onSelectRange?: ((tableId: number, slot: Slot, durationMinutes: number) => void) | undefined;
 }
 
 const DAY_MESSAGE: Record<string, string> = {
@@ -88,7 +99,33 @@ export function AvailabilityGrid({
   durationMinutes,
   typeLabel,
   onSelect,
+  onSelectRange,
 }: AvailabilityGridProps) {
+  // Where a drag began, and whether it has actually moved. A press that never leaves its cell
+  // is a click, not a one-cell drag — without `moved` every ordinary click would also fire a
+  // range for the minimum duration and quietly overwrite the customer's chosen length.
+  //
+  // A ref, not state: nothing renders from this. What the grid draws during a drag comes from
+  // the `selected`/`durationMinutes` props the gesture pushes up to the page, so holding it in
+  // state would re-render the whole grid on every pointerdown and produce no pixel that the
+  // props were not already going to produce.
+  const dragRef = useRef<{ tableId: number; startAt: string; moved: boolean } | null>(null);
+
+  // The drag has to end even when the pointer is released off the grid — over the summary bar,
+  // outside the window, anywhere. Without this a released drag stays armed, and the next
+  // hover over the grid extends a selection nobody is dragging.
+  useEffect(() => {
+    function end() {
+      dragRef.current = null;
+    }
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+    return () => {
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+    };
+  }, []);
+
   if (!availability.clubOpen || availability.tables.length === 0) {
     const reason = availability.dayUnavailableReason;
     // "This date has already passed" is wrong for today after the last slot has gone: the
@@ -123,9 +160,57 @@ export function AvailabilityGrid({
       ? `${formatSlotTime(selectedSlot.startTime)} to ${spanEndTime}`
       : undefined;
 
+  // "23:00:00" -> "23:00". Null on a day with no published closing time, where there is
+  // nothing truthful to draw and the column is dropped entirely.
+  const closingTime = availability.closingTime ? formatSlotTime(availability.closingTime) : null;
+
+  /**
+   * A range gesture, from either input path.
+   *
+   * <p>Both the second click and the drag release land here, so the two can never resolve the
+   * same pair of cells to different durations. Returns whether it was taken, which is how the
+   * click handler decides between extending an existing selection and starting a new one.
+   */
+  function extendTo(table: TableAvailability, anchorStartAt: string, target: Slot): boolean {
+    if (!onSelectRange) {
+      return false;
+    }
+    const minutes = durationForRange(
+      table,
+      anchorStartAt,
+      target.startAt,
+      availability.durationOptions,
+      availability.incrementMinutes,
+    );
+    if (minutes === null) {
+      return false;
+    }
+    const anchor = table.slots.find((slot) => slot.startAt === anchorStartAt);
+    if (!anchor) {
+      return false;
+    }
+    onSelectRange(table.tableId, anchor, minutes);
+    return true;
+  }
+
+  function handleClick(table: TableAvailability, slot: Slot) {
+    // A second click in the row that already holds the selection sets the END of the booking.
+    // Clicking the anchor itself, or anywhere before it, falls through to re-anchoring — so
+    // clicking back up the row picks a new start time rather than refusing the click.
+    if (
+      selected &&
+      selected.tableId === table.tableId &&
+      slot.startAt !== selected.startAt &&
+      extendTo(table, selected.startAt, slot)
+    ) {
+      return;
+    }
+    onSelect(table.tableId, slot);
+  }
+
   return (
     <div className="space-y-4">
-      <GridLegend />
+      <GridLegend closingTime={closingTime} />
 
       {/*
         Two elements, and they have to stay two. The card's padding is on the OUTER one and the
@@ -166,8 +251,11 @@ export function AvailabilityGrid({
             a quiet evening stretched to 130px.
           */}
           <table className="w-max table-fixed border-collapse">
+            {/* The closing time belongs here too: the hatched column is `aria-hidden`, so
+                without it a screen-reader user gets no equivalent for "the club shuts at". */}
             <caption className="sr-only">
               Table availability for {availability.date}, times in {availability.timezone}
+              {closingTime && `. The club closes at ${closingTime}.`}
             </caption>
             <thead>
               <tr>
@@ -191,6 +279,18 @@ export function AvailabilityGrid({
                     {time.slice(0, 5)}
                   </th>
                 ))}
+                {/* The closing time, as the axis's last label. The grid simply stopped before,
+                    so the final column read as "the data ran out" rather than "the club
+                    shuts" — and the last cell's own start time (22:30) is not the closing
+                    time (23:00), which made the end of the day look half an hour early. */}
+                {closingTime && (
+                  <th
+                    scope="col"
+                    className="sticky top-0 z-10 w-16 bg-surface px-0.5 pb-2 text-center text-xs font-medium tabular-nums text-ink-600"
+                  >
+                    {closingTime}
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -233,10 +333,67 @@ export function AvailabilityGrid({
                           span={span.get(slot.startAt) ?? null}
                           spanLabel={spanLabel}
                           spanEndTime={spanEndTime}
-                          onSelect={(picked) => onSelect(table.tableId, picked)}
+                          onSelect={(picked) => handleClick(table, picked)}
+                          onExtendStart={
+                            onSelectRange
+                              ? (picked) => {
+                                  // Only ARM the drag. Anchoring here would break click-then-
+                                  // click: pointerdown precedes click, so pressing the end
+                                  // cell would re-anchor the selection onto it and destroy
+                                  // the very start time the click was about to extend from.
+                                  // The anchor is set on first movement instead, which is the
+                                  // point where the gesture is known to be a drag.
+                                  dragRef.current = {
+                                    tableId: table.tableId,
+                                    startAt: picked.startAt,
+                                    moved: false,
+                                  };
+                                }
+                              : undefined
+                          }
+                          onExtendTo={
+                            onSelectRange
+                              ? (picked) => {
+                                  const active = dragRef.current;
+                                  if (!active || active.tableId !== table.tableId) {
+                                    return;
+                                  }
+                                  if (picked.startAt === active.startAt) {
+                                    return;
+                                  }
+                                  // First movement: the press was a drag after all, so commit
+                                  // its origin as the anchor before extending to here.
+                                  if (!active.moved) {
+                                    dragRef.current = { ...active, moved: true };
+                                    const origin = table.slots.find(
+                                      (slot) => slot.startAt === active.startAt,
+                                    );
+                                    if (origin) {
+                                      onSelect(table.tableId, origin);
+                                    }
+                                  }
+                                  // Anchored on `active.startAt`, not on the `selected` prop:
+                                  // the anchoring `onSelect` above is in the same handler, so
+                                  // the prop still holds the previous value on this pass.
+                                  extendTo(table, active.startAt, picked);
+                                }
+                              : undefined
+                          }
                         />
                       </td>
                     ))}
+                    {/* A hatched stub closing every row, so "the club is shut from here" is
+                        drawn rather than merely implied by the grid ending. Repeated per row
+                        rather than drawn once, because a table cell cannot span rows without
+                        breaking the sticky column's geometry. */}
+                    {closingTime && (
+                      <td className="px-0 py-px">
+                        <div
+                          aria-hidden
+                          className="h-10 w-full rounded-r-lg border-l-2 border-ink-300 bg-[repeating-linear-gradient(135deg,var(--color-ink-100)_0px,var(--color-ink-100)_4px,transparent_4px,transparent_8px)]"
+                        />
+                      </td>
+                    )}
                   </tr>
                 );
               })}

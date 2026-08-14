@@ -10,15 +10,22 @@ function renderGrid(
   durationMinutes: number | null = null,
 ) {
   const onSelect = vi.fn();
+  const onSelectRange = vi.fn();
   render(
     <AvailabilityGrid
       availability={availability}
       selected={selected}
       durationMinutes={durationMinutes}
       onSelect={onSelect}
+      onSelectRange={onSelectRange}
     />,
   );
-  return { onSelect };
+  return { onSelect, onSelectRange };
+}
+
+/** A slot button by its time, e.g. "10:30". */
+function cell(time: string) {
+  return screen.getAllByRole('button', { name: new RegExp(`^${time}`) })[0]!;
 }
 
 /** The cells that are part of the current booking, in grid order. */
@@ -222,7 +229,27 @@ describe('AvailabilityGrid', () => {
     renderGrid(makeAvailability(), { tableId: 1, startAt: '2026-08-20T10:00:00Z' }, 90);
 
     const [, middle] = bookingCells();
-    expect(middle!.textContent?.trim()).toBe('');
+    // The time is present but invisible, rather than absent: it has to come back on hover so
+    // there is something to aim at when re-picking the end of the booking. What matters to
+    // this test is that it is not *shown* by default, which is what would make one booking
+    // read as a row of separate picks.
+    expect(middle!.querySelector('[aria-hidden]')!.className).toContain('opacity-0');
+  });
+
+  it('keeps the middle cell time in the DOM so hovering can reveal where you are aiming', () => {
+    // The middle of a run prints nothing, so the bar reads as one block rather than a column
+    // of separate times — but that leaves nothing to aim at when picking a new end time on a
+    // selection you already have. The time is rendered and merely made transparent, so the
+    // browser reveals it on hover with no React state and no re-render per cell crossed.
+    renderGrid(makeAvailability(), { tableId: 1, startAt: '2026-08-20T10:00:00Z' }, 90);
+
+    const [, middle] = bookingCells();
+    const hidden = middle!.querySelector('[aria-hidden]')!;
+    expect(hidden.textContent).toBe('10:30');
+    expect(hidden.className).toContain('opacity-0');
+    // Revealed by hovering the whole cell, not just the few pixels the text occupies.
+    expect(hidden.className).toContain('group-hover:opacity-75');
+    expect(middle!.className).toContain('group');
   });
 
   it('tells a screen reader what the whole booking covers, from any cell in it', () => {
@@ -240,6 +267,29 @@ describe('AvailabilityGrid', () => {
     const cells = bookingCells();
     expect(cells[0]!.textContent?.trim()).toBe('10:00');
     expect(cells[cells.length - 1]!.textContent?.trim()).toBe('11:30');
+  });
+
+  it('shows a half-hour booking as its start time, not its end', () => {
+    // The shortest booking is one cell, and that cell sits in the column headed by its START.
+    // Labelling it with the end put "10:30" under the 10:00 heading, disagreeing with the
+    // header and with every other cell in the column — on the one booking length where there
+    // is no second cell to carry the end time instead.
+    //
+    // The length is not lost by dropping it: one cell IS half an hour, the same way four cells
+    // is two hours, and the exact range stays in the accessible name below.
+    renderGrid(makeAvailability(), { tableId: 1, startAt: '2026-08-20T10:00:00Z' }, 30);
+
+    const cells = bookingCells();
+    expect(cells).toHaveLength(1);
+    expect(cells[0]!.textContent?.trim()).toBe('10:00');
+  });
+
+  it('still tells a screen reader when a half-hour booking ends', () => {
+    // The end time leaves the face of the cell, so it has to stay somewhere non-visual — this
+    // is what stops the change costing a screen-reader user the booking's length.
+    renderGrid(makeAvailability(), { tableId: 1, startAt: '2026-08-20T10:00:00Z' }, 30);
+
+    expect(bookingCells()[0]).toHaveAccessibleName('10:00 — selected, 10:00 to 10:30');
   });
 
   it('spans a booking that runs past the last bookable start time', () => {
@@ -342,6 +392,162 @@ describe('AvailabilityGrid', () => {
     const table = container.querySelector('table')!;
     expect(table.className).toContain('table-fixed');
     expect(table.className).not.toContain('w-full');
+  });
+
+  it('reads a second click in the row as the end of the booking', async () => {
+    // The headline gesture: click a start, click an end, and the duration follows. 10:00 to
+    // 11:00 inclusive is three half-hours, so 90 minutes.
+    const { onSelectRange } = renderGrid(
+      makeAvailability(),
+      { tableId: 1, startAt: '2026-08-20T10:00:00Z' },
+      30,
+    );
+
+    await userEvent.click(cell('11:00'));
+
+    expect(onSelectRange).toHaveBeenCalledWith(1, expect.objectContaining({ startTime: '10:00:00' }), 90);
+  });
+
+  it('re-anchors rather than extending when the second click is before the start', async () => {
+    // Clicking back up the row is far more likely to mean "actually, start here" than
+    // "reverse my booking". Swapping the ends would leave the start time jumping about.
+    const { onSelect, onSelectRange } = renderGrid(
+      makeAvailability(),
+      { tableId: 1, startAt: '2026-08-20T11:00:00Z' },
+      30,
+    );
+
+    await userEvent.click(cell('10:00'));
+
+    expect(onSelectRange).not.toHaveBeenCalled();
+    expect(onSelect).toHaveBeenCalledWith(1, expect.objectContaining({ startTime: '10:00:00' }));
+  });
+
+  it('starts a fresh selection when the second click lands on another table', async () => {
+    // A booking cannot span two tables, so this is a new pick, not an extension.
+    const { onSelect, onSelectRange } = renderGrid(
+      makeAvailability({
+        tables: [makeTable({ tableId: 1 }), makeTable({ tableId: 2, tableName: 'Table 2' })],
+      }),
+      { tableId: 1, startAt: '2026-08-20T10:00:00Z' },
+      30,
+    );
+
+    // The second row's 11:00 cell.
+    await userEvent.click(screen.getAllByRole('button', { name: /^11:00/ })[1]!);
+
+    expect(onSelectRange).not.toHaveBeenCalled();
+    expect(onSelect).toHaveBeenCalledWith(2, expect.objectContaining({ startTime: '11:00:00' }));
+  });
+
+  it('extends across a drag, anchoring where the press began', async () => {
+    const { onSelect, onSelectRange } = renderGrid(makeAvailability(), null, 30);
+
+    await userEvent.pointer([
+      { keys: '[MouseLeft>]', target: cell('10:00') },
+      { target: cell('10:30') },
+    ]);
+
+    // The press alone does not anchor — only the first movement does, so that a plain click
+    // can still be read as a click.
+    expect(onSelect).toHaveBeenCalledWith(1, expect.objectContaining({ startTime: '10:00:00' }));
+    expect(onSelectRange).toHaveBeenCalledWith(1, expect.objectContaining({ startTime: '10:00:00' }), 60);
+  });
+
+  it('does not fire a range for a press that never moves', async () => {
+    // Every ordinary click begins with a pointerdown. If that armed a one-cell range, clicking
+    // any free cell would silently reset the customer's chosen duration to the minimum.
+    const { onSelectRange } = renderGrid(makeAvailability(), null, 90);
+
+    await userEvent.click(cell('10:00'));
+
+    expect(onSelectRange).not.toHaveBeenCalled();
+  });
+
+  it('anchors a drag where the press began, not on whatever was selected before it', async () => {
+    // The press does not anchor (that would break click-then-click), so on the first movement
+    // the `selected` prop still holds the PREVIOUS selection — React has not re-rendered yet.
+    // Reading the anchor from props there measures the range from the old cell: pressing
+    // 10:30 and dragging to 11:00 would resolve from 10:00 and book an extra half-hour the
+    // customer never dragged over.
+    const { onSelectRange } = renderGrid(
+      makeAvailability(),
+      { tableId: 1, startAt: '2026-08-20T10:00:00Z' },
+      30,
+    );
+
+    await userEvent.pointer([
+      { keys: '[MouseLeft>]', target: cell('10:30') },
+      { target: cell('11:00') },
+    ]);
+
+    // 10:30 to 11:00 inclusive is 60 minutes. Anchoring on the stale 10:00 gives 90.
+    expect(onSelectRange).toHaveBeenLastCalledWith(
+      1,
+      expect.objectContaining({ startTime: '10:30:00' }),
+      60,
+    );
+  });
+
+  it('collapses to no range when a drag returns to the cell it started on', async () => {
+    // Dragging out and back is how somebody changes their mind mid-gesture. Landing back on
+    // the origin must not resolve to a one-cell booking — the press has selected the start,
+    // and the duration they already chose should survive.
+    const { onSelectRange } = renderGrid(makeAvailability(), null, 90);
+
+    await userEvent.pointer([
+      { keys: '[MouseLeft>]', target: cell('10:00') },
+      { target: cell('10:30') },
+      { target: cell('10:00') },
+      { keys: '[/MouseLeft]' },
+    ]);
+
+    // The outbound leg legitimately fired a 60-minute range; coming home must not then fire a
+    // 30-minute one, which is what dropping the same-cell guard does.
+    expect(onSelectRange).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), 30);
+  });
+
+  it('stops a drag at a cell somebody else has booked', async () => {
+    const { onSelectRange } = renderGrid(
+      makeAvailability({
+        tables: [
+          makeTable({
+            slots: [
+              makeSlot({ startTime: '10:00:00' }),
+              makeSlot({ startTime: '10:30:00' }),
+              makeSlot({ startTime: '11:00:00', available: false, reason: 'BOOKED' }),
+            ],
+          }),
+        ],
+      }),
+      null,
+      30,
+    );
+
+    await userEvent.pointer([
+      { keys: '[MouseLeft>]', target: cell('10:00') },
+      { target: cell('10:30') },
+    ]);
+
+    // 60 minutes, not the 90 the pointer travelled: the run cannot cross the 11:00 booking.
+    expect(onSelectRange).toHaveBeenLastCalledWith(1, expect.anything(), 60);
+  });
+
+  it('marks where the club closes, rather than just running out of columns', () => {
+    // The grid used to stop dead at the last bookable start time, so the end of the day read
+    // as missing data. The last cell starts at 11:00 but the club shuts at 23:00.
+    renderGrid(makeAvailability({ closingTime: '23:00:00' }));
+
+    expect(screen.getByRole('columnheader', { name: '23:00' })).toBeInTheDocument();
+    // Said in the caption too — the hatched column is aria-hidden, so this is the only form
+    // a screen reader gets.
+    expect(screen.getByRole('table')).toHaveAccessibleName(/closes at 23:00/i);
+  });
+
+  it('draws no closing column on a day that publishes no closing time', () => {
+    renderGrid(makeAvailability({ closingTime: null }));
+
+    expect(screen.queryByRole('columnheader', { name: '23:00' })).toBeNull();
   });
 
   it('shows each table its type, which the row never used to say', () => {

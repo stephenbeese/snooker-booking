@@ -130,10 +130,51 @@ export function BookPage() {
     }
   }
 
+  /**
+   * A single click: this is the START of a booking, held at the shortest length the club sells
+   * until a second click says otherwise.
+   *
+   * <p>The duration is not carried over from the previous booking — that would pre-answer a
+   * question the customer has not been asked and draw a span they never chose. It drops to the
+   * minimum instead of to "Any" so that one click is already a complete, priced, bookable
+   * thing: somebody who only wants half an hour is finished, and everybody else drags or
+   * clicks an end time to lengthen it.
+   *
+   * <p>The minimum comes from the server's own `durationOptions` rather than a hardcoded 30,
+   * since the increment is a club setting an admin can change.
+   *
+   * <p>There is no clamping here any more. Clamping existed to shorten a booking whose
+   * requested length did not fit at the clicked cell; the end click resolves the length now,
+   * and `durationForRange` already refuses to run a range past anything unsold.
+   */
   function handleSelect(tableId: number, slot: Slot) {
     // A fresh choice invalidates whatever the last attempt said.
     setBookingError(null);
     setDroppedReason(null);
+
+    // Clicking the cell that is already the start of the booking clears it. Without this the
+    // only way out of a selection is to pick a different one, so a misclick cannot be undone —
+    // and the pinned summary bar stays on screen offering to charge for it.
+    if (selected && selected.tableId === tableId && selected.startAt === slot.startAt) {
+      setSelected(null);
+      return;
+    }
+
+    const shortest = data?.durationOptions[0]?.minutes ?? null;
+    setDurationMinutes(shortest);
+    setSelected({ tableId, startAt: slot.startAt });
+  }
+
+  /**
+   * A start and an end picked on the grid — two clicks, or a drag.
+   *
+   * <p>The duration arrives already snapped to one the club sells; the grid resolves that, so
+   * this only has to trust it and set both halves at once.
+   */
+  function handleSelectRange(tableId: number, slot: Slot, minutes: number) {
+    setBookingError(null);
+    setDroppedReason(null);
+    setDurationMinutes(minutes);
     setSelected({ tableId, startAt: slot.startAt });
   }
 
@@ -233,6 +274,7 @@ export function BookPage() {
               durationMinutes={durationMinutes}
               typeLabel={typeLabel}
               onSelect={handleSelect}
+              onSelectRange={handleSelectRange}
             />
           </div>
         )}

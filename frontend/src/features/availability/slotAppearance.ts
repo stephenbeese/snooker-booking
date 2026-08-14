@@ -1,4 +1,3 @@
-import { formatDuration } from '@/lib/datetime';
 import type { Slot, UnavailableReason } from './types';
 
 /**
@@ -32,7 +31,10 @@ const REASON_LABEL: Record<UnavailableReason, string> = {
   INSUFFICIENT_REMAINING_TIME: 'Not enough time before closing',
 };
 
-const BASE = 'h-10 w-full text-xs font-medium tabular-nums transition-all duration-150';
+// `group` so a cell can style its own contents on hover — the middle of a selected run hides
+// its time to keep the bar reading as one block, and reveals it on hover so there is something
+// to aim at when picking a new end time.
+const BASE = 'group h-10 w-full text-xs font-medium tabular-nums transition-all duration-150';
 
 /** Everything not part of a selected run is a standalone cell, so it rounds on all four sides. */
 const STANDALONE = 'rounded-lg';
@@ -104,21 +106,21 @@ export function slotAppearance(
     };
   }
 
-  // Free, but the requested duration does not fit. Visibly distinct from both bookable
-  // and occupied, so the grid does not look broken when a late slot cannot be clicked.
+  // Genuinely unusable: not one permitted duration fits here, however short. That is the only
+  // case left for a faded cell.
   //
-  // `reason` is only set when NO permitted duration fits; when a shorter booking would
-  // still work it is null, so say how long actually fits rather than "not enough time".
-  if (slot.bookableForRequestedDuration === false) {
-    const label =
-      slot.reason !== null
-        ? REASON_LABEL[slot.reason]
-        : slot.maxDurationMinutes > 0
-          ? `Up to ${formatDuration(slot.maxDurationMinutes)} only`
-          : 'Does not fit';
+  // The "does not fit the REQUESTED duration" fade is gone. A click sets the start and nothing
+  // else — the length comes from the second click — so a cell that cannot hold the length
+  // previously asked for is still a perfectly good place to begin. Fading it said "you cannot
+  // click this" about cells that are now among the most ordinary things to click, and the
+  // hover text offered to shorten a booking using a clamp that no longer exists.
+  //
+  // `reason` is set by the server exactly when no duration at all fits, which is what makes it
+  // the right test rather than `maxDurationMinutes`.
+  if (slot.bookableForRequestedDuration === false && slot.reason !== null) {
     return {
       className: `${BASE} ${STANDALONE} bg-felt-50 text-felt-700/50 cursor-not-allowed`,
-      label: `${time} — ${label}`,
+      label: `${time} — ${REASON_LABEL[slot.reason]}`,
       interactive: false,
       text: time,
     };
