@@ -7,12 +7,14 @@ Single-club by design: no tenant ids, no tenant middleware, no platform admins. 
 a club would want to change — opening hours, prices, booking rules, the tables
 themselves — lives in the database rather than in code.
 
-**Status: all seven phases complete.** Customers can register, sign in, browse live
-availability, book and pay via Stripe Checkout, manage and cancel their bookings, edit
-their profile and reset a forgotten password. Staff have a dashboard, booking management,
-telephone bookings, table and maintenance administration, and full control of opening
-hours, booking rules and pricing. See [Still not done](#still-not-done) for what is
-deliberately outstanding.
+**Status: all seven phases complete, plus the menu and the work listed below.** Customers can
+register, sign in, browse live availability, filter by table type, book and pay via Stripe
+Checkout, read the menu, manage and cancel their bookings — with a full refund when they give
+proper notice — edit their profile and reset a forgotten password. Staff have a dashboard,
+booking management, telephone and walk-in bookings, a payment-decisions queue, table and
+maintenance administration, and full control of opening hours, booking rules, pricing and the
+menu. Managers can also move a booking to another time or table. See
+[Still not done](#still-not-done) for what is deliberately outstanding.
 
 ---
 
@@ -263,10 +265,10 @@ Covered by `StripePropertiesTest`.
 ## Running tests
 
 ```bash
-cd backend  && ./gradlew test        # 224 tests: JUnit 5, Mockito, Testcontainers
-cd frontend && yarn test             # 103 tests: Vitest + React Testing Library
+cd backend  && ./gradlew test        # 324 tests: JUnit 5, Mockito, Testcontainers
+cd frontend && yarn test             # 272 tests: Vitest + React Testing Library
 cd frontend && yarn typecheck        # strict TypeScript, no emit
-cd frontend && yarn e2e              # 28 tests: Playwright, real browser
+cd frontend && yarn e2e              # 40 tests: Playwright, real browser
 ```
 
 Backend tests run in UTC. Integration tests use Testcontainers with `postgres:17-alpine` —
@@ -419,11 +421,16 @@ entities match the schema and never mutates it.
 | `V10` | Payments, webhook event log, payment exceptions |
 | `V11` | Spring Session DDL, copied verbatim from the jar |
 | `V12` | `pricing_rule_day`, so one pricing rule can cover several weekdays |
+| `V13` | The STAFF role |
+| `V14` | Opening-hours overrides, for a one-off closure or a late licence |
+| `V15` | `table_type` as data, so a manager can add one without a deployment |
+| `V16`–`V17` | Cafe items, then cafe categories and their display order |
+| `V18` | `amended_at` / `amended_by_user_id`, for bookings staff have moved |
 
 `db/seed/R__dev_seed.sql` is idempotent and loaded by the `dev` profile only; production
 loads `db/migration` alone.
 
-Adding a migration: create `V12__description.sql`, restart the backend, and update the
+Adding a migration: create `V19__description.sql`, restart the backend, and update the
 matching JPA entity — `validate` will fail the boot if they disagree.
 
 ---
@@ -641,9 +648,23 @@ moment the status changes. `CancellationIT` books the freed slot again to prove 
 if that predicate and `BookingStatus.slotOccupying()` ever drift apart, cancellation
 silently stops releasing anything and the grid keeps showing the slot as taken.
 
-A cancelled booking that was already paid for is **flagged for staff, never auto-refunded**.
-Refunding is the club's decision — it may owe nothing, part, or a credit — and it is close to
-impossible to undo, whereas a flagged row costs a staff member one click.
+A cancelled booking that was already paid for is **refunded in full if the customer gave proper
+notice, and flagged for staff otherwise**. The notice period is the club's own published term,
+so a customer who met it has already been told they get their money back; making them wait on
+somebody noticing a queue was the gap. `CancellationPolicy.qualifiesForAutomaticRefund` is the
+boundary, and it recomputes the deadline rather than reading `Decision.cancellableUntil` —
+that field is null both for an unpaid hold and for *any* staff cancellation, so reusing it
+would read every late staff override as proper notice and refund the lot.
+
+Outside the notice period nothing moves on its own, and that part is unchanged: the club may
+owe nothing, part, or a credit, a refund is close to impossible to undo, and a flagged row
+costs a staff member one click. A refund the provider does not confirm is flagged too — it is
+the case that most needs a person, because the customer is owed money and nobody knows.
+
+Only Stripe money goes back through the gateway. `PAID_AT_COUNTER` and `WAIVED` are settled as
+well — `isSettled()` covers all three — but one is cash in the till and the other was never
+taken, so branching on `isSettled()` alone would ask Stripe to refund a payment intent that
+does not exist. See [Payment decisions](#payment-decisions) for the queue that clears them.
 
 ### Pay on arrival
 
@@ -665,13 +686,40 @@ each covered by `CounterPaymentIT`:
 - **The row is reused, not duplicated** — two unsettled attempts for one debt would make the
   outstanding amount ambiguous.
 
-Cancelling afterwards behaves exactly as it does for a card payment: `isSettled()` already
-covers both statuses, so `flagForRefundIfPaid` raises a refund decision. Cancelling *before*
-payment raises nothing — the club is holding no money, and noise there would bury the real
-refund decisions.
+Cancelling afterwards raises a refund decision rather than moving money, which is where counter
+money now differs from a card payment: `isSettled()` covers both, but there is no payment intent
+behind cash or a waiver, so the automatic refund cannot apply and a person has to hand the money
+back. Cancelling *before* payment raises nothing — the club is holding no money, and noise there
+would bury the real refund decisions.
 
 **No part payments and no amount field.** The club is owed what the booking costs, priced by
 its own rules; a figure typed at the counter would put the till out of step with the booking.
+
+### Payment decisions
+
+`payment_exception` rows are raised when money is taken for a booking that lost its slot, and
+when a cancellation's refund needs a judgement. They were written and counted from the start,
+and for a long time nothing could read or clear one: `PaymentException.resolve` had no caller
+anywhere in the application and no endpoint listed the rows. So the dashboard's "N payments need
+a decision" could only ever climb, and it named no booking, no customer and no amount.
+
+`GET /api/admin/payments/decisions` now carries all three plus the customer's contact details —
+the decision is usually a conversation — and two endpoints answer a row: `/refund` sends the
+money back and closes it, `/resolve` closes it for money settled some other way (cash over the
+counter, or a refund a manager issued by hand in the Stripe dashboard). STAFF as well as ADMIN:
+whoever is on the counter is who gets asked about a refund.
+
+Two refusals, both preferring an error to a no-op that looks like success, and both covered by
+`PaymentDecisionIT`:
+
+- **A payment with no card behind it cannot be refunded here.** Counter cash reaches this queue
+  too, and quietly doing nothing while marking the row done would tell staff a customer had been
+  repaid.
+- **A decision already answered is refused on the second attempt**, for the same reason settling
+  a counter payment twice is.
+
+A refund that fails leaves the row open. A decision marked done on a refund that never happened
+is the exact failure this queue exists to prevent.
 
 **Password reset** issues a 32-byte `SecureRandom` token, emails it, and stores only its
 SHA-256. A fast hash is correct here and nowhere else in the system: the token has no
@@ -783,10 +831,31 @@ Such a booking is confirmed but unpaid, so it carries a **counter payment**: a `
 with provider `COUNTER` and status `REQUIRES_PAYMENT`. See
 [Pay on arrival](#pay-on-arrival).
 
-**Editing an existing booking's time or table is still not implemented.** Staff cancel and
-re-book instead. Moving a booking is a different operation from creating one — it has to
-release the old slot and take the new one atomically, or it can double-sell the table it
-just freed — and it was not worth doing badly to close a checklist item.
+**Editing an existing booking's time or table** is `PUT /api/admin/bookings/{reference}`, added
+after the seven phases. Staff used to cancel and re-book, which throws away the reference the
+customer was given, raises a refund decision if they had paid, and re-prices at today's rates.
+
+The hazard that deferred it is real: releasing the old slot and taking the new one has to be one
+act, or the moment between them is a window in which the table sells twice. It is atomic for the
+same reason creation is — one transaction, and `booking_no_overlap` adjudicates the new interval,
+so a lost race is a 409 rather than a double sale. No application locking.
+
+`BookingValidator` gained an overload that excludes the booking's own row instead of a second
+validator, because every other rule still applies: a move is held to the same opening hours,
+maintenance and duration rules as a new booking. That exclusion is guarded on the id being
+present *and* compared from it — an unsaved booking has a null id, and both obvious spellings are
+wrong. One throws; the other matches null to null, which makes an unsaved clash exclude itself
+and read as a free slot. Three existing `BookingValidatorTest` cases caught that.
+
+**The price does not move with the booking.** `pricePence` is captured at creation precisely so a
+later rate change cannot reprice an existing booking, and charging a customer a peak rate because
+staff rearranged the day would be worse than an off-peak price in a peak slot. Changing what is
+owed is a conversation, and the counter-payment screens exist for it.
+
+ADMIN only, gated by method rather than path — `GET` on the same URL is the booking detail screen,
+which STAFF need, so a path-only rule would take that away with it. `V18` adds `amended_at` and
+`amended_by_user_id`, because "the time on my booking is wrong" is unanswerable without them.
+Covered by `AmendBookingIT` and `AuthorizationBoundaryIT`.
 
 Phase 6 makes the booking engine configurable — see [Settings](#settings).
 
@@ -809,8 +878,6 @@ a sweeper releases abandoned holds.
 
 ### Still not done
 
-**Editing an existing booking's time or table**, as above — staff cancel and re-book.
-
 **Rate limiting is per-instance and in-memory.** Correct for the single instance this is built
 for; behind a load balancer each node would keep its own counters. `RateLimiter` is the single
 place that changes.
@@ -818,6 +885,25 @@ place that changes.
 **No automated axe/contrast audit.** The accessibility specs drive the keyboard and assert
 accessible names — which is what would actually stop someone booking — but colour contrast has
 only been checked by eye.
+
+**No dark mode, and it is not the five-line change the design system claims.** `index.css` says
+a dark theme is "a redefinition of these five" semantic aliases. That describes the intent, not
+the state: **27 component files hardcode `bg-white`** against 19 using the tokens, so redefining
+the five would leave white cards on a dark page across most of the app, admin screens and both
+dialogs included. The aliases were added late, in the `ui-overhaul` merge, and adopted only in
+components written or touched since. A real dark mode needs those files swept to `bg-surface` /
+`text-fg` / `border-line` first — mechanical and test-covered, but it touches nearly every page,
+so it is its own change rather than a theme block. Re-measure before planning it:
+
+```bash
+grep -rl "bg-white" --include="*.tsx" frontend/src | wc -l
+```
+
+**Partial refunds are recorded but never issued.** Every path that records a refund compares what
+went back against what was taken and writes `PARTIALLY_REFUNDED` when it falls short, so a
+manager refunding part of a payment by hand in the Stripe dashboard is reflected accurately. But
+nothing in the application *asks* for a partial refund: both refund paths send the full amount,
+because deciding to keep part of it is a negotiation rather than a button.
 
 Deliberately out of scope: cafe/bar POS, memberships, leagues, recurring bookings,
 reminders, promo codes, analytics, and multi-tenancy. No abstractions have been built for
