@@ -46,6 +46,7 @@ export function AppLayout() {
 
           <div className="ml-auto hidden items-center gap-1 sm:flex">
             <NavItem to="/book">Book a table</NavItem>
+            <NavItem to="/menu">Cafe &amp; bar</NavItem>
             {user && <NavItem to="/bookings">My bookings</NavItem>}
             {/* Hiding this from customers is tidiness, not access control: the route guard and
                 the server's role check are what actually keep them out. */}
@@ -120,6 +121,7 @@ export function AppLayout() {
           <div id="mobile-menu" className="border-t border-ink-200 bg-white px-4 py-3 sm:hidden">
             <div className="flex flex-col gap-1">
               <NavItem to="/book">Book a table</NavItem>
+              <NavItem to="/menu">Cafe &amp; bar</NavItem>
               {user && <NavItem to="/bookings">My bookings</NavItem>}
               {user !== undefined && user !== null && isStaff(user.role) && (
               <NavItem to="/admin">Staff</NavItem>

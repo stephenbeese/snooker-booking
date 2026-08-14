@@ -8,6 +8,7 @@ import { useLocation } from 'react-router';
 const EXACT: Record<string, string> = {
   '/': 'Home',
   '/book': 'Book a table',
+  '/menu': 'Cafe & bar',
   '/login': 'Sign in',
   '/register': 'Create an account',
   '/forgot-password': 'Reset your password',

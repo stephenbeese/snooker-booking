@@ -172,6 +172,37 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
                     Map.of("label", "Snooker")),
             new Endpoint(
                     HttpMethod.PUT, "/api/admin/table-types/SNOOKER/active?active=true", null),
+            // Phase 9. The cafe menu sets prices, so it is configuration rather than the day
+            // job — whoever is on the counter reads the menu, they do not decide what a pint
+            // costs. Same segment trap as table-types: "/api/admin/cafe" is not covered by any
+            // other matcher, so without its own entry in SecurityConfig it would fall through
+            // to the STAFF tier and these rows are what would catch it.
+            new Endpoint(HttpMethod.GET, "/api/admin/cafe/items", null),
+            new Endpoint(
+                    HttpMethod.POST,
+                    "/api/admin/cafe/items",
+                    Map.of("name", "Boundary Coffee", "pricePence", 250)),
+            new Endpoint(
+                    HttpMethod.PUT,
+                    "/api/admin/cafe/items/1",
+                    Map.of("name", "Boundary Coffee", "pricePence", 250)),
+            new Endpoint(HttpMethod.PUT, "/api/admin/cafe/items/1/active?active=false", null),
+            // Menu categories. A genuine sub-path of /api/admin/cafe/**, so no separate matcher
+            // is needed — but listed here anyway, because that is a property of the path shape
+            // and these rows are what would notice if either ever moved.
+            new Endpoint(HttpMethod.GET, "/api/admin/cafe/categories", null),
+            new Endpoint(
+                    HttpMethod.POST,
+                    "/api/admin/cafe/categories",
+                    Map.of("label", "Boundary Category")),
+            new Endpoint(
+                    HttpMethod.PUT,
+                    "/api/admin/cafe/categories/HOT_DRINKS",
+                    Map.of("label", "Hot drinks")),
+            new Endpoint(
+                    HttpMethod.PUT,
+                    "/api/admin/cafe/categories/HOT_DRINKS/active?active=true",
+                    null),
             new Endpoint(HttpMethod.GET, "/api/admin/users", null),
             new Endpoint(HttpMethod.GET, "/api/admin/users/1", null),
             new Endpoint(

@@ -318,3 +318,39 @@ export interface AdminCustomerFilters {
   search?: string | undefined;
   page?: number | undefined;
 }
+
+/**
+ * Something the club sells at the cafe or bar.
+ *
+ * <p>`pricePence` is integer pence, as all money here is. Formatted for display at the edge with
+ * `formatPence`, never stored or sent as a formatted string.
+ */
+export interface CafeItem {
+  id: number;
+  name: string;
+  description: string | null;
+  pricePence: number;
+  imageUrl: string | null;
+  /** The code of a `CafeCategory`, or null for uncategorised — deliberately allowed. */
+  categoryCode: string | null;
+  displayOrder: number;
+  active: boolean;
+}
+
+/** A section of the menu, as staff manage it. The code is immutable; the label is not. */
+export interface CafeCategory {
+  code: string;
+  label: string;
+  displayOrder: number;
+  active: boolean;
+}
+
+/** `displayOrder` omitted means "put it at the end", which the server decides. */
+export interface CafeItemInput {
+  name: string;
+  description?: string | null;
+  pricePence: number;
+  imageUrl?: string | null;
+  categoryCode?: string | null;
+  displayOrder?: number | null;
+}

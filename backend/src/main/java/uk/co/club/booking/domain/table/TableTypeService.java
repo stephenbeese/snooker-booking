@@ -1,11 +1,11 @@
 package uk.co.club.booking.domain.table;
 
 import java.util.List;
-import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import uk.co.club.booking.common.CodeFromLabel;
 import uk.co.club.booking.common.error.BusinessRuleException;
 import uk.co.club.booking.common.error.ErrorCode;
 import uk.co.club.booking.common.error.NotFoundException;
@@ -148,22 +148,8 @@ public class TableTypeService {
         return findAll().stream().mapToInt(TableTypeEntity::getDisplayOrder).max().orElse(-1) + 1;
     }
 
-    /**
-     * "Chinese pool" becomes CHINESE_POOL.
-     *
-     * <p>Anything that is not a letter or digit becomes an underscore, runs are collapsed, and
-     * the ends are trimmed — so "Pool (8-ball)" gives POOL_8_BALL rather than a code with
-     * trailing underscores that the CHECK would reject.
-     */
+    /** "Chinese pool" becomes CHINESE_POOL. Shared with cafe categories — see the helper. */
     private static String toCode(String label) {
-        String code = label.toUpperCase(Locale.ROOT)
-                .replaceAll("[^A-Z0-9]+", "_")
-                .replaceAll("^_+|_+$", "");
-        // The CHECK requires a leading letter; a label starting with a digit would fail it.
-        return code.isEmpty() || Character.isDigit(code.charAt(0)) ? prefixed(code) : code;
-    }
-
-    private static String prefixed(String code) {
-        return code.isEmpty() ? "" : "T_" + code;
+        return CodeFromLabel.derive(label);
     }
 }

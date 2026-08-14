@@ -20,6 +20,7 @@ const NAV: { to: string; label: string; end?: boolean; adminOnly?: boolean }[] =
   { to: '/admin/customers', label: 'Customers' },
   { to: '/admin/maintenance', label: 'Maintenance' },
   { to: '/admin/tables', label: 'Tables', adminOnly: true },
+  { to: '/admin/cafe', label: 'Cafe & bar', adminOnly: true },
   { to: '/admin/settings', label: 'Settings', adminOnly: true },
   { to: '/admin/users', label: 'Staff accounts', adminOnly: true },
 ];

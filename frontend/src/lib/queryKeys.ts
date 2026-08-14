@@ -19,6 +19,9 @@ export const queryKeys = {
     ['admin', 'availability', date, durationMinutes ?? null, tableIds ?? null] as const,
 
   club: () => ['club'] as const,
+  // The public menu: on-sale items only. Separate from adminCafeItems below, which includes
+  // withdrawn ones — sharing a key would serve a customer something taken off the menu.
+  menu: () => ['menu'] as const,
   tables: () => ['tables'] as const,
   // The public code→label list every screen renders types with. Separate from adminTableTypes
   // below: this one is readable by anyone and lists only active types, so sharing a key would
@@ -53,4 +56,9 @@ export const queryKeys = {
   adminOpeningHoursOverrides: () => ['admin', 'settings', 'opening-hours', 'overrides'] as const,
   // Every type including withdrawn ones, which only an admin may see — see tableTypes above.
   adminTableTypes: () => ['admin', 'table-types'] as const,
+  // The cafe menu. Under the 'admin' prefix like everything else here, but deliberately not
+  // invalidated by useInvalidateClubStructure: a price change moves nothing on the availability
+  // grid, and sweeping it into that group would refetch the menu every time a table is renamed.
+  adminCafeItems: () => ['admin', 'cafe', 'items'] as const,
+  adminCafeCategories: () => ['admin', 'cafe', 'categories'] as const,
 } as const;

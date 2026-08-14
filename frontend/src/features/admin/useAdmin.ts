@@ -2,8 +2,16 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { queryKeys } from '@/lib/queryKeys';
 import type { Role } from '@/features/auth/types';
 import {
+  createCafeCategory,
+  createCafeItem,
+  fetchCafeCategories,
+  setCafeCategoryActive,
+  updateCafeCategory,
   createTableType,
   deleteOpeningHoursOverride,
+  fetchCafeItems,
+  setCafeItemActive,
+  updateCafeItem,
   fetchAdminTableTypes,
   fetchOpeningHoursOverrides,
   reorderTables,
@@ -46,6 +54,7 @@ import type {
   AdminBookingFilters,
   AdminCustomerFilters,
   AdminUserFilters,
+  CafeItemInput,
   CounterPaymentStatus,
   CreateUserInput,
   PricingRuleInput,
@@ -446,5 +455,87 @@ export function useSetUserActive() {
 export function useResetUserPassword() {
   return useUserMutation(({ id, password }: { id: number; password: string }) =>
     resetUserPassword(id, password),
+  );
+}
+
+// -------------------------------------------------------------- cafe / bar
+
+export function useCafeItems() {
+  return useQuery({ queryKey: queryKeys.adminCafeItems(), queryFn: fetchCafeItems });
+}
+
+/**
+ * Every menu mutation invalidates the menu, and nothing else.
+ *
+ * <p>Deliberately not `useInvalidateClubStructure`: the cafe changes nothing about what tables
+ * exist or what is bookable, so sweeping it into that group would refetch availability every
+ * time a price moved — and refetch the menu every time a table was renamed.
+ */
+function useCafeMutation<TArgs, TResult>(mutationFn: (args: TArgs) => Promise<TResult>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.adminCafeItems() });
+      // The customer-facing menu renders the same items. Without this an admin who corrects a
+      // price sees it change on the editor and not on /menu, for the five minutes that page's
+      // staleTime holds — and would reasonably conclude the save had not worked.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.menu() });
+    },
+  });
+}
+
+export function useCreateCafeItem() {
+  return useCafeMutation((input: CafeItemInput) => createCafeItem(input));
+}
+
+export function useUpdateCafeItem() {
+  return useCafeMutation(({ id, input }: { id: number; input: CafeItemInput }) =>
+    updateCafeItem(id, input),
+  );
+}
+
+export function useSetCafeItemActive() {
+  return useCafeMutation(({ id, active }: { id: number; active: boolean }) =>
+    setCafeItemActive(id, active),
+  );
+}
+
+/** Every category including withdrawn ones. Admin-only; the item picker uses the active ones. */
+export function useCafeCategories() {
+  return useQuery({ queryKey: queryKeys.adminCafeCategories(), queryFn: fetchCafeCategories });
+}
+
+/**
+ * Category mutations invalidate the categories, the items and the public menu.
+ *
+ * <p>All three, because a rename changes the heading every item is filed under: leaving the item
+ * list alone would show staff the new category name in one panel and the old one beside it.
+ */
+function useCafeCategoryMutation<TArgs, TResult>(mutationFn: (args: TArgs) => Promise<TResult>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.adminCafeCategories() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.adminCafeItems() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.menu() });
+    },
+  });
+}
+
+export function useCreateCafeCategory() {
+  return useCafeCategoryMutation(({ label }: { label: string }) => createCafeCategory(label));
+}
+
+export function useUpdateCafeCategory() {
+  return useCafeCategoryMutation(({ code, label }: { code: string; label: string }) =>
+    updateCafeCategory(code, label),
+  );
+}
+
+export function useSetCafeCategoryActive() {
+  return useCafeCategoryMutation(({ code, active }: { code: string; active: boolean }) =>
+    setCafeCategoryActive(code, active),
   );
 }
