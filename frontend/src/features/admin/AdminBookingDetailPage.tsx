@@ -4,14 +4,34 @@ import { Button } from '@/components/ui/Button';
 import { ApiError } from '@/lib/apiError';
 import { formatSlotTime } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
+import { PaymentBadge } from './components/PaymentBadge';
 import { StatusBadge } from './components/StatusBadge';
-import { useAdminBooking, useAdminCancelBooking } from './useAdmin';
-import type { AdminBooking } from './types';
+import { useAdminBooking, useAdminCancelBooking, useRecordCounterPayment } from './useAdmin';
+import type { AdminBooking, PaymentStatus } from './types';
 
 const SOURCE_LABEL: Record<AdminBooking['source'], string> = {
   ONLINE: 'Booked online',
   TELEPHONE: 'Taken over the phone',
   ADMIN: 'Created by staff',
+};
+
+/**
+ * Payment state in words.
+ *
+ * <p>`NONE` stands in for a null status — a booking with no payment row at all. Keyed as a
+ * `Record` over every status so adding one to the union is a type error here rather than a blank
+ * line on the page.
+ */
+const PAYMENT_LABEL: Record<PaymentStatus | 'NONE', string> = {
+  NONE: 'Nothing recorded',
+  REQUIRES_PAYMENT: 'Awaiting payment',
+  PROCESSING: 'In progress',
+  SUCCEEDED: 'Paid online',
+  FAILED: 'Card declined',
+  REFUNDED: 'Refunded',
+  PARTIALLY_REFUNDED: 'Partially refunded',
+  PAID_AT_COUNTER: 'Paid at the counter',
+  WAIVED: 'Waived',
 };
 
 export function AdminBookingDetailPage() {
@@ -50,8 +70,13 @@ export function AdminBookingDetailPage() {
             {formatSlotTime(booking.endTime)}
           </p>
         </div>
-        <StatusBadge status={booking.status} />
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge status={booking.status} />
+          <PaymentBadge booking={booking} />
+        </div>
       </div>
+
+      <SettlePanel booking={booking} />
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <section className="rounded-card border border-ink-200 bg-white p-5 shadow-card">
@@ -67,6 +92,7 @@ export function AdminBookingDetailPage() {
           <h3 className="text-sm font-medium uppercase tracking-wide text-ink-500">Booking</h3>
           <dl className="mt-3 space-y-2 text-sm">
             <Row label="Price" value={formatPence(booking.pricePence)} />
+            <Row label="Payment" value={PAYMENT_LABEL[booking.paymentStatus ?? 'NONE']} />
             <Row label="Length" value={`${booking.durationMinutes} minutes`} />
             <Row label="Source" value={SOURCE_LABEL[booking.source]} />
             <Row label="Created" value={formatInstant(booking.createdAt)} />
@@ -92,6 +118,80 @@ export function AdminBookingDetailPage() {
 
       <CancelPanel booking={booking} />
     </Shell>
+  );
+}
+
+/**
+ * Taking money at the counter.
+ *
+ * <p>Shown only when the server says something is owed there. Rendering it for an online booking
+ * would offer staff a way to mark a card payment as cash, which the endpoint refuses anyway —
+ * a button whose only outcome is an error.
+ *
+ * <p>"Waive" sits behind a second click, not because the server needs it but because comping a
+ * session is the one action here with no receipt to reconcile against later.
+ */
+function SettlePanel({ booking }: { booking: AdminBooking }) {
+  const record = useRecordCounterPayment();
+  const [waiving, setWaiving] = useState(false);
+
+  if (!booking.payableAtCounter) {
+    return null;
+  }
+
+  const errorMessage =
+    record.error instanceof ApiError
+      ? record.error.message
+      : record.error
+        ? 'Could not record this payment. Please try again.'
+        : null;
+
+  return (
+    <section className="mt-6 rounded-card border border-amber-200 bg-amber-50 p-5">
+      <h3 className="font-medium text-amber-900">
+        {formatPence(booking.amountOutstandingPence)} to collect
+      </h3>
+      <p className="mt-1 text-sm text-amber-800">
+        This booking was taken over the phone. Record the payment once the customer has paid at
+        the counter.
+      </p>
+
+      {errorMessage && (
+        <div role="alert" className="mt-3 rounded-lg border border-rose-300 bg-white p-3">
+          <p className="text-sm text-rose-800">{errorMessage}</p>
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button
+          disabled={record.isPending}
+          onClick={() =>
+            record.mutate({ reference: booking.reference, status: 'PAID_AT_COUNTER' })
+          }
+        >
+          {record.isPending ? 'Recording…' : 'Mark as paid'}
+        </Button>
+
+        {!waiving ? (
+          <Button variant="secondary" disabled={record.isPending} onClick={() => setWaiving(true)}>
+            Waive payment
+          </Button>
+        ) : (
+          <>
+            <Button
+              variant="secondary"
+              disabled={record.isPending}
+              onClick={() => record.mutate({ reference: booking.reference, status: 'WAIVED' })}
+            >
+              Confirm waiver
+            </Button>
+            <Button variant="secondary" disabled={record.isPending} onClick={() => setWaiving(false)}>
+              Keep the charge
+            </Button>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 

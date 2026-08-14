@@ -15,8 +15,18 @@ public record PagedResponse<T>(
         List<T> items, int page, int size, long totalItems, int totalPages) {
 
     public static <E, T> PagedResponse<T> of(Page<E> page, Function<E, T> mapper) {
+        return ofAll(page, content -> content.stream().map(mapper).toList());
+    }
+
+    /**
+     * Maps the whole page at once.
+     *
+     * <p>For mappers that need a batch fetch — the admin booking list loads every payment for the
+     * page in one query, which a per-item {@link Function} cannot express without an N+1.
+     */
+    public static <E, T> PagedResponse<T> ofAll(Page<E> page, Function<List<E>, List<T>> mapper) {
         return new PagedResponse<>(
-                page.getContent().stream().map(mapper).toList(),
+                mapper.apply(page.getContent()),
                 page.getNumber(),
                 page.getSize(),
                 page.getTotalElements(),

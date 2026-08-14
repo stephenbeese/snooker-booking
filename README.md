@@ -605,6 +605,34 @@ A cancelled booking that was already paid for is **flagged for staff, never auto
 Refunding is the club's decision — it may owe nothing, part, or a credit — and it is close to
 impossible to undo, whereas a flagged row costs a staff member one click.
 
+### Pay on arrival
+
+A booking taken over the phone is CONFIRMED but unpaid, so it gets a `payment` row with
+provider `COUNTER` and status `REQUIRES_PAYMENT` — money expected, not yet taken. Without it,
+"confirmed and paid" and "confirmed and owing £12" looked identical to whoever was on the
+counter. `AdminBookingResponse` carries `paymentStatus`, `amountOutstandingPence` and
+`payableAtCounter`, and the admin list and detail pages show **"Pay on arrival — £X due"**.
+
+`POST /api/admin/bookings/{reference}/payment` settles it as `PAID_AT_COUNTER` or `WAIVED`,
+stamping `recorded_by_user_id` from the **session**, never the request body. STAFF as well as
+ADMIN: taking payment as a customer walks in is the job the role exists for. Three rules,
+each covered by `CounterPaymentIT`:
+
+- **Only those two statuses.** `SUCCEEDED` means Stripe confirmed it; letting this endpoint
+  write it would leave a booking in a state no reconciliation against Stripe could explain.
+- **Settling twice is refused, not silently ignored.** A double click is far likelier than a
+  genuine retry, and a quiet success would tell staff they had taken the money twice.
+- **The row is reused, not duplicated** — two unsettled attempts for one debt would make the
+  outstanding amount ambiguous.
+
+Cancelling afterwards behaves exactly as it does for a card payment: `isSettled()` already
+covers both statuses, so `flagForRefundIfPaid` raises a refund decision. Cancelling *before*
+payment raises nothing — the club is holding no money, and noise there would bury the real
+refund decisions.
+
+**No part payments and no amount field.** The club is owed what the booking costs, priced by
+its own rules; a figure typed at the counter would put the till out of step with the booking.
+
 **Password reset** issues a 32-byte `SecureRandom` token, emails it, and stores only its
 SHA-256. A fast hash is correct here and nowhere else in the system: the token has no
 dictionary to attack, and a salted slow hash could not be looked up without scanning every
@@ -710,6 +738,10 @@ the only difference is `BookingPolicy.staff()`, which lifts the notice and advan
 and skips the payment hold. There is deliberately no flag for skipping overlap, maintenance
 or inactive-table checks — those describe the physical world, and `TelephoneBookingIT`
 asserts staff are still refused all three.
+
+Such a booking is confirmed but unpaid, so it carries a **counter payment**: a `payment` row
+with provider `COUNTER` and status `REQUIRES_PAYMENT`. See
+[Pay on arrival](#pay-on-arrival).
 
 **Editing an existing booking's time or table is still not implemented.** Staff cancel and
 re-book instead. Moving a booking is a different operation from creating one — it has to

@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router';
 import type { BookingStatus } from '@/features/booking/types';
 import { formatSlotTime } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
+import { PaymentBadge } from './components/PaymentBadge';
 import { StatusBadge, STATUS_LABEL } from './components/StatusBadge';
 import { useAdminBookings, useTables } from './useAdmin';
 import type { AdminBookingFilters } from './types';
@@ -243,7 +244,10 @@ export function AdminBookingsPage() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <StatusBadge status={booking.status} />
+                        <div className="flex flex-col items-start gap-1">
+                          <StatusBadge status={booking.status} />
+                          <PaymentBadge booking={booking} />
+                        </div>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right text-felt-900">
                         {formatPence(booking.pricePence)}

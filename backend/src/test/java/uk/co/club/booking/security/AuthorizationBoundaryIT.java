@@ -97,7 +97,13 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
                     HttpMethod.POST,
                     "/api/admin/bookings/SNK-VICTIM/cancel",
                     Map.of("reason", "test")),
-            // Phase 5. A telephone booking creates a CONFIRMED booking with no payment, and
+            // Taking money at the counter, and waiving it. Staff rather than admin because
+            // settling up as a customer walks in is the job the role exists for.
+            new Endpoint(
+                    HttpMethod.POST,
+                    "/api/admin/bookings/SNK-VICTIM/payment",
+                    Map.of("status", "PAID_AT_COUNTER")),
+            // A telephone booking commits a slot and records what is owed at the counter, and
             // table/maintenance changes alter what the whole club can sell — all strictly staff.
             new Endpoint(
                     HttpMethod.POST,

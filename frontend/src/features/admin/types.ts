@@ -5,6 +5,20 @@ export type BookingSource = 'ONLINE' | 'TELEPHONE' | 'ADMIN';
 
 export type TableType = 'SNOOKER' | 'ENGLISH_POOL' | 'AMERICAN_POOL';
 
+/** Mirrors the server's `PaymentStatus`. */
+export type PaymentStatus =
+  | 'REQUIRES_PAYMENT'
+  | 'PROCESSING'
+  | 'SUCCEEDED'
+  | 'FAILED'
+  | 'REFUNDED'
+  | 'PARTIALLY_REFUNDED'
+  | 'PAID_AT_COUNTER'
+  | 'WAIVED';
+
+/** The two outcomes staff may record. Anything else is Stripe's to write. */
+export type CounterPaymentStatus = Extract<PaymentStatus, 'PAID_AT_COUNTER' | 'WAIVED'>;
+
 /**
  * A booking as staff see it.
  *
@@ -35,6 +49,11 @@ export interface AdminBooking {
   cancelledAt: string | null;
   cancellationReason: string | null;
   createdAt: string;
+  /** Null when no payment was ever started — distinct from a zero outstanding amount. */
+  paymentStatus: PaymentStatus | null;
+  amountOutstandingPence: number;
+  /** True when staff must take money as this customer walks in. */
+  payableAtCounter: boolean;
 }
 
 export interface AdminDashboard {

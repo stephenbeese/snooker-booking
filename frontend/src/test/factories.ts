@@ -114,6 +114,11 @@ export function makeAdminBooking(overrides: Partial<AdminBooking> = {}): AdminBo
     cancelledAt: null,
     cancellationReason: null,
     createdAt: '2026-08-01T10:00:00Z',
+    // Defaults match the ONLINE source above: paid through Stripe, nothing owed. A telephone
+    // booking is the interesting case and every test that wants one overrides these.
+    paymentStatus: 'SUCCEEDED',
+    amountOutstandingPence: 0,
+    payableAtCounter: false,
     ...overrides,
   };
 }
