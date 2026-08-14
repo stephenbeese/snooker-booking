@@ -37,6 +37,12 @@ public enum ErrorCode {
     // Payment
     PAYMENT_NOT_REQUIRED,
     PAYMENT_PROVIDER_ERROR,
+    /** Settled outside the provider — counter cash or a waiver — so there is nothing to send
+     * back through it. */
+    PAYMENT_NOT_REFUNDABLE,
+    /** A decision someone has already made. Refused rather than repeated, because a double
+     * click is likelier than a genuine retry. */
+    PAYMENT_ALREADY_SETTLED,
 
     // Generic
     NOT_FOUND,

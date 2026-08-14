@@ -42,6 +42,9 @@ const NAV_GROUPS: { name: string; items: NavItem[] }[] = [
       // not booking it themselves, whether they rang up or are stood at the counter, and the
       // old label described only half of what it is used for.
       { to: '/admin/bookings/telephone', label: 'New booking' },
+      // Staff, not admin-only: whoever is on the counter is who a customer asks about a
+      // refund, and a queue only a manager can clear leaves that person unable to answer.
+      { to: '/admin/payments', label: 'Payments' },
     ],
   },
   {

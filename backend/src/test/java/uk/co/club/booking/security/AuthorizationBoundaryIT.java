@@ -103,6 +103,12 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
                     HttpMethod.POST,
                     "/api/admin/bookings/SNK-VICTIM/payment",
                     Map.of("status", "PAID_AT_COUNTER")),
+            // The payment decisions queue, and clearing a row from it. Staff for the same
+            // reason: whoever is on the counter is who the customer asks about their refund,
+            // and these rows carry the customer's name, contact details and what they paid.
+            new Endpoint(HttpMethod.GET, "/api/admin/payments/decisions", null),
+            new Endpoint(HttpMethod.POST, "/api/admin/payments/decisions/1/refund", null),
+            new Endpoint(HttpMethod.POST, "/api/admin/payments/decisions/1/resolve", null),
             // A telephone booking commits a slot and records what is owed at the counter, and
             // table/maintenance changes alter what the whole club can sell — all strictly staff.
             new Endpoint(
