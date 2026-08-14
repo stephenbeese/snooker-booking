@@ -13,7 +13,9 @@ interface SlotCellProps {
    */
   spanLabel?: string | undefined;
   /**
-   * When the booking finishes, e.g. "12:00". Printed at the right-hand end of the bar.
+   * When the booking finishes, e.g. "12:00". Printed at the right-hand end of a bar that has
+   * one — so on `'end'`, never on `'only'`, which is a single cell whose column is headed by
+   * its start time.
    *
    * <p>Not the end cell's own start time, which is what it showed at first: a 10:00 booking for
    * two hours ends at 12:00, but its last half-hour cell *starts* at 11:30, so the bar read
@@ -40,7 +42,17 @@ export function SlotCell({
   const { className, label, interactive, text } = slotAppearance(slot, time, span);
 
   // The far end of the bar shows when the booking finishes, not when its last cell begins.
-  const shown = (span === 'end' || span === 'only') && spanEndTime ? spanEndTime : text;
+  //
+  // `'end'` only, NOT `'only'`. A one-cell booking has no far end to label: start and end
+  // compete for the same 64px, and printing the end there put "12:30" in the column headed
+  // 12:00, contradicting both the header and every other cell in that column. The start time
+  // is what the customer clicked and what the column says, so that is what stays.
+  //
+  // Nothing is lost by dropping the end time here. A booking's length is already drawn as the
+  // bar's width — one cell is half an hour, four cells is two — so on the shortest possible
+  // booking the end time is the one fact the geometry already gives away. The exact range
+  // stays available in the accessible name, the title tooltip, and the summary bar.
+  const shown = span === 'end' && spanEndTime ? spanEndTime : text;
 
   // Inside a booking the middle cells print nothing, so that a run reads as one bar rather
   // than a column of separate times — which leaves nothing to aim at when picking a new end

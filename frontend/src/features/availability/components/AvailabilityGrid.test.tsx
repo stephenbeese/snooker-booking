@@ -269,6 +269,29 @@ describe('AvailabilityGrid', () => {
     expect(cells[cells.length - 1]!.textContent?.trim()).toBe('11:30');
   });
 
+  it('shows a half-hour booking as its start time, not its end', () => {
+    // The shortest booking is one cell, and that cell sits in the column headed by its START.
+    // Labelling it with the end put "10:30" under the 10:00 heading, disagreeing with the
+    // header and with every other cell in the column — on the one booking length where there
+    // is no second cell to carry the end time instead.
+    //
+    // The length is not lost by dropping it: one cell IS half an hour, the same way four cells
+    // is two hours, and the exact range stays in the accessible name below.
+    renderGrid(makeAvailability(), { tableId: 1, startAt: '2026-08-20T10:00:00Z' }, 30);
+
+    const cells = bookingCells();
+    expect(cells).toHaveLength(1);
+    expect(cells[0]!.textContent?.trim()).toBe('10:00');
+  });
+
+  it('still tells a screen reader when a half-hour booking ends', () => {
+    // The end time leaves the face of the cell, so it has to stay somewhere non-visual — this
+    // is what stops the change costing a screen-reader user the booking's length.
+    renderGrid(makeAvailability(), { tableId: 1, startAt: '2026-08-20T10:00:00Z' }, 30);
+
+    expect(bookingCells()[0]).toHaveAccessibleName('10:00 — selected, 10:00 to 10:30');
+  });
+
   it('spans a booking that runs past the last bookable start time', () => {
     // `bookableForRequestedDuration` answers "could a booking of this length START here",
     // which is false for every cell near closing — but those are exactly the cells a long
