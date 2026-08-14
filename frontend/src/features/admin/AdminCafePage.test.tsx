@@ -265,6 +265,48 @@ describe('AdminCafePage', () => {
     expect(await screen.findByText('Category “Hot drinks” added.')).toBeInTheDocument();
   });
 
+  it('sends the whole list when a category is moved, not just the one that moved', async () => {
+    // The server refuses a partial list rather than guessing where the absent categories
+    // belong, so sending only the moved code would fail every time.
+    const calls = mockApi();
+    const user = userEvent.setup();
+    render();
+
+    await user.click(await screen.findByRole('button', { name: 'Move Food up' }));
+
+    await waitFor(() => {
+      const put = calls.find((call) => call.url.includes('/categories/order'));
+      expect(JSON.parse(put?.body ?? '{}').categoryCodes).toEqual([
+        'FOOD',
+        'HOT_DRINKS',
+        'RETIRED_SECTION',
+      ]);
+    });
+  });
+
+  it('cannot move the first category up or the last one down', async () => {
+    mockApi();
+    render();
+
+    expect(await screen.findByRole('button', { name: 'Move Hot drinks up' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move Retired section down' })).toBeDisabled();
+  });
+
+  it('includes a withdrawn category in the order, so it keeps its place', async () => {
+    // Excluding withdrawn categories would mean a retired section reappearing at the end, in a
+    // position nobody chose, whenever somebody put it back.
+    const calls = mockApi();
+    const user = userEvent.setup();
+    render();
+
+    await user.click(await screen.findByRole('button', { name: 'Move Retired section up' }));
+
+    await waitFor(() => {
+      const put = calls.find((call) => call.url.includes('/categories/order'));
+      expect(JSON.parse(put?.body ?? '{}').categoryCodes).toContain('RETIRED_SECTION');
+    });
+  });
+
   it('surfaces the refusal when a category in use cannot be withdrawn', async () => {
     vi.stubGlobal(
       'fetch',

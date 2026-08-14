@@ -2,7 +2,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
+import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
+import { Panel } from '@/components/ui/Panel';
 import { Select } from '@/components/ui/Select';
 import { TextField } from '@/components/ui/TextField';
 import { useToast } from '@/components/ui/Toast';
@@ -13,6 +15,7 @@ import {
   useCafeItems,
   useCreateCafeCategory,
   useCreateCafeItem,
+  useReorderCafeCategories,
   useSetCafeCategoryActive,
   useSetCafeItemActive,
   useUpdateCafeItem,
@@ -314,8 +317,10 @@ function CategoriesSection() {
   const { data: categories, isPending } = useCafeCategories();
   const create = useCreateCafeCategory();
   const setActive = useSetCafeCategoryActive();
+  const reorder = useReorderCafeCategories();
   const toast = useToast();
   const [label, setLabel] = useState('');
+  const [dragging, setDragging] = useState<string | null>(null);
 
   async function add() {
     if (!label.trim()) return;
@@ -335,22 +340,56 @@ function CategoriesSection() {
     );
   }
 
-  const error = create.error ?? setActive.error;
+  function move(from: number, to: number) {
+    if (!categories || to < 0 || to >= categories.length) return;
+    const codes = categories.map((category) => category.code);
+    codes.splice(to, 0, ...codes.splice(from, 1));
+    // The whole list every time: the server refuses a partial one rather than guessing where
+    // the absent categories belong.
+    reorder.mutate(codes, { onSuccess: () => toast('Menu order saved.') });
+  }
+
+  function dropOn(targetCode: string) {
+    if (dragging === null || dragging === targetCode || !categories) return;
+    const codes = categories.map((category) => category.code);
+    const from = codes.indexOf(dragging);
+    const to = codes.indexOf(targetCode);
+    setDragging(null);
+    if (from < 0 || to < 0) return;
+    move(from, to);
+  }
+
+  const error = create.error ?? setActive.error ?? reorder.error;
 
   return (
-    <section className="mt-12 rounded-card border border-ink-200 bg-white p-6 shadow-card">
-      <h2 className="text-lg font-semibold text-felt-900">Menu categories</h2>
-      <p className="mt-2 text-sm text-ink-600">
-        The sections the menu is grouped into, in the order customers see them. A category with
-        items in it cannot be withdrawn — move those items first.
-      </p>
-
+    <Panel
+      title="Menu categories"
+      description="The sections the menu is grouped into, in the order customers see them. Drag to
+        reorder. A category with items in it cannot be withdrawn — move those items first."
+      className="mt-12"
+    >
       {isPending ? (
-        <p className="mt-4 text-sm text-ink-600">Loading…</p>
+        <p className="mt-4 text-sm text-fg-muted">Loading…</p>
       ) : (
         <ul className="mt-4 divide-y divide-ink-100">
-          {(categories ?? []).map((category) => (
-            <li key={category.code} className="flex flex-wrap items-center gap-3 py-2.5">
+          {(categories ?? []).map((category, index) => (
+            <li
+              key={category.code}
+              draggable
+              onDragStart={() => setDragging(category.code)}
+              onDragEnd={() => setDragging(null)}
+              // Without preventDefault the drop never fires — the browser's default is to
+              // refuse the drag.
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={() => dropOn(category.code)}
+              className={[
+                'flex flex-wrap items-center gap-3 py-2.5',
+                dragging === category.code ? 'opacity-40' : '',
+              ].join(' ')}
+            >
+              <span aria-hidden className="cursor-grab select-none text-ink-400">
+                ⠿
+              </span>
               <span
                 className={`text-sm font-medium ${
                   category.active ? 'text-felt-900' : 'text-ink-400'
@@ -359,16 +398,41 @@ function CategoriesSection() {
                 {category.label}
               </span>
               {!category.active && <span className="text-xs text-ink-500">withdrawn</span>}
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="ml-auto"
-                disabled={setActive.isPending}
-                onClick={() => void toggleActive(category.code, !category.active)}
-              >
-                {category.active ? 'Withdraw' : 'Restore'}
-              </Button>
+
+              {/* Real buttons beside the drag handle, not instead of it: a pointer drag is
+                  unusable by keyboard and by anyone who cannot hold a click steady, and it is
+                  these the tests drive. */}
+              <div className="ml-auto flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Move ${category.label} up`}
+                  disabled={index === 0 || reorder.isPending}
+                  onClick={() => move(index, index - 1)}
+                >
+                  ▲
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Move ${category.label} down`}
+                  disabled={index === (categories?.length ?? 0) - 1 || reorder.isPending}
+                  onClick={() => move(index, index + 1)}
+                >
+                  ▼
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={setActive.isPending}
+                  onClick={() => void toggleActive(category.code, !category.active)}
+                >
+                  {category.active ? 'Withdraw' : 'Restore'}
+                </Button>
+              </div>
             </li>
           ))}
         </ul>
@@ -394,10 +458,10 @@ function CategoriesSection() {
       </div>
 
       {error && (
-        <p role="alert" className="mt-4 text-sm font-medium text-rose-700">
+        <Alert tone="danger" className="mt-4">
           {error instanceof ApiError ? error.message : 'Could not save that category.'}
-        </p>
+        </Alert>
       )}
-    </section>
+    </Panel>
   );
 }

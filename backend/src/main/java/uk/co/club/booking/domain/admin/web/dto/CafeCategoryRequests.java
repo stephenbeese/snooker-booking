@@ -1,7 +1,9 @@
 package uk.co.club.booking.domain.admin.web.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
+import java.util.List;
 import uk.co.club.booking.domain.cafe.CafeCategory;
 
 /** Request and response bodies for menu categories. */
@@ -18,6 +20,14 @@ public final class CafeCategoryRequests {
      */
     public record CafeCategoryInput(
             @NotBlank @Size(max = 60) String label, Integer displayOrder) {}
+
+    /**
+     * The new running order of every category, top to bottom.
+     *
+     * <p>All of them, not a subset — see {@code CafeCategoryService.reorder} for why a partial
+     * list is refused rather than merged.
+     */
+    public record CafeCategoryOrder(@NotEmpty List<String> categoryCodes) {}
 
     /** A category as staff see it, withdrawn ones included. */
     public record CafeCategoryResponse(

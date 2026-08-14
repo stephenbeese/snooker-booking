@@ -8,7 +8,9 @@ import { useLocation } from 'react-router';
 const EXACT: Record<string, string> = {
   '/': 'Home',
   '/book': 'Book a table',
-  '/menu': 'Cafe & bar',
+  // "Menu" for customers; the admin screen that manages it keeps "Cafe & bar", since it covers
+  // more than the public list.
+  '/menu': 'Menu',
   '/login': 'Sign in',
   '/register': 'Create an account',
   '/forgot-password': 'Reset your password',

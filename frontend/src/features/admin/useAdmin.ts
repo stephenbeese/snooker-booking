@@ -5,6 +5,7 @@ import {
   createCafeCategory,
   createCafeItem,
   fetchCafeCategories,
+  reorderCafeCategories,
   setCafeCategoryActive,
   updateCafeCategory,
   createTableType,
@@ -532,6 +533,10 @@ export function useUpdateCafeCategory() {
   return useCafeCategoryMutation(({ code, label }: { code: string; label: string }) =>
     updateCafeCategory(code, label),
   );
+}
+
+export function useReorderCafeCategories() {
+  return useCafeCategoryMutation(reorderCafeCategories);
 }
 
 export function useSetCafeCategoryActive() {

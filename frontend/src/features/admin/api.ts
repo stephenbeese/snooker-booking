@@ -419,6 +419,20 @@ export function updateCafeCategory(
   });
 }
 
+/**
+ * Rewrites the whole running order in one request.
+ *
+ * <p>Every code, not a subset — the server refuses a partial list rather than guessing where the
+ * absent ones belong. One write rather than a PUT per category, so the menu is never seen
+ * half-reordered.
+ */
+export function reorderCafeCategories(categoryCodes: string[]): Promise<CafeCategory[]> {
+  return apiRequest<CafeCategory[]>('/api/admin/cafe/categories/order', {
+    method: 'PUT',
+    body: JSON.stringify({ categoryCodes }),
+  });
+}
+
 export function setCafeCategoryActive(code: string, active: boolean): Promise<CafeCategory> {
   return apiRequest<CafeCategory>(
     `/api/admin/cafe/categories/${encodeURIComponent(code)}/active?active=${active}`,

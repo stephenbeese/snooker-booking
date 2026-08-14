@@ -1,6 +1,9 @@
 package uk.co.club.booking.domain.cafe;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -127,6 +130,46 @@ public class CafeCategoryService {
         category.setActive(active);
         log.info("Cafe category {} set active={}", code, active);
         return categoryRepository.saveAndFlush(category);
+    }
+
+    /**
+     * Rewrites the whole running order at once.
+     *
+     * <p>One bulk write rather than a PUT per category, for the reason {@code
+     * SnookerTableService.reorder} gives: reordering one row at a time leaves the list visibly
+     * inconsistent between requests, and a failure halfway through leaves it that way for good.
+     *
+     * <p>Every category exactly once, not a subset. A partial list has no single sensible reading
+     * — whether the absent ones lead, trail or hold their old positions is a guess — so it is
+     * refused rather than merged. Withdrawn categories are included: a retired section still holds
+     * a position, and it returns to that position when somebody puts it back.
+     */
+    @Transactional
+    public List<CafeCategory> reorder(List<String> orderedCodes) {
+        List<CafeCategory> categories = findAll();
+
+        Set<String> given = Set.copyOf(orderedCodes);
+        if (given.size() != orderedCodes.size()) {
+            throw new BusinessRuleException(
+                    ErrorCode.VALIDATION_FAILED, "The same category was listed more than once.");
+        }
+        Set<String> known =
+                categories.stream().map(CafeCategory::getCode).collect(Collectors.toSet());
+        if (!given.equals(known)) {
+            throw new BusinessRuleException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "The new order must list every category exactly once.");
+        }
+
+        Map<String, CafeCategory> byCode =
+                categories.stream()
+                        .collect(Collectors.toMap(CafeCategory::getCode, category -> category));
+        for (int position = 0; position < orderedCodes.size(); position++) {
+            byCode.get(orderedCodes.get(position)).setDisplayOrder(position);
+        }
+        categoryRepository.flush();
+        log.info("Reordered {} cafe categories", orderedCodes.size());
+        return findAll();
     }
 
     /** Rejects a category that does not exist, or exists but is no longer offered. */
