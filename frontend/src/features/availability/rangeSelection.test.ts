@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeSlot, makeTable } from '@/test/factories';
 import type { DurationOption } from './types';
-import { clampedDuration, durationForRange, freeRunMinutes, snapDuration } from './rangeSelection';
+import { durationForRange, freeRunMinutes, snapDuration } from './rangeSelection';
 
 const OPTIONS: DurationOption[] = [
   { minutes: 30, label: '30 mins' },
@@ -114,38 +114,5 @@ describe('durationForRange', () => {
 
   it('returns null for a cell that is not in this row', () => {
     expect(durationForRange(freeRow(4), '2026-08-20T10:00:00Z', '2026-08-20T23:00:00Z', OPTIONS, 30)).toBeNull();
-  });
-});
-
-describe('clampedDuration', () => {
-  it('drops to what the server says fits', () => {
-    const slot = makeSlot({
-      startTime: '22:00:00',
-      bookableForRequestedDuration: false,
-      maxDurationMinutes: 60,
-    });
-
-    expect(clampedDuration(slot, OPTIONS)).toBe(60);
-  });
-
-  it('snaps down when what fits is not itself an option', () => {
-    // 75 minutes of trading left, and the club sells 30/60/90/120.
-    const slot = makeSlot({
-      startTime: '22:00:00',
-      bookableForRequestedDuration: false,
-      maxDurationMinutes: 75,
-    });
-
-    expect(clampedDuration(slot, OPTIONS)).toBe(60);
-  });
-
-  it('gives up when nothing fits at all', () => {
-    const slot = makeSlot({
-      startTime: '22:50:00',
-      bookableForRequestedDuration: false,
-      maxDurationMinutes: 10,
-    });
-
-    expect(clampedDuration(slot, OPTIONS)).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import type { DurationOption, Slot, TableAvailability } from './types';
+import type { DurationOption, TableAvailability } from './types';
 
 /**
  * Resolving a gesture across the grid into a duration the club actually sells.
@@ -87,15 +87,4 @@ export function durationForRange(
     wanted,
     freeRunMinutes(table, anchorIndex, incrementMinutes),
   );
-}
-
-/**
- * The duration to fall back to when a cell cannot hold the one currently requested.
- *
- * <p>`maxDurationMinutes` is the server's own answer for how much fits at this slot, so this
- * clamps to it rather than recomputing the rule. Null when nothing the club sells fits, which
- * leaves the cell genuinely unusable and the caller declines the click.
- */
-export function clampedDuration(slot: Slot, options: DurationOption[]): number | null {
-  return snapDuration(options, slot.maxDurationMinutes, slot.maxDurationMinutes);
 }

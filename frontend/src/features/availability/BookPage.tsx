@@ -17,7 +17,6 @@ import {
   todayIso,
 } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
-import { clampedDuration } from './rangeSelection';
 import { AvailabilityGrid } from './components/AvailabilityGrid';
 import { DateSelector } from './components/DateSelector';
 import { DurationPicker } from './components/DurationPicker';
@@ -131,35 +130,26 @@ export function BookPage() {
     }
   }
 
+  /**
+   * A single click: this is the START of a booking, and nothing else is known yet.
+   *
+   * <p>The duration goes back to "Any" on every such click, which makes the grid the primary
+   * control and the dropdown a readout of what was picked. Two clicks — a start then an end —
+   * are what set a length, so carrying the previous booking's duration into a fresh pick would
+   * pre-answer a question the customer has not been asked yet, and would draw a span they
+   * never chose.
+   *
+   * <p>This is why there is no clamping here any more. Clamping existed to shorten a booking
+   * whose requested length did not fit at the clicked cell; with no length requested there is
+   * nothing to shorten, and the server reports `bookableForRequestedDuration: null` for every
+   * slot. The end click resolves the length instead, and `durationForRange` already refuses to
+   * run past anything unsold.
+   */
   function handleSelect(tableId: number, slot: Slot) {
     // A fresh choice invalidates whatever the last attempt said.
     setBookingError(null);
     setDroppedReason(null);
-
-    // Clicking a cell that cannot hold the current duration shortens the booking to what fits
-    // there, rather than being refused. Done together with the selection: setting only the
-    // selection would leave it failing `staleSelection` on the very next render, which clears
-    // it — the click would appear to do nothing at all.
-    //
-    // `durationMinutes !== null` keeps "Any" out of this. With no duration requested there is
-    // nothing to shorten, and every slot reports `bookableForRequestedDuration: null` anyway.
-    if (slot.bookableForRequestedDuration === false && durationMinutes !== null && data) {
-      const fits = clampedDuration(slot, data.durationOptions);
-      // Never lengthen. `clampedDuration` answers "what fits here", which on a roomy slot is
-      // larger than what was asked for — clamping to it would silently BOOK MORE time than the
-      // customer chose. Only a genuine shortening is a clamp.
-      if (fits === null || fits >= durationMinutes) {
-        setSelected({ tableId, startAt: slot.startAt });
-        return;
-      }
-      setDurationMinutes(fits);
-      setSelected({ tableId, startAt: slot.startAt });
-      setDroppedReason(
-        `${formatSlotTime(slot.startTime)} only fits ${formatDuration(fits)}, so the duration was shortened.`,
-      );
-      return;
-    }
-
+    setDurationMinutes(null);
     setSelected({ tableId, startAt: slot.startAt });
   }
 
