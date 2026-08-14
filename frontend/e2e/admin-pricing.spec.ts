@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { ADMIN, apiLogin, apiWrite, login, openDay } from './support/helpers';
 
 /**
@@ -26,6 +26,25 @@ const DEFAULT_RATE_POUNDS = 12;
  * apart from someone's actual configuration.
  */
 const E2E_PREFIX = 'E2E';
+
+/**
+ * The pricing section, by its anchor id.
+ *
+ * <p>Was `locator('section').filter({ hasText: 'Pricing' }).first()`, which matched on prose
+ * rather than on identity and so picked the wrong section. The settings page renders every
+ * section at once when its queries resolve, and the "Table types" section describes itself as
+ * applying to "every table and pricing rule" — so it matches `hasText: 'Pricing'` too, sits
+ * earlier in the DOM, and wins `.first()`. It holds no "Add a pricing rule" button, so the
+ * click waited out the full timeout.
+ *
+ * <p>Which of the two matched first varied per run, because the filter resolves the moment
+ * anything matches rather than once the page has settled — so the same code passed or failed
+ * on timing alone. Scoping to the id the section already carries for its jump link removes
+ * both the ambiguity and the race.
+ */
+function pricingSection(page: Page) {
+  return page.locator('section#pricing');
+}
 
 test.describe('Pricing rules', () => {
   test.afterEach(async ({ request }) => {
@@ -81,7 +100,7 @@ test.describe('Pricing rules', () => {
     await login(page, ADMIN);
     await page.goto('/admin/settings');
 
-    const pricing = page.locator('section').filter({ hasText: 'Pricing' }).first();
+    const pricing = pricingSection(page);
     const catchAllRow = pricing.locator('tr', { hasText: 'Standard hourly rate' });
     await expect(catchAllRow).toContainText('£12.00');
 
@@ -115,7 +134,7 @@ test.describe('Pricing rules', () => {
     await login(page, ADMIN);
     await page.goto('/admin/settings');
 
-    const pricing = page.locator('section').filter({ hasText: 'Pricing' }).first();
+    const pricing = pricingSection(page);
     const catchAllRow = pricing.locator('tr', { hasText: 'Standard hourly rate' });
 
     await expect(catchAllRow).toContainText('Required');
@@ -131,7 +150,7 @@ test.describe('Pricing rules', () => {
     await login(page, ADMIN);
     await page.goto('/admin/settings');
 
-    const pricing = page.locator('section').filter({ hasText: 'Pricing' }).first();
+    const pricing = pricingSection(page);
     await pricing.getByRole('button', { name: 'Add a pricing rule' }).click();
 
     await page.getByLabel('Rule name').fill('E2E peak rate');
@@ -160,7 +179,7 @@ test.describe('Pricing rules', () => {
     await login(page, ADMIN);
     await page.goto('/admin/settings');
 
-    const pricing = page.locator('section').filter({ hasText: 'Pricing' }).first();
+    const pricing = pricingSection(page);
     await pricing.getByRole('button', { name: 'Add a pricing rule' }).click();
     await page.getByLabel('Rule name').fill('E2E early week');
     await page.getByLabel('Rate per hour (£)').fill('9.50');
@@ -193,7 +212,7 @@ test.describe('Pricing rules', () => {
     await login(page, ADMIN);
     await page.goto('/admin/settings');
 
-    const pricing = page.locator('section').filter({ hasText: 'Pricing' }).first();
+    const pricing = pricingSection(page);
     await pricing.getByRole('button', { name: 'Add a pricing rule' }).click();
 
     await page.getByLabel('Rule name').fill('E2E broken window');
