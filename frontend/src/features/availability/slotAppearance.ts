@@ -1,4 +1,3 @@
-import { formatDuration } from '@/lib/datetime';
 import type { Slot, UnavailableReason } from './types';
 
 /**
@@ -107,35 +106,22 @@ export function slotAppearance(
     };
   }
 
-  // Free, but the requested duration does not fit. Visibly distinct from both bookable
-  // and occupied, so the grid does not look broken when a late slot cannot be clicked.
+  // Genuinely unusable: not one permitted duration fits here, however short. That is the only
+  // case left for a faded cell.
   //
-  // `reason` is only set when NO permitted duration fits; when a shorter booking would
-  // still work it is null, so say how long actually fits rather than "not enough time".
-  if (slot.bookableForRequestedDuration === false) {
-    const label =
-      slot.reason !== null
-        ? REASON_LABEL[slot.reason]
-        : slot.maxDurationMinutes > 0
-          ? `Up to ${formatDuration(slot.maxDurationMinutes)} only`
-          : 'Does not fit';
-    // Interactive despite not fitting, and deliberately still faded. Clicking one shortens the
-    // booking to what actually fits here rather than refusing the click — the customer has
-    // pointed at a start time, and the duration is the negotiable part. The faded look is kept
-    // exactly as it was so the row still reads at a glance as "these are the short ones";
-    // only the behaviour changed.
-    //
-    // `maxDurationMinutes > 0` is the line between "shorter would work" and "nothing fits".
-    // When the club has ten minutes left before closing there is nothing to clamp to, so the
-    // cell stays genuinely dead rather than offering a click that cannot produce a booking.
-    const clampable = slot.reason === null && slot.maxDurationMinutes > 0;
+  // The "does not fit the REQUESTED duration" fade is gone. A click sets the start and nothing
+  // else — the length comes from the second click — so a cell that cannot hold the length
+  // previously asked for is still a perfectly good place to begin. Fading it said "you cannot
+  // click this" about cells that are now among the most ordinary things to click, and the
+  // hover text offered to shorten a booking using a clamp that no longer exists.
+  //
+  // `reason` is set by the server exactly when no duration at all fits, which is what makes it
+  // the right test rather than `maxDurationMinutes`.
+  if (slot.bookableForRequestedDuration === false && slot.reason !== null) {
     return {
-      className: `${BASE} ${STANDALONE} bg-felt-50 text-felt-700/50 ${
-        clampable ? 'cursor-pointer hover:bg-felt-200 hover:text-felt-800' : 'cursor-not-allowed'
-      }`,
-      // The label says what the click will DO, since the cell looks unavailable but is not.
-      label: clampable ? `${time} — ${label}, click to shorten to it` : `${time} — ${label}`,
-      interactive: clampable,
+      className: `${BASE} ${STANDALONE} bg-felt-50 text-felt-700/50 cursor-not-allowed`,
+      label: `${time} — ${REASON_LABEL[slot.reason]}`,
+      interactive: false,
       text: time,
     };
   }

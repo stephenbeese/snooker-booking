@@ -8,7 +8,11 @@ const ITEMS = [
   // A wide swatch, not a square: the selection is now a bar across several cells, and a
   // square here would describe something the grid no longer draws.
   { label: 'Your booking', className: 'bg-felt-700 w-7' },
-  { label: "Doesn't fit", className: 'bg-felt-50 border border-felt-100' },
+  // "Doesn't fit" retired with the fade it described. A cell used to dim when it could not hold
+  // the duration currently in the dropdown, which no longer happens: a click sets the start and
+  // the second click sets the length, so any free cell is a valid place to begin. The one case
+  // left — nothing fits here at all, however short — is what "Too late to book" covers.
+  { label: 'Too late to book', className: 'bg-felt-50 border border-felt-100' },
   { label: 'Booked', className: 'bg-rose-100' },
   { label: 'Maintenance', className: 'bg-amber-100' },
   { label: 'Unavailable', className: 'bg-ink-100' },

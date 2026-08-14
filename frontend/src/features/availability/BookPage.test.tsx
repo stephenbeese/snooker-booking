@@ -187,31 +187,51 @@ describe('BookPage', () => {
   // was untestable: the page clears the selection before such a cell can ever render, so the
   // assertion held whether or not the ordering bug was present.
 
-  it('clears the duration to Any on a click, so the next click sets the length', async () => {
-    // A single click says only WHERE a booking starts. Carrying the previous duration into it
-    // would pre-answer a question the customer has not been asked yet and draw a span they
-    // never chose, so the grid leads and the dropdown reports what the two clicks resolved.
-    mockAvailability({ none: bookableAt(60, 1200), '60': bookableAt(60, 1200) });
+  it('starts a click at the shortest bookable length, not the previous booking\'s', async () => {
+    // One click should already be a complete, priced booking — somebody who wants half an hour
+    // is done. What it must NOT do is inherit the length of the booking before it, which would
+    // draw a span the customer never asked for.
+    mockAvailability({ '30': bookableAt(30, 600), '60': bookableAt(60, 1200) });
     renderWithRouter(<BookPage />, { route: '/book', path: '/book' });
 
+    // Start from an hour so an inherited value would be visible as 60.
     await userEvent.selectOptions(await screen.findByLabelText('Duration'), '60');
     await userEvent.click(await screen.findByRole('button', { name: /^10:00/ }));
 
-    await waitFor(() => expect(screen.getByLabelText('Duration')).toHaveValue(''));
+    await waitFor(() => expect(screen.getByLabelText('Duration')).toHaveValue('30'));
   });
 
-  it('will not let a half-made selection be booked', async () => {
-    // The other half of clearing the duration: with no length chosen there is no price and no
-    // booking to make, so the button must not be live. A disabled button with no explanation
-    // reads as a broken page, hence the hint beside it.
-    mockAvailability({ none: bookableAt(60, 1200), '60': bookableAt(60, 1200) });
+  it('takes the shortest length from the club rather than assuming half an hour', async () => {
+    // The increment is a club setting. A hardcoded 30 would quietly disagree with a club whose
+    // shortest bookable slot is an hour, and offer a duration the API rejects.
+    const hourly = makeAvailability({
+      durationOptions: [
+        { minutes: 60, label: '1 hour' },
+        { minutes: 120, label: '2 hours' },
+      ],
+      slotTimes: ['10:00:00'],
+      tables: [makeTable({ slots: [makeSlot({ startTime: '10:00:00' })] })],
+    });
+    mockAvailability({ none: hourly, '60': hourly, '120': hourly });
     renderWithRouter(<BookPage />, { route: '/book', path: '/book' });
 
     await userEvent.click(await screen.findByRole('button', { name: /^10:00/ }));
 
-    const summary = await screen.findByRole('complementary');
-    expect(within(summary).getByRole('button', { name: /Book and pay/ })).toBeDisabled();
-    expect(summary).toHaveTextContent('Choose a duration to book.');
+    await waitFor(() => expect(screen.getByLabelText('Duration')).toHaveValue('60'));
+  });
+
+  it('clears the selection when its own start cell is clicked again', async () => {
+    // Without this a misclick is unfixable except by choosing some other slot, and the pinned
+    // summary bar stays on screen offering to charge for it.
+    mockAvailability({ '30': bookableAt(30, 600), '60': bookableAt(60, 1200) });
+    renderWithRouter(<BookPage />, { route: '/book', path: '/book' });
+
+    await userEvent.click(await screen.findByRole('button', { name: /^10:00/ }));
+    expect(await screen.findByRole('complementary')).toBeInTheDocument();
+
+    await userEvent.click(await screen.findByRole('button', { name: /^10:00/ }));
+
+    await waitFor(() => expect(screen.queryByRole('complementary')).not.toBeInTheDocument());
   });
 
   it('clears the dropped-selection message once a fresh slot is picked', async () => {
@@ -297,11 +317,15 @@ describe('BookPage', () => {
   it('explains why booking is unavailable when no duration is chosen', async () => {
     // "Any" leaves the server unable to price or check the fit, so the button is disabled.
     // Disabled with no reason reads as a broken page.
-    mockAvailability({ none: makeAvailability({ slotTimes: ['10:00:00'] }) });
+    //
+    // Select "Any" AFTER picking the slot, not before: a click now sets the shortest bookable
+    // length, so choosing Any first would simply be overwritten by the click.
+    const day = makeAvailability({ slotTimes: ['10:00:00'] });
+    mockAvailability({ none: day, '30': day, '60': day });
     renderWithRouter(<BookPage />, { route: '/book', path: '/book' });
 
+    await userEvent.click(await screen.findByRole('button', { name: /^10:00/ }));
     await userEvent.selectOptions(await screen.findByLabelText('Duration'), '');
-    await userEvent.click(await screen.findByRole('button', { name: /10:00 — available/ }));
 
     const summary = await screen.findByRole('complementary');
     expect(summary).toHaveTextContent('Choose a duration to book.');

@@ -131,25 +131,37 @@ export function BookPage() {
   }
 
   /**
-   * A single click: this is the START of a booking, and nothing else is known yet.
+   * A single click: this is the START of a booking, held at the shortest length the club sells
+   * until a second click says otherwise.
    *
-   * <p>The duration goes back to "Any" on every such click, which makes the grid the primary
-   * control and the dropdown a readout of what was picked. Two clicks — a start then an end —
-   * are what set a length, so carrying the previous booking's duration into a fresh pick would
-   * pre-answer a question the customer has not been asked yet, and would draw a span they
-   * never chose.
+   * <p>The duration is not carried over from the previous booking — that would pre-answer a
+   * question the customer has not been asked and draw a span they never chose. It drops to the
+   * minimum instead of to "Any" so that one click is already a complete, priced, bookable
+   * thing: somebody who only wants half an hour is finished, and everybody else drags or
+   * clicks an end time to lengthen it.
    *
-   * <p>This is why there is no clamping here any more. Clamping existed to shorten a booking
-   * whose requested length did not fit at the clicked cell; with no length requested there is
-   * nothing to shorten, and the server reports `bookableForRequestedDuration: null` for every
-   * slot. The end click resolves the length instead, and `durationForRange` already refuses to
-   * run past anything unsold.
+   * <p>The minimum comes from the server's own `durationOptions` rather than a hardcoded 30,
+   * since the increment is a club setting an admin can change.
+   *
+   * <p>There is no clamping here any more. Clamping existed to shorten a booking whose
+   * requested length did not fit at the clicked cell; the end click resolves the length now,
+   * and `durationForRange` already refuses to run a range past anything unsold.
    */
   function handleSelect(tableId: number, slot: Slot) {
     // A fresh choice invalidates whatever the last attempt said.
     setBookingError(null);
     setDroppedReason(null);
-    setDurationMinutes(null);
+
+    // Clicking the cell that is already the start of the booking clears it. Without this the
+    // only way out of a selection is to pick a different one, so a misclick cannot be undone —
+    // and the pinned summary bar stays on screen offering to charge for it.
+    if (selected && selected.tableId === tableId && selected.startAt === slot.startAt) {
+      setSelected(null);
+      return;
+    }
+
+    const shortest = data?.durationOptions[0]?.minutes ?? null;
+    setDurationMinutes(shortest);
     setSelected({ tableId, startAt: slot.startAt });
   }
 
