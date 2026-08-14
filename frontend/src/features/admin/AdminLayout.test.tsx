@@ -37,7 +37,14 @@ describe('AdminLayout', () => {
     const nav = await screen.findByRole('navigation', { name: 'Staff' });
     expect(await screen.findByRole('link', { name: 'Settings' })).toBeInTheDocument();
     expect(nav).toBeInTheDocument();
-    for (const label of ['Dashboard', 'Bookings', 'Telephone', 'Customers', 'Maintenance']) {
+    for (const label of [
+      'Dashboard',
+      'Bookings',
+      'Diary',
+      'Telephone',
+      'Customers',
+      'Maintenance',
+    ]) {
       expect(screen.getByRole('link', { name: label })).toBeInTheDocument();
     }
     expect(screen.getByRole('link', { name: 'Tables' })).toBeInTheDocument();
@@ -53,6 +60,8 @@ describe('AdminLayout', () => {
 
     expect(await screen.findByRole('link', { name: 'Bookings' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Customers' })).toBeInTheDocument();
+    // The diary is a staff tool above all — it is what someone on the counter looks at.
+    expect(screen.getByRole('link', { name: 'Diary' })).toBeInTheDocument();
 
     expect(screen.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Tables' })).not.toBeInTheDocument();

@@ -15,6 +15,7 @@ import { useCurrentUser } from '@/features/auth/useAuth';
 const NAV: { to: string; label: string; end?: boolean; adminOnly?: boolean }[] = [
   { to: '/admin', label: 'Dashboard', end: true },
   { to: '/admin/bookings', label: 'Bookings' },
+  { to: '/admin/diary', label: 'Diary' },
   { to: '/admin/bookings/telephone', label: 'Telephone' },
   { to: '/admin/customers', label: 'Customers' },
   { to: '/admin/maintenance', label: 'Maintenance' },
