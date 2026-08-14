@@ -1,6 +1,7 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { todayIso } from '@/lib/datetime';
 import { makeAdminBooking } from '@/test/factories';
 import { renderWithRouter } from '@/test/renderWithProviders';
 import { AdminBookingsPage } from './AdminBookingsPage';
@@ -139,5 +140,58 @@ describe('AdminBookingsPage', () => {
     await screen.findByText('SNK-ABC123');
 
     expect(bookingUrls(calls)[0]).not.toContain('page=');
+  });
+
+  it('searches as you type, without a button', async () => {
+    // Every other filter on this form applies on change. The search box used to be the one
+    // that demanded a submit, which is the inconsistency this replaces.
+    const calls = mockApi([makeAdminBooking()]);
+    const user = userEvent.setup();
+    renderWithRouter(<AdminBookingsPage />, { route: '/admin/bookings', path: '/admin/bookings' });
+
+    await screen.findByText('SNK-ABC123');
+    await user.type(screen.getByLabelText('Search'), 'smith');
+
+    await waitFor(() => {
+      expect(bookingUrls(calls).at(-1)).toContain('search=smith');
+    });
+  });
+
+  it('sends one request for a whole word, not one per keystroke', async () => {
+    // The reason the debounce exists. Five requests for "smith" can also land out of order, so
+    // the rows shown would be whichever response was slowest rather than the one for the term
+    // in the box.
+    const calls = mockApi([makeAdminBooking()]);
+    const user = userEvent.setup();
+    renderWithRouter(<AdminBookingsPage />, { route: '/admin/bookings', path: '/admin/bookings' });
+
+    await screen.findByText('SNK-ABC123');
+    const before = bookingUrls(calls).length;
+
+    await user.type(screen.getByLabelText('Search'), 'smith');
+    await waitFor(() => {
+      expect(bookingUrls(calls).at(-1)).toContain('search=smith');
+    });
+
+    // One more than we started with. A per-keystroke implementation makes five.
+    expect(bookingUrls(calls).length - before).toBe(1);
+  });
+
+  it('narrows to today at both ends of the range', async () => {
+    const calls = mockApi([makeAdminBooking()]);
+    const user = userEvent.setup();
+    renderWithRouter(<AdminBookingsPage />, { route: '/admin/bookings', path: '/admin/bookings' });
+
+    await screen.findByText('SNK-ABC123');
+    await user.click(screen.getByRole('button', { name: 'Today' }));
+
+    // Both `from` and `to`. Setting only `from` answers "today onwards", which is a different
+    // question from the one a button called Today is asking.
+    await waitFor(() => {
+      const requested = bookingUrls(calls).at(-1) ?? '';
+      const today = todayIso();
+      expect(requested).toContain(`from=${today}`);
+      expect(requested).toContain(`to=${today}`);
+    });
   });
 });

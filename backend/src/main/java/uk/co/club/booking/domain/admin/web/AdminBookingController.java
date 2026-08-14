@@ -5,7 +5,6 @@ import jakarta.validation.constraints.Positive;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -36,7 +35,6 @@ import uk.co.club.booking.domain.booking.BookingStatus;
 import uk.co.club.booking.domain.booking.CreateBookingCommand;
 import uk.co.club.booking.domain.booking.web.dto.CancelBookingRequest;
 import uk.co.club.booking.domain.payment.PaymentService;
-import uk.co.club.booking.domain.payment.PaymentSummary;
 import uk.co.club.booking.domain.user.User;
 import uk.co.club.booking.domain.user.UserService;
 import uk.co.club.booking.security.AppUserPrincipal;
@@ -60,6 +58,7 @@ public class AdminBookingController {
     private final AvailabilityService availabilityService;
     private final PaymentService paymentService;
     private final UserService userService;
+    private final AdminBookingMapper bookingMapper;
     private final ClubClock clubClock;
 
     public AdminBookingController(
@@ -68,12 +67,14 @@ public class AdminBookingController {
             AvailabilityService availabilityService,
             PaymentService paymentService,
             UserService userService,
+            AdminBookingMapper bookingMapper,
             ClubClock clubClock) {
         this.adminBookingService = adminBookingService;
         this.bookingService = bookingService;
         this.availabilityService = availabilityService;
         this.paymentService = paymentService;
         this.userService = userService;
+        this.bookingMapper = bookingMapper;
         this.clubClock = clubClock;
     }
 
@@ -258,27 +259,10 @@ public class AdminBookingController {
     }
 
     private AdminBookingResponse toResponse(Booking booking) {
-        return AdminBookingResponse.from(
-                booking,
-                clubClock,
-                bookingService.cancellation(booking, true),
-                paymentService.summarise(booking));
+        return bookingMapper.one(booking);
     }
 
-    /**
-     * Maps a page of bookings, fetching every payment in one query.
-     *
-     * <p>Not {@code map(this::toResponse)}: that would summarise each booking separately and turn
-     * a 25-row page into 26 queries.
-     */
     private List<AdminBookingResponse> toResponses(List<Booking> bookings) {
-        Map<Long, PaymentSummary> payments = paymentService.summariseAll(bookings);
-        return bookings.stream()
-                .map(booking -> AdminBookingResponse.from(
-                        booking,
-                        clubClock,
-                        bookingService.cancellation(booking, true),
-                        payments.getOrDefault(booking.getId(), PaymentSummary.NONE)))
-                .toList();
+        return bookingMapper.many(bookings);
     }
 }

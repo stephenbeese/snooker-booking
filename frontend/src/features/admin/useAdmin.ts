@@ -12,6 +12,8 @@ import {
   deletePricingRule,
   fetchAdminBooking,
   fetchAdminBookings,
+  fetchAdminCustomer,
+  fetchAdminCustomers,
   fetchAdminDay,
   fetchAdminTables,
   fetchAdminUsers,
@@ -34,6 +36,7 @@ import {
 } from './api';
 import type {
   AdminBookingFilters,
+  AdminCustomerFilters,
   AdminUserFilters,
   CounterPaymentStatus,
   CreateUserInput,
@@ -294,6 +297,34 @@ export function useRecordCounterPayment() {
       queryClient.setQueryData(queryKeys.adminBooking(booking.reference), booking);
       await queryClient.invalidateQueries({ queryKey: ['admin'] });
     },
+  });
+}
+
+// -------------------------------------------------------------- customers
+
+/**
+ * The customer directory.
+ *
+ * <p>`keepPreviousData` because this list is searched as you type: without it every keystroke
+ * blanks the table and collapses the page, which is exactly the flicker the debounce on the
+ * input is there to avoid.
+ */
+export function useAdminCustomers(filters: AdminCustomerFilters) {
+  return useQuery({
+    queryKey: queryKeys.adminCustomers(filters),
+    queryFn: () => fetchAdminCustomers(filters),
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** One customer and their bookings. */
+export function useAdminCustomer(id: number) {
+  return useQuery({
+    queryKey: queryKeys.adminCustomer(id),
+    queryFn: () => fetchAdminCustomer(id),
+    // A hand-edited /admin/customers/banana gives NaN, which the server would answer 400 for.
+    // Not asking at all is the better failure: the page shows "not found" without a request.
+    enabled: Number.isInteger(id) && id > 0,
   });
 }
 

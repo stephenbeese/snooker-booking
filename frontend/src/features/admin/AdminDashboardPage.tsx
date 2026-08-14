@@ -1,19 +1,9 @@
 import { Link } from 'react-router';
-import { formatSlotTime } from '@/lib/datetime';
+import { formatSlotTime, todayIso } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
 import { StatusBadge } from './components/StatusBadge';
 import { useAdminDashboard, useAdminDay } from './useAdmin';
 import type { AdminBooking } from './types';
-
-/** Today in the browser's timezone, as an ISO date — the day view's default. */
-function todayIso(): string {
-  const now = new Date();
-  return [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0'),
-  ].join('-');
-}
 
 export function AdminDashboardPage() {
   const { data: dashboard, isPending, isError, error } = useAdminDashboard();
@@ -28,38 +18,15 @@ export function AdminDashboardPage() {
             {dashboard ? formatFullDate(dashboard.date) : 'Loading the club’s figures…'}
           </p>
         </div>
-        <nav aria-label="Staff areas" className="flex flex-wrap gap-2">
-          <Link
-            to="/admin/bookings/telephone"
-            className="rounded-xl bg-felt-700 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-felt-800"
-          >
-            Telephone booking
-          </Link>
-          <Link
-            to="/admin/bookings"
-            className="rounded-xl bg-white px-5 py-2.5 text-sm font-medium text-felt-900 ring-1 ring-inset ring-ink-300 transition-colors hover:bg-ink-50"
-          >
-            All bookings
-          </Link>
-          <Link
-            to="/admin/tables"
-            className="rounded-xl bg-white px-5 py-2.5 text-sm font-medium text-felt-900 ring-1 ring-inset ring-ink-300 transition-colors hover:bg-ink-50"
-          >
-            Tables
-          </Link>
-          <Link
-            to="/admin/maintenance"
-            className="rounded-xl bg-white px-5 py-2.5 text-sm font-medium text-felt-900 ring-1 ring-inset ring-ink-300 transition-colors hover:bg-ink-50"
-          >
-            Maintenance
-          </Link>
-          <Link
-            to="/admin/settings"
-            className="rounded-xl bg-white px-5 py-2.5 text-sm font-medium text-felt-900 ring-1 ring-inset ring-ink-300 transition-colors hover:bg-ink-50"
-          >
-            Settings
-          </Link>
-        </nav>
+        {/* Just the one action. The five links that used to sit here are AdminLayout's nav now,
+            and two of them — Tables and Settings — were shown to STAFF, who are refused both.
+            Taking a booking is the thing someone opens this screen wanting to do. */}
+        <Link
+          to="/admin/bookings/telephone"
+          className="rounded-xl bg-felt-700 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-felt-800"
+        >
+          Telephone booking
+        </Link>
       </div>
 
       {isError && (
