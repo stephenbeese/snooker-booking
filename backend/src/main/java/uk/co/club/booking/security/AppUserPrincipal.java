@@ -56,8 +56,23 @@ public class AppUserPrincipal implements UserDetails, Serializable {
         return role;
     }
 
+    /**
+     * Does this person work here?
+     *
+     * <p>Named for what its callers actually ask. This was {@code isAdmin()} when ADMIN was
+     * the only staff role, and every call site — cancelling someone else's booking, bypassing
+     * the cancellation notice period, seeing an out-of-service table — meant "is staff" rather
+     * than "is the owner". Leaving the old name would have made one boolean mean two things
+     * and quietly denied STAFF the things the role was added to permit.
+     */
+    public boolean isStaff() {
+        return role.isStaff();
+    }
+
+    /** Reserved for the genuinely admin-only. Authorisation for those lives in the filter
+     * chain; this exists for the few places that must tell the two staff roles apart. */
     public boolean isAdmin() {
-        return role == Role.ADMIN;
+        return role.isAdmin();
     }
 
     @Override

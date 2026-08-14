@@ -170,11 +170,18 @@ Open <http://localhost:5173/book>.
 
 Seeded by the `dev` profile only. **Local development only.**
 
-| Role | Email | Password |
-|---|---|---|
-| Admin | `admin@snookerclub.test` | `Admin123!` |
-| Customer | `customer@snookerclub.test` | `Customer123!` |
-| Customer | `ronnie@snookerclub.test` | `Customer123!` |
+| Role | Email | Password | Reaches |
+|---|---|---|---|
+| Manager (ADMIN) | `admin@snookerclub.test` | `Admin123!` | Everything, including settings, pricing, tables and accounts |
+| Staff (STAFF) | `staff@snookerclub.test` | `Staff123!` | Bookings, telephone bookings, maintenance — **not** the club's configuration |
+| Customer | `customer@snookerclub.test` | `Customer123!` | Their own bookings |
+| Customer | `ronnie@snookerclub.test` | `Customer123!` | Their own bookings |
+
+Roles are managed at **`/admin/users`** by a manager: create an account with a role, promote
+or demote an existing one, deactivate someone who has left, or set a password for someone who
+has lost theirs. Two rules there are enforced by the server and cannot be clicked past — an
+admin cannot remove their own access, and the club must always keep at least one active
+manager.
 
 The seed also creates 6 tables, a maintenance block tomorrow 14:00–18:00 on Pool 2, and
 a couple of demo bookings, so the grid demonstrates every state on first run.

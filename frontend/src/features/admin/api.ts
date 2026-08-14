@@ -1,9 +1,13 @@
 import { apiRequest } from '@/lib/apiClient';
+import type { Role } from '@/features/auth/types';
 import type {
   AdminBooking,
   AdminBookingFilters,
   AdminDashboard,
   AdminTable,
+  AdminUser,
+  AdminUserFilters,
+  CreateUserInput,
   BookingRules,
   ClubDetails,
   ClubTable,
@@ -188,4 +192,56 @@ export function savePricingRule(
 
 export function deletePricingRule(id: number): Promise<void> {
   return apiRequest<void>(`/api/admin/settings/pricing-rules/${id}`, { method: 'DELETE' });
+}
+
+// ---------------------------------------------------------------- accounts
+
+/**
+ * The user directory. ADMIN-only server-side; the client filter is a convenience.
+ *
+ * <p>The search term goes through `URLSearchParams`, so a term containing `&` or `%` is
+ * encoded rather than changing the query it lands in. The server escapes LIKE wildcards
+ * separately — encoding and escaping solve different problems and both are needed.
+ */
+export function fetchAdminUsers(
+  filters: AdminUserFilters,
+): Promise<Paged<AdminUser>> {
+  const params = new URLSearchParams();
+  if (filters.role) {
+    params.set('role', filters.role);
+  }
+  if (filters.search) {
+    params.set('search', filters.search);
+  }
+  params.set('page', String(filters.page ?? 0));
+  return apiRequest<Paged<AdminUser>>(`/api/admin/users?${params.toString()}`);
+}
+
+export function createAdminUser(input: CreateUserInput): Promise<AdminUser> {
+  return apiRequest<AdminUser>('/api/admin/users', {
+    method: 'POST',
+    body: JSON.stringify({ ...input, phone: input.phone.trim() }),
+  });
+}
+
+/** Promoting or demoting. Separate from any other edit so a role change is never incidental. */
+export function changeUserRole(id: number, role: Role): Promise<AdminUser> {
+  return apiRequest<AdminUser>(`/api/admin/users/${id}/role`, {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  });
+}
+
+export function setUserActive(id: number, active: boolean): Promise<AdminUser> {
+  return apiRequest<AdminUser>(`/api/admin/users/${id}/active?active=${active}`, {
+    method: 'PUT',
+  });
+}
+
+/** Returns nothing: the new password is what the admin already typed, not news from the server. */
+export function resetUserPassword(id: number, password: string): Promise<void> {
+  return apiRequest<void>(`/api/admin/users/${id}/password`, {
+    method: 'PUT',
+    body: JSON.stringify({ password }),
+  });
 }

@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeUser } from '@/test/factories';
 import { renderWithRouter } from '@/test/renderWithProviders';
-import { RequireAdmin } from './RequireAdmin';
+import { RequireAdmin, RequireStaff } from './RequireAdmin';
 import type { User } from '@/features/auth/types';
 
 /** Answers /api/auth/me with the given user, or 204 for an anonymous visitor. */
@@ -52,8 +52,25 @@ describe('RequireAdmin', () => {
       </RequireAdmin>,
     );
 
-    expect(await screen.findByText(/staff only/i)).toBeInTheDocument();
+    expect(await screen.findByText(/managers only/i)).toBeInTheDocument();
     expect(screen.queryByText('Staff content')).not.toBeInTheDocument();
+  });
+
+  it('refuses a staff member the club’s configuration', async () => {
+    // The whole point of the split. STAFF is not an intruder here, so the refusal names the
+    // restriction rather than implying they do not belong in the staff area at all.
+    mockCurrentUser(makeUser({ role: 'STAFF' }));
+
+    renderWithRouter(
+      <RequireAdmin>
+        <p>Settings content</p>
+      </RequireAdmin>,
+    );
+
+    expect(await screen.findByText(/managers only/i)).toBeInTheDocument();
+    expect(screen.queryByText('Settings content')).not.toBeInTheDocument();
+    // Sent back to the dashboard, not to a customer page: they do work here.
+    expect(screen.getByRole('link', { name: /dashboard/i })).toHaveAttribute('href', '/admin');
   });
 
   it('does not flash the refusal while the session is still being checked', async () => {
@@ -81,5 +98,55 @@ describe('RequireAdmin', () => {
       }),
     );
     expect(await screen.findByText('Staff content')).toBeInTheDocument();
+  });
+});
+
+describe('RequireStaff', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('admits a staff member to the day job', async () => {
+    // The half that is easy to break in the "safe" direction: a guard that only admitted
+    // ADMIN would pass every refusal test and lock the counter out of taking a booking.
+    mockCurrentUser(makeUser({ role: 'STAFF' }));
+
+    renderWithRouter(
+      <RequireStaff>
+        <p>Bookings content</p>
+      </RequireStaff>,
+    );
+
+    expect(await screen.findByText('Bookings content')).toBeInTheDocument();
+  });
+
+  it('admits an admin too', async () => {
+    // ADMIN is staff plus more, never staff instead of.
+    mockCurrentUser(makeUser({ role: 'ADMIN' }));
+
+    renderWithRouter(
+      <RequireStaff>
+        <p>Bookings content</p>
+      </RequireStaff>,
+    );
+
+    expect(await screen.findByText('Bookings content')).toBeInTheDocument();
+  });
+
+  it('refuses a customer', async () => {
+    mockCurrentUser(makeUser({ role: 'CUSTOMER' }));
+
+    renderWithRouter(
+      <RequireStaff>
+        <p>Bookings content</p>
+      </RequireStaff>,
+    );
+
+    expect(await screen.findByText(/staff only/i)).toBeInTheDocument();
+    expect(screen.queryByText('Bookings content')).not.toBeInTheDocument();
   });
 });

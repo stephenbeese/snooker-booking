@@ -363,8 +363,8 @@ public class BookingService {
      * attacker could map the club's whole booking table by watching which references answer
      * differently. Admins bypass the check entirely.
      */
-    public void requireOwnership(Booking booking, long userId, boolean isAdmin) {
-        if (isAdmin) {
+    public void requireOwnership(Booking booking, long userId, boolean isStaff) {
+        if (isStaff) {
             return;
         }
         if (booking.getUserId() == null || booking.getUserId() != userId) {
@@ -409,8 +409,8 @@ public class BookingService {
      * @return true if this call performed the cancellation; false if it had already happened
      */
     @Transactional
-    public boolean cancel(Booking booking, long actingUserId, boolean isAdmin, String reason) {
-        cancellationPolicy.requireCancellable(booking, isAdmin);
+    public boolean cancel(Booking booking, long actingUserId, boolean isStaff, String reason) {
+        cancellationPolicy.requireCancellable(booking, isStaff);
 
         int updated = bookingRepository.cancelIfLive(
                 booking.getId(), clubClock.now(), actingUserId, reason);
@@ -427,7 +427,7 @@ public class BookingService {
     }
 
     /** Whether and until when this booking may be cancelled, for display. */
-    public CancellationPolicy.Decision cancellation(Booking booking, boolean isAdmin) {
-        return cancellationPolicy.evaluate(booking, isAdmin);
+    public CancellationPolicy.Decision cancellation(Booking booking, boolean isStaff) {
+        return cancellationPolicy.evaluate(booking, isStaff);
     }
 }

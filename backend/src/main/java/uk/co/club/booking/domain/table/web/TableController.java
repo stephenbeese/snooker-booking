@@ -33,8 +33,8 @@ public class TableController {
 
     @GetMapping
     public List<TableResponse> list(@AuthenticationPrincipal AppUserPrincipal principal) {
-        boolean isAdmin = principal != null && principal.isAdmin();
-        List<SnookerTable> tables = isAdmin
+        boolean isStaff = principal != null && principal.isStaff();
+        List<SnookerTable> tables = isStaff
                 ? tableRepository.findAllByOrderByDisplayOrderAscIdAsc()
                 : tableRepository.findAllByActiveTrueOrderByDisplayOrderAscIdAsc();
         return tables.stream().map(TableResponse::from).toList();

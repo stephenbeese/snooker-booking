@@ -4,9 +4,10 @@ import { AdminBookingsPage } from '@/features/admin/AdminBookingsPage';
 import { AdminDashboardPage } from '@/features/admin/AdminDashboardPage';
 import { AdminMaintenancePage } from '@/features/admin/AdminMaintenancePage';
 import { AdminSettingsPage } from '@/features/admin/AdminSettingsPage';
+import { AdminUsersPage } from '@/features/admin/AdminUsersPage';
 import { AdminTablesPage } from '@/features/admin/AdminTablesPage';
 import { AdminTelephoneBookingPage } from '@/features/admin/AdminTelephoneBookingPage';
-import { RequireAdmin } from '@/features/admin/RequireAdmin';
+import { RequireAdmin, RequireStaff } from '@/features/admin/RequireAdmin';
 import { BookPage } from '@/features/availability/BookPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { RegisterPage } from '@/features/auth/RegisterPage';
@@ -61,22 +62,24 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
       },
-      // Staff area. RequireAdmin decides what renders; the server decides what is allowed —
-      // every /api/admin/** endpoint is role-gated independently of anything here.
+      // Staff area, in two tiers that mirror SecurityConfig exactly: RequireStaff for the day
+      // job, RequireAdmin for the club's configuration and its accounts. Either only decides
+      // what renders — the server decides what is allowed, and every /api/admin/** endpoint is
+      // role-gated independently of anything here.
       {
         path: '/admin',
         element: (
-          <RequireAdmin>
+          <RequireStaff>
             <AdminDashboardPage />
-          </RequireAdmin>
+          </RequireStaff>
         ),
       },
       {
         path: '/admin/bookings',
         element: (
-          <RequireAdmin>
+          <RequireStaff>
             <AdminBookingsPage />
-          </RequireAdmin>
+          </RequireStaff>
         ),
       },
       {
@@ -84,17 +87,17 @@ export const router = createBrowserRouter([
         // reference and send staff to a 404 for a booking that was never meant to exist.
         path: '/admin/bookings/telephone',
         element: (
-          <RequireAdmin>
+          <RequireStaff>
             <AdminTelephoneBookingPage />
-          </RequireAdmin>
+          </RequireStaff>
         ),
       },
       {
         path: '/admin/bookings/:reference',
         element: (
-          <RequireAdmin>
+          <RequireStaff>
             <AdminBookingDetailPage />
-          </RequireAdmin>
+          </RequireStaff>
         ),
       },
       {
@@ -108,9 +111,9 @@ export const router = createBrowserRouter([
       {
         path: '/admin/maintenance',
         element: (
-          <RequireAdmin>
+          <RequireStaff>
             <AdminMaintenancePage />
-          </RequireAdmin>
+          </RequireStaff>
         ),
       },
       {
@@ -118,6 +121,16 @@ export const router = createBrowserRouter([
         element: (
           <RequireAdmin>
             <AdminSettingsPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        // Admin-only, and the most consequential of the lot: whoever reaches this can grant
+        // themselves and anyone else the run of the club.
+        path: '/admin/users',
+        element: (
+          <RequireAdmin>
+            <AdminUsersPage />
           </RequireAdmin>
         ),
       },
