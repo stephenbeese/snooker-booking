@@ -85,6 +85,19 @@ public class Payment {
         this.amountPence = amountPence;
     }
 
+    /**
+     * A payment taken outside Stripe — at the counter, or comped.
+     *
+     * <p>Separate constructor rather than a setter call after the default one, so a COUNTER
+     * payment cannot briefly exist as a STRIPE row. The provider is checked by
+     * {@code payment_provider_valid} and read by the admin UI to decide whether staff owe the
+     * customer a card machine.
+     */
+    public Payment(long bookingId, PaymentStatus status, int amountPence, String provider) {
+        this(bookingId, status, amountPence);
+        this.provider = provider;
+    }
+
     public Long getId() {
         return id;
     }

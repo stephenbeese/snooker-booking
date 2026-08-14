@@ -22,6 +22,7 @@ import {
   fetchOpeningHours,
   fetchPricingRules,
   fetchTables,
+  recordCounterPayment,
   savePricingRule,
   resetUserPassword,
   setTableActive,
@@ -34,6 +35,7 @@ import {
 import type {
   AdminBookingFilters,
   AdminUserFilters,
+  CounterPaymentStatus,
   CreateUserInput,
   PricingRuleInput,
   TableInput,
@@ -269,6 +271,28 @@ export function useAdminCancelBooking() {
       await queryClient.invalidateQueries({ queryKey: ['availability'] });
       // The customer's own view of this booking is now wrong too.
       await queryClient.invalidateQueries({ queryKey: ['bookings'] });
+    },
+  });
+}
+
+/**
+ * Records a counter payment, or waives it.
+ *
+ * <p>Writes the returned booking straight into the detail cache so the badge clears without a
+ * refetch — staff are standing at the till with a customer in front of them, and a spinner
+ * between "paid" and the screen agreeing is the moment they take the money twice.
+ *
+ * <p>Still invalidates the lists: the same booking is on screen elsewhere with a "due" badge,
+ * and the dashboard counts change.
+ */
+export function useRecordCounterPayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ reference, status }: { reference: string; status: CounterPaymentStatus }) =>
+      recordCounterPayment(reference, status),
+    onSuccess: async (booking) => {
+      queryClient.setQueryData(queryKeys.adminBooking(booking.reference), booking);
+      await queryClient.invalidateQueries({ queryKey: ['admin'] });
     },
   });
 }

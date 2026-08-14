@@ -1,7 +1,11 @@
 package uk.co.club.booking.domain.payment;
 
 import java.time.format.DateTimeFormatter;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -37,6 +41,9 @@ public class PaymentService {
 
     private static final DateTimeFormatter DESCRIPTION_FORMAT =
             DateTimeFormatter.ofPattern("EEE d MMM, HH:mm");
+
+    /** Matches {@code payment_provider_valid} in V10. */
+    private static final String COUNTER_PROVIDER = "COUNTER";
 
     private final PaymentRepository paymentRepository;
     private final PaymentExceptionRepository paymentExceptionRepository;
@@ -210,6 +217,113 @@ public class PaymentService {
                 booking.getId(),
                 payment.getId(),
                 "Payment succeeded after the hold expired and the slot was no longer available."));
+    }
+
+    /**
+     * Records that a booking will be paid for at the counter.
+     *
+     * <p>Written when staff take a booking over the telephone. Until now such a booking had no
+     * payment row at all, which made "confirmed and unpaid" indistinguishable from "confirmed and
+     * paid" — staff had nothing to work from when the customer arrived.
+     *
+     * <p>Status is {@code REQUIRES_PAYMENT} and provider {@code COUNTER}: money is expected but
+     * not yet taken. {@link #startCheckout} cannot pick this row up, because it refuses any
+     * booking that is not {@code PENDING_PAYMENT} and a telephone booking is created CONFIRMED.
+     */
+    @Transactional
+    public Payment recordCounterPayment(Booking booking) {
+        return paymentRepository.save(new Payment(
+                booking.getId(),
+                PaymentStatus.REQUIRES_PAYMENT,
+                booking.getPricePence(),
+                COUNTER_PROVIDER));
+    }
+
+    /**
+     * Settles a counter payment: the customer paid on arrival, or the club comped it.
+     *
+     * <p>Idempotent by refusal rather than by silence. Marking an already-settled booking as paid
+     * a second time is far more likely to be a mistake — the wrong booking, or a double click —
+     * than a genuine retry, and a silent no-op would tell staff the money was taken twice when it
+     * was taken once.
+     *
+     * @param status must be {@code PAID_AT_COUNTER} or {@code WAIVED}
+     * @param staffUserId who keyed it in, kept for the audit trail
+     */
+    @Transactional
+    public Payment settleAtCounter(Booking booking, PaymentStatus status, long staffUserId) {
+        if (status != PaymentStatus.PAID_AT_COUNTER && status != PaymentStatus.WAIVED) {
+            // Guards the endpoint against being used to fake a Stripe outcome. SUCCEEDED must
+            // only ever be written by a confirmed Stripe event, never by a member of staff.
+            throw new BusinessRuleException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "A counter payment can only be recorded as paid or waived.");
+        }
+
+        List<Payment> attempts = paymentRepository.findByBookingIdOrderByIdDesc(booking.getId());
+        if (attempts.stream().anyMatch(payment -> payment.getStatus().isSettled())) {
+            throw new BusinessRuleException(
+                    ErrorCode.PAYMENT_NOT_REQUIRED, "This booking has already been paid for.");
+        }
+
+        // Reuse the row created when the booking was taken. A second row would leave the
+        // outstanding amount ambiguous — two unsettled attempts for one debt.
+        Payment payment = attempts.stream()
+                .filter(attempt -> COUNTER_PROVIDER.equals(attempt.getProvider()))
+                .findFirst()
+                .orElseGet(() -> new Payment(
+                        booking.getId(),
+                        PaymentStatus.REQUIRES_PAYMENT,
+                        booking.getPricePence(),
+                        COUNTER_PROVIDER));
+
+        payment.setStatus(status);
+        payment.setRecordedByUserId(staffUserId);
+        log.info(
+                "Booking {} settled at the counter as {} by user {}",
+                booking.getReference(),
+                status,
+                staffUserId);
+        return paymentRepository.save(payment);
+    }
+
+    /**
+     * The money state of one booking.
+     *
+     * <p>Shared with {@link #summariseAll} so the detail page and the list cannot disagree about
+     * which of several attempts speaks for a booking.
+     */
+    @Transactional(readOnly = true)
+    public PaymentSummary summarise(Booking booking) {
+        return PaymentSummary.of(
+                paymentRepository.findByBookingIdOrderByIdDesc(booking.getId()),
+                booking.getPricePence());
+    }
+
+    /**
+     * The money state of many bookings, in one query.
+     *
+     * <p>The admin list renders payment state per row, so calling {@link #summarise} in the
+     * mapping loop would issue a query per booking. Bookings with no payment row are absent from
+     * the map; callers treat a miss as {@link PaymentSummary#NONE}.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, PaymentSummary> summariseAll(Collection<Booking> bookings) {
+        if (bookings.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<Long, Integer> priceByBooking = bookings.stream()
+                .collect(Collectors.toMap(Booking::getId, Booking::getPricePence, (a, b) -> a));
+
+        return paymentRepository.findByBookingIdInOrderByIdDesc(priceByBooking.keySet()).stream()
+                .collect(Collectors.groupingBy(Payment::getBookingId))
+                .entrySet()
+                .stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> PaymentSummary.of(
+                                entry.getValue(), priceByBooking.get(entry.getKey()))));
     }
 
     /** Records a declined payment. The hold survives so the customer can retry within its TTL. */

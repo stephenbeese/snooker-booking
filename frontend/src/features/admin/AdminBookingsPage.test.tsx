@@ -66,6 +66,26 @@ describe('AdminBookingsPage', () => {
     expect(screen.getByText('customer@test.local')).toBeInTheDocument();
   });
 
+  it('flags what is owed at the counter, without flagging what is already paid', async () => {
+    // Both rows in one render: the badge must distinguish them, not simply appear. A test with
+    // only the unpaid row would pass against a badge that showed on every booking.
+    mockApi([
+      makeAdminBooking({
+        reference: 'SNK-PHONE1',
+        source: 'TELEPHONE',
+        paymentStatus: 'REQUIRES_PAYMENT',
+        amountOutstandingPence: 1200,
+        payableAtCounter: true,
+      }),
+      makeAdminBooking({ reference: 'SNK-ONLINE' }),
+    ]);
+    renderWithRouter(<AdminBookingsPage />, { route: '/admin/bookings', path: '/admin/bookings' });
+
+    // Staff scan this list to see who owes money on arrival, so the amount is on the row.
+    expect(await screen.findByText(/pay on arrival — £12\.00 due/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/pay on arrival/i)).toHaveLength(1);
+  });
+
   it('says so plainly when nothing matches', async () => {
     mockApi([]);
     renderWithRouter(<AdminBookingsPage />, { route: '/admin/bookings', path: '/admin/bookings' });

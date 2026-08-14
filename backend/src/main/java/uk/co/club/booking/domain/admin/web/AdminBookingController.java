@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Positive;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -23,6 +24,7 @@ import uk.co.club.booking.domain.admin.AdminBookingService;
 import uk.co.club.booking.domain.admin.AdminDashboard;
 import uk.co.club.booking.domain.admin.web.dto.AdminBookingResponse;
 import uk.co.club.booking.domain.admin.web.dto.PagedResponse;
+import uk.co.club.booking.domain.admin.web.dto.RecordPaymentRequest;
 import uk.co.club.booking.domain.admin.web.dto.TelephoneBookingRequest;
 import uk.co.club.booking.domain.availability.AvailabilityService;
 import uk.co.club.booking.domain.availability.DayAvailability;
@@ -34,6 +36,7 @@ import uk.co.club.booking.domain.booking.BookingStatus;
 import uk.co.club.booking.domain.booking.CreateBookingCommand;
 import uk.co.club.booking.domain.booking.web.dto.CancelBookingRequest;
 import uk.co.club.booking.domain.payment.PaymentService;
+import uk.co.club.booking.domain.payment.PaymentSummary;
 import uk.co.club.booking.domain.user.User;
 import uk.co.club.booking.domain.user.UserService;
 import uk.co.club.booking.security.AppUserPrincipal;
@@ -100,7 +103,7 @@ public class AdminBookingController {
 
         AdminBookingQuery query =
                 new AdminBookingQuery(status, from, to, tableId, search, page, size);
-        return PagedResponse.of(adminBookingService.search(query), this::toResponse);
+        return PagedResponse.ofAll(adminBookingService.search(query), this::toResponses);
     }
 
     /** One day's bookings in start order, for the day view. */
@@ -109,7 +112,7 @@ public class AdminBookingController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
                     LocalDate date) {
         LocalDate target = date == null ? clubClock.today() : date;
-        return adminBookingService.forDay(target).stream().map(this::toResponse).toList();
+        return toResponses(adminBookingService.forDay(target));
     }
 
     /**
@@ -193,6 +196,14 @@ public class AdminBookingController {
                         principal.id()),
                 BookingPolicy.staff());
 
+        // A separate transaction from the booking, deliberately. `BookingService.create` commits
+        // on its own, so a failure here leaves the booking standing without its "collect money"
+        // reminder — staff would see it as unflagged rather than lose the slot they just
+        // promised on the phone. That is the right way round: the booking is the commitment to
+        // the customer, and an uncollected payment is recoverable by looking at the booking,
+        // whereas a slot rolled back mid-call is not recoverable at all.
+        paymentService.recordCounterPayment(booking);
+
         return toResponse(booking);
     }
 
@@ -224,8 +235,50 @@ public class AdminBookingController {
         return toResponse(bookingService.requireByReference(reference));
     }
 
+    /**
+     * Records money taken at the counter, or waives it.
+     *
+     * <p>STAFF as well as ADMIN: taking payment when a customer walks in is the job this role
+     * exists for. The acting user's id comes from the session and is stamped on the payment, so
+     * the audit trail cannot be forged by the request body.
+     *
+     * <p>Cancelling afterwards behaves as it does for a card payment: the booking now holds a
+     * settled payment, so {@code flagForRefundIfPaid} raises it for a refund decision rather than
+     * moving money on its own.
+     */
+    @PostMapping("/bookings/{reference}/payment")
+    public AdminBookingResponse recordPayment(
+            @PathVariable String reference,
+            @Valid @RequestBody RecordPaymentRequest request,
+            @AuthenticationPrincipal AppUserPrincipal principal) {
+
+        Booking booking = bookingService.requireByReference(reference);
+        paymentService.settleAtCounter(booking, request.status(), principal.id());
+        return toResponse(booking);
+    }
+
     private AdminBookingResponse toResponse(Booking booking) {
         return AdminBookingResponse.from(
-                booking, clubClock, bookingService.cancellation(booking, true));
+                booking,
+                clubClock,
+                bookingService.cancellation(booking, true),
+                paymentService.summarise(booking));
+    }
+
+    /**
+     * Maps a page of bookings, fetching every payment in one query.
+     *
+     * <p>Not {@code map(this::toResponse)}: that would summarise each booking separately and turn
+     * a 25-row page into 26 queries.
+     */
+    private List<AdminBookingResponse> toResponses(List<Booking> bookings) {
+        Map<Long, PaymentSummary> payments = paymentService.summariseAll(bookings);
+        return bookings.stream()
+                .map(booking -> AdminBookingResponse.from(
+                        booking,
+                        clubClock,
+                        bookingService.cancellation(booking, true),
+                        payments.getOrDefault(booking.getId(), PaymentSummary.NONE)))
+                .toList();
     }
 }

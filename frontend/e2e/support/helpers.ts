@@ -93,6 +93,8 @@ const BOOKING_DATE_SPECS = [
   'cardPayment',
   /** stripe-checkout.spec.ts, declined card — deliberately keeps its hold. */
   'cardDeclined',
+  /** counter-payment.spec.ts — takes telephone bookings, which are CONFIRMED immediately. */
+  'counterPayment',
 ] as const;
 
 /** This spec's own booking day: the nth open day from now, skipping Sundays. */

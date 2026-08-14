@@ -8,6 +8,8 @@ import uk.co.club.booking.domain.booking.Booking;
 import uk.co.club.booking.domain.booking.BookingSource;
 import uk.co.club.booking.domain.booking.BookingStatus;
 import uk.co.club.booking.domain.booking.CancellationPolicy;
+import uk.co.club.booking.domain.payment.PaymentStatus;
+import uk.co.club.booking.domain.payment.PaymentSummary;
 
 /**
  * A booking as staff need it.
@@ -19,6 +21,12 @@ import uk.co.club.booking.domain.booking.CancellationPolicy;
  *
  * <p>Still no internal id — staff work from the reference too, and it keeps enumeration off the
  * table for a compromised admin session as much as for anyone else.
+ *
+ * @param paymentStatus null when the booking has no payment row at all — an online hold not yet
+ *     handed to Stripe, or anything created before payments existed. Distinct from a zero
+ *     outstanding amount, which means settled.
+ * @param amountOutstandingPence what the club is still owed; zero once settled
+ * @param payableAtCounter true when staff must take money as the customer walks in
  */
 public record AdminBookingResponse(
         String reference,
@@ -42,10 +50,16 @@ public record AdminBookingResponse(
         String cancellationBlockedReason,
         Instant cancelledAt,
         String cancellationReason,
-        Instant createdAt) {
+        Instant createdAt,
+        PaymentStatus paymentStatus,
+        int amountOutstandingPence,
+        boolean payableAtCounter) {
 
     public static AdminBookingResponse from(
-            Booking booking, ClubClock clock, CancellationPolicy.Decision cancellation) {
+            Booking booking,
+            ClubClock clock,
+            CancellationPolicy.Decision cancellation,
+            PaymentSummary payment) {
         return new AdminBookingResponse(
                 booking.getReference(),
                 booking.getSnookerTable().getId(),
@@ -68,6 +82,9 @@ public record AdminBookingResponse(
                 cancellation.message(),
                 booking.getCancelledAt(),
                 booking.getCancellationReason(),
-                booking.getCreatedAt());
+                booking.getCreatedAt(),
+                payment.status(),
+                payment.outstandingPence(),
+                payment.dueAtCounter());
     }
 }

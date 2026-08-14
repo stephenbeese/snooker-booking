@@ -64,7 +64,7 @@ class TelephoneBookingIT extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("creates a confirmed booking for a brand new customer, with no payment")
+    @DisplayName("creates a confirmed booking for a brand new customer, payable at the counter")
     void createsForNewCustomer() {
         ResponseEntity<Map> response = admin.post(
                 "/api/admin/bookings/telephone", request("newcaller@test.local", 14, 0, 60), Map.class);
@@ -84,6 +84,16 @@ class TelephoneBookingIT extends AbstractIntegrationTest {
         assertThat(gateway.created())
                 .as("a telephone booking must never start a Stripe checkout")
                 .isEmpty();
+
+        // Confirmed but unpaid, and the response says so. Before this existed, "confirmed and
+        // paid" and "confirmed and owing £12" looked identical to whoever was on the counter.
+        assertThat(body.get("paymentStatus")).isEqualTo("REQUIRES_PAYMENT");
+        assertThat(body.get("amountOutstandingPence")).isEqualTo(1200);
+        assertThat(body.get("payableAtCounter")).isEqualTo(true);
+
+        // Recorded as taken at the counter, not through Stripe: the provider is what stops the
+        // hold sweeper and the checkout path treating this as an abandoned online payment.
+        assertThat(paymentProviderFor(String.valueOf(body.get("reference")))).isEqualTo("COUNTER");
 
         // The shell account exists so the customer finds the booking if they later sign up.
         assertThat(userCountFor("newcaller@test.local")).isEqualTo(1);
@@ -235,5 +245,16 @@ class TelephoneBookingIT extends AbstractIntegrationTest {
 
     private int bookingCount() {
         return jdbcTemplate.queryForObject("SELECT count(*) FROM booking", Integer.class);
+    }
+
+    private String paymentProviderFor(String reference) {
+        return jdbcTemplate.queryForObject(
+                """
+                SELECT p.provider FROM payment p
+                JOIN booking b ON b.id = p.booking_id
+                WHERE b.reference = ?
+                """,
+                String.class,
+                reference);
     }
 }

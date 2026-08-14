@@ -11,6 +11,7 @@ import type {
   BookingRules,
   ClubDetails,
   ClubTable,
+  CounterPaymentStatus,
   DayHours,
   MaintenanceBlock,
   MaintenanceBlockInput,
@@ -72,6 +73,22 @@ export function cancelBookingAsAdmin(
   return apiRequest<AdminBooking>(
     `/api/admin/bookings/${encodeURIComponent(reference)}/cancel`,
     { method: 'POST', body: JSON.stringify({ reason: reason ?? null }) },
+  );
+}
+
+/**
+ * Records money taken at the counter, or waives it.
+ *
+ * <p>No amount is sent: the club is owed what the booking costs, and a figure typed here could
+ * disagree with the booking it settles.
+ */
+export function recordCounterPayment(
+  reference: string,
+  status: CounterPaymentStatus,
+): Promise<AdminBooking> {
+  return apiRequest<AdminBooking>(
+    `/api/admin/bookings/${encodeURIComponent(reference)}/payment`,
+    { method: 'POST', body: JSON.stringify({ status }) },
   );
 }
 
