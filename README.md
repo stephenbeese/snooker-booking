@@ -240,9 +240,12 @@ the system's core invariant.
 > opening hours, booking rules — can be overwritten by a run.
 >
 > A fixture may delete rows **it created**, identified by a marker it set itself (see
-> `E2E_PREFIX` in `e2e/admin-pricing.spec.ts`). It must never delete rows merely because it
+> `E2E_PREFIX` in `e2e/admin-pricing.spec.ts`) or by a reference it captured (see
+> `releaseBookings` in `e2e/support/helpers.ts`). It must never delete rows merely because it
 > does not recognise them: an earlier version of that cleanup kept "the seeded rule" and
-> removed everything else, which wiped a real pricing rule a developer had configured.
+> removed everything else, which wiped a real pricing rule a developer had configured. For the
+> same reason the booking cleanup cancels the references it recorded, and never "every booking
+> on this date".
 
 Playwright starts both servers itself (see `frontend/playwright.config.ts`) and reuses them
 if they are already running. First run only:
@@ -254,11 +257,32 @@ cd frontend && yarn playwright install chromium
 Two projects: `chromium` for the desktop specs and `mobile` (Pixel 7) for `*.mobile.spec.ts`,
 which needs real touch emulation rather than a narrow desktop window.
 
-The specs run against the **dev** database and leave real bookings behind. That is deliberate
-— they exercise the same schema and settings a developer is looking at — but it means they
-change data. Settings are restored in an `afterEach`, and that restore is asserted rather than
+The specs run against the **dev** database and create real bookings. That is deliberate — they
+exercise the same schema and settings a developer is looking at — but it means they change
+data. Settings are restored in an `afterEach`, and that restore is asserted rather than
 fire-and-forget: a silent failure there once left the club closed on a Wednesday and every
 later spec failing for an unrelated reason.
+
+Bookings are cleaned up too, and the suite is designed to be re-runnable back to back:
+
+- Each spec that books gets **its own date**, allocated by `bookingDate()` in
+  `e2e/support/helpers.ts`. Specs that only read the grid share `openDay()`. Two specs sharing
+  a date both clicked the *first* free cell, so whichever ran second hit the other's live hold
+  and failed with "that time has just been taken" — a booking-flow bug that wasn't one.
+- Each spec releases what it created in an `afterEach`, via `releaseBookings()`. A successful
+  card payment leaves a **CONFIRMED** booking, which no sweeper ever expires: before this,
+  every green run permanently consumed another cell, 17 had piled up on one date, and the
+  suite was on its way to running that day out of slots entirely.
+
+So a booking left live after a run is a bug, not the expected state. To check:
+
+```bash
+docker exec snooker-postgres psql -U snooker -d snooker -c "select count(*) from booking where start_at > now() and status in ('PENDING_PAYMENT','CONFIRMED')"
+```
+
+Only `SNK-DEMO01` from the seed should ever appear there. Cancelled and expired rows accumulate
+harmlessly — the overlap constraint ignores both — so they are left alone rather than deleted,
+which keeps the history of what a run did.
 
 `stripe-checkout.spec.ts` types a real test card into Stripe's hosted page. For the webhook
 to reach a local backend, forward it and start the backend with the CLI's signing secret:

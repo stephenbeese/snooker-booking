@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { CUSTOMER, login, nextNonSunday } from './support/helpers';
+import { bookingDate, CUSTOMER, login, releaseBookings } from './support/helpers';
 
 /**
  * Fills Stripe's hosted card form.
@@ -12,19 +12,36 @@ import { CUSTOMER, login, nextNonSunday } from './support/helpers';
  * failing when someone enables a payment method in the Stripe dashboard.
  */
 /**
- * Any free cell in the grid, chosen at random.
+ * The first free cell in the grid.
  *
- * <p>These specs leave real holds behind — the decline test deliberately keeps its slot
- * reserved — so a spec that always picks the first available cell collides with its own
- * previous runs and fails with "that time has just been taken". That failure looks like a
- * bug in the booking flow and is not one.
+ * <p>Deterministic, unlike the random pick this replaced. That randomness existed because these
+ * specs left their bookings behind: taking the first cell every time meant colliding with the
+ * previous run's leftovers and failing with "that time has just been taken". Each spec now has
+ * its own date (see `bookingDate`) and releases what it created in `afterEach`, so the first
+ * cell is free again by the time the next run reaches it.
+ *
+ * <p>Worth removing the randomness rather than keeping it as belt-and-braces: a random slot
+ * means a failure that cannot be reproduced from the spec alone, and it would have quietly
+ * masked exactly the leak this cleanup fixes.
  */
-async function pickRandomFreeSlot(page: Page) {
+async function pickFreeSlot(page: Page) {
   const free = page.getByRole('button', { name: /— available$/ });
   await expect(free.first()).toBeVisible();
-  const count = await free.count();
-  expect(count, 'the grid must offer at least one free slot').toBeGreaterThan(0);
-  return free.nth(Math.floor(Math.random() * count));
+  return free.first();
+}
+
+/**
+ * The booking reference, read from Stripe's own page.
+ *
+ * <p>Stripe's "Back" link carries our cancel URL, which contains the reference — the only place
+ * it is visible while the customer is on Checkout. Needed both to assert on the booking and to
+ * release it afterwards.
+ */
+async function referenceFromCancelUrl(page: Page) {
+  const backHref = await page.getByRole('link', { name: /^Back to/ }).getAttribute('href');
+  const reference = backHref?.match(/SNK-[A-Z0-9]+/)?.[0];
+  expect(reference, 'the cancel URL should carry the booking reference').toBeTruthy();
+  return reference!;
 }
 
 async function payWithCard(page: Page, cardNumber: string) {
@@ -104,20 +121,37 @@ test.describe('Paying by card', () => {
   // the booking arrives asynchronously afterwards.
   test.slow();
 
+  /**
+   * References this spec created, released after each test.
+   *
+   * <p>This is the leak that mattered most. A successful card payment leaves a **CONFIRMED**
+   * booking, which — unlike a hold — never expires and is never swept. Every green run
+   * permanently consumed one more cell on its date, and 17 of them had accumulated on a single
+   * day before this cleanup existed. Eventually the date runs out of slots and the spec fails
+   * on a grid with nothing left to click.
+   */
+  const created: string[] = [];
+
+  test.afterEach(async ({ request }) => {
+    await releaseBookings(request, created.splice(0));
+  });
+
   test('a card payment confirms the booking', async ({ page }) => {
     await login(page, CUSTOMER);
     await page.goto('/book');
-    await page.getByLabel('Booking date').fill(nextNonSunday(5));
+    await page.getByLabel('Booking date').fill(bookingDate('cardPayment'));
 
-    // A random free cell, not the first. These specs create real PENDING_PAYMENT holds that
-    // are not cleaned up (a declined payment deliberately keeps its hold), so always taking
-    // the first slot means each run collides with the last one's leftovers and the booking
-    // is refused with "that time has just been taken".
-    const slot = await pickRandomFreeSlot(page);
+    const slot = await pickFreeSlot(page);
     await slot.click();
     await page.getByRole('button', { name: 'Book and pay' }).click();
 
     await page.waitForURL(/checkout\.stripe\.com/, { timeout: 30_000 });
+
+    // Registered before paying, not after. The hold already exists at this point, and every
+    // assertion below can throw — capturing the reference only on the confirmation page would
+    // leak the booking on exactly the runs that failed, which are the runs where a leftover
+    // CONFIRMED slot then makes the *next* run fail for an unrelated-looking reason.
+    created.push(await referenceFromCancelUrl(page));
 
     await payWithCard(page, '4242424242424242');
 
@@ -159,24 +193,17 @@ test.describe('Paying by card', () => {
     // failed payment would make the customer re-pick a slot that may be gone by then.
     await login(page, CUSTOMER);
     await page.goto('/book');
-    await page.getByLabel('Booking date').fill(nextNonSunday(6));
+    await page.getByLabel('Booking date').fill(bookingDate('cardDeclined'));
 
-    // A random free cell, not the first. These specs create real PENDING_PAYMENT holds that
-    // are not cleaned up (a declined payment deliberately keeps its hold), so always taking
-    // the first slot means each run collides with the last one's leftovers and the booking
-    // is refused with "that time has just been taken".
-    const slot = await pickRandomFreeSlot(page);
+    const slot = await pickFreeSlot(page);
     await slot.click();
     await page.getByRole('button', { name: 'Book and pay' }).click();
     await page.waitForURL(/checkout\.stripe\.com/, { timeout: 30_000 });
 
-    // Stripe's "Back" link carries our cancel URL, which contains the booking reference —
-    // the only place it is visible from this page.
-    const backHref = await page
-      .getByRole('link', { name: /^Back to/ })
-      .getAttribute('href');
-    const reference = backHref?.match(/SNK-[A-Z0-9]+/)?.[0];
-    expect(reference, 'the cancel URL should carry the booking reference').toBeTruthy();
+    const reference = await referenceFromCancelUrl(page);
+    // The hold this test deliberately keeps alive is released in afterEach. Keeping it for the
+    // duration of the test is the point; keeping it after the run just blocks the next one.
+    created.push(reference);
 
     await payWithCard(page, '4000000000000002');
 

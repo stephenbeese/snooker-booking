@@ -50,17 +50,89 @@ export function weekdayOf(isoDate: string): string {
 }
 
 /**
- * A day the club is open with a full schedule.
+ * A day the club is open with a full schedule, for specs that only read the grid.
  *
  * <p>Sunday is seeded 12:00–20:00 rather than 10:00–23:00, so a spec that assumes a
  * particular slot exists can fail on a Sunday for reasons unconnected to what it tests.
+ *
+ * <p>Use this only where nothing is booked. A spec that creates a booking must take its own
+ * day from {@link bookingDate} instead, or it contends with every other spec for the same
+ * first free cell.
  */
-export function nextNonSunday(startDays = 2): string {
+export function openDay(startDays = 2): string {
   for (let offset = startDays; offset < startDays + 7; offset++) {
     const iso = isoDaysFromNow(offset);
     if (weekdayOf(iso) !== 'Sunday') return iso;
   }
   throw new Error('No non-Sunday found in a 7-day window, which is impossible');
+}
+
+/**
+ * One booking date per spec that books, so no two specs can contend for the same cell.
+ *
+ * <p>Every spec used to call the shared `openDay()` and click the *first* available cell of the
+ * same shared day. A booking spec leaves a 15-minute PENDING_PAYMENT hold behind, so the next
+ * spec to reach for that cell was refused with "that time has just been taken" — a failure
+ * that reads as a bug in the booking flow and is not one. Which specs failed shifted from run
+ * to run depending on ordering and on what the hold sweeper had got to yet.
+ *
+ * <p>Ordered, not a table of offsets. Distinct offsets do NOT give distinct dates: whenever an
+ * offset lands on a Sunday, `openDay` skips forward onto its neighbour's day, so offsets
+ * 2 and 3 resolve to the same date on two weekdays in seven. That is a collision that appears
+ * only on certain days of the week — the worst kind to debug, and the reason the original
+ * failures shifted between runs. Allocating consecutive open days by position instead means
+ * the dates are distinct by construction on every start weekday.
+ *
+ * <p>Read-only specs are deliberately absent: they book nothing, so they can share any date
+ * and are better off on the nearest open day, where the seed guarantees grid data.
+ */
+const BOOKING_DATE_SPECS = [
+  /** booking-happy-path.spec.ts — reaches the Stripe redirect, leaving a hold. */
+  'happyPath',
+  /** stripe-checkout.spec.ts, successful payment — leaves a CONFIRMED booking behind. */
+  'cardPayment',
+  /** stripe-checkout.spec.ts, declined card — deliberately keeps its hold. */
+  'cardDeclined',
+] as const;
+
+/** This spec's own booking day: the nth open day from now, skipping Sundays. */
+export function bookingDate(spec: (typeof BOOKING_DATE_SPECS)[number]): string {
+  const wanted = BOOKING_DATE_SPECS.indexOf(spec);
+  let found = -1;
+  // Two weeks is ample headroom for the dates above plus the Sundays between them, and stays
+  // well inside the 30-day advance window a customer booking is allowed.
+  for (let offset = 2; offset < 2 + 14; offset++) {
+    const iso = isoDaysFromNow(offset);
+    if (weekdayOf(iso) === 'Sunday') continue;
+    if (++found === wanted) return iso;
+  }
+  throw new Error(`No open day found for spec date "${spec}"`);
+}
+
+/**
+ * Cancels the bookings a spec created, by the references it captured.
+ *
+ * <p>These specs run against a real developer database, so this takes explicit references
+ * rather than a date: "release every booking on this day" would delete a developer's own
+ * test data the moment a spec date happened to land on it. A fixture may remove what it
+ * created; it may not remove what it merely fails to recognise — the same contract
+ * `admin-pricing.spec.ts` keeps for pricing rules.
+ *
+ * <p>Cancel, not delete: cancelling is the club's own release path, it puts the slot back on
+ * sale through the code the product uses, and there is no delete endpoint to abuse instead.
+ *
+ * <p>Best-effort per reference. A booking that has already lapsed to EXPIRED, or that a
+ * previous teardown already cancelled, answers 4xx — and that is the desired state anyway, so
+ * failing the run over it would turn a clean database into a red suite.
+ */
+export async function releaseBookings(request: APIRequestContext, references: string[]) {
+  if (references.length === 0) return;
+  await apiLogin(request, ADMIN);
+  for (const reference of references) {
+    await apiWrite(request, 'post', `/api/admin/bookings/${reference}/cancel`, {
+      reason: 'e2e teardown',
+    });
+  }
 }
 
 /**

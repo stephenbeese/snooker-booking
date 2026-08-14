@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { ADMIN, apiLogin, apiWrite, login, nextNonSunday } from './support/helpers';
+import { ADMIN, apiLogin, apiWrite, login, openDay } from './support/helpers';
 
 /**
  * Editing a pricing rate, and the customer seeing the new price.
@@ -103,7 +103,7 @@ test.describe('Pricing rules', () => {
     // and came back as the quoted price rather than £17.05 or £1750.
     const customerPage = await context.browser()!.newPage();
     await customerPage.goto('/book');
-    await customerPage.getByLabel('Booking date').fill(nextNonSunday());
+    await customerPage.getByLabel('Booking date').fill(openDay());
     await expect(customerPage.getByText('£17.50/hr').first()).toBeVisible();
 
     await customerPage.close();
@@ -146,7 +146,7 @@ test.describe('Pricing rules', () => {
     // Higher priority and matches everything, so it now sets the price for every slot.
     const customerPage = await context.browser()!.newPage();
     await customerPage.goto('/book');
-    await customerPage.getByLabel('Booking date').fill(nextNonSunday());
+    await customerPage.getByLabel('Booking date').fill(openDay());
     await expect(customerPage.getByText('£25.00/hr').first()).toBeVisible();
 
     await customerPage.close();
