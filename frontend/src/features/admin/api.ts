@@ -11,6 +11,8 @@ import type {
   AdminTableType,
   AdminUser,
   AdminUserFilters,
+  CafeItem,
+  CafeItemInput,
   CreateUserInput,
   BookingRules,
   ClubDetails,
@@ -358,5 +360,33 @@ export function resetUserPassword(id: number, password: string): Promise<void> {
   return apiRequest<void>(`/api/admin/users/${id}/password`, {
     method: 'PUT',
     body: JSON.stringify({ password }),
+  });
+}
+
+// -------------------------------------------------------------- cafe / bar
+
+/** Every menu item including withdrawn ones. ADMIN-only, like the pricing rules. */
+export function fetchCafeItems(): Promise<CafeItem[]> {
+  return apiRequest<CafeItem[]>('/api/admin/cafe/items');
+}
+
+export function createCafeItem(input: CafeItemInput): Promise<CafeItem> {
+  return apiRequest<CafeItem>('/api/admin/cafe/items', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateCafeItem(id: number, input: CafeItemInput): Promise<CafeItem> {
+  return apiRequest<CafeItem>(`/api/admin/cafe/items/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+/** Separate from updateCafeItem so withdrawing something is never incidental to an edit. */
+export function setCafeItemActive(id: number, active: boolean): Promise<CafeItem> {
+  return apiRequest<CafeItem>(`/api/admin/cafe/items/${id}/active?active=${active}`, {
+    method: 'PUT',
   });
 }

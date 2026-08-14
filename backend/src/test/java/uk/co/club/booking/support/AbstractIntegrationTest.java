@@ -62,7 +62,7 @@ public abstract class AbstractIntegrationTest {
                 """
                 TRUNCATE TABLE payment_exception, payment, booking, maintenance_block,
                                password_reset_token, snooker_table, app_user,
-                               opening_hours_override
+                               opening_hours_override, cafe_item
                 RESTART IDENTITY CASCADE
                 """);
 

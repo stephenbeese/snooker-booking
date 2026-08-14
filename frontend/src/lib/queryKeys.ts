@@ -53,4 +53,8 @@ export const queryKeys = {
   adminOpeningHoursOverrides: () => ['admin', 'settings', 'opening-hours', 'overrides'] as const,
   // Every type including withdrawn ones, which only an admin may see — see tableTypes above.
   adminTableTypes: () => ['admin', 'table-types'] as const,
+  // The cafe menu. Under the 'admin' prefix like everything else here, but deliberately not
+  // invalidated by useInvalidateClubStructure: a price change moves nothing on the availability
+  // grid, and sweeping it into that group would refetch the menu every time a table is renamed.
+  adminCafeItems: () => ['admin', 'cafe', 'items'] as const,
 } as const;

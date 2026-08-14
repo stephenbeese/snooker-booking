@@ -172,6 +172,21 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
                     Map.of("label", "Snooker")),
             new Endpoint(
                     HttpMethod.PUT, "/api/admin/table-types/SNOOKER/active?active=true", null),
+            // Phase 9. The cafe menu sets prices, so it is configuration rather than the day
+            // job — whoever is on the counter reads the menu, they do not decide what a pint
+            // costs. Same segment trap as table-types: "/api/admin/cafe" is not covered by any
+            // other matcher, so without its own entry in SecurityConfig it would fall through
+            // to the STAFF tier and these rows are what would catch it.
+            new Endpoint(HttpMethod.GET, "/api/admin/cafe/items", null),
+            new Endpoint(
+                    HttpMethod.POST,
+                    "/api/admin/cafe/items",
+                    Map.of("name", "Boundary Coffee", "pricePence", 250)),
+            new Endpoint(
+                    HttpMethod.PUT,
+                    "/api/admin/cafe/items/1",
+                    Map.of("name", "Boundary Coffee", "pricePence", 250)),
+            new Endpoint(HttpMethod.PUT, "/api/admin/cafe/items/1/active?active=false", null),
             new Endpoint(HttpMethod.GET, "/api/admin/users", null),
             new Endpoint(HttpMethod.GET, "/api/admin/users/1", null),
             new Endpoint(

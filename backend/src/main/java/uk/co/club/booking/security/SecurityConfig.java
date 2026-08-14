@@ -162,6 +162,11 @@ public class SecurityConfig {
                                 // hand this to STAFF.
                                 "/api/admin/table-types",
                                 "/api/admin/table-types/**",
+                                // The cafe menu sets prices, which is club configuration in the
+                                // same sense as pricing rules: whoever is on the counter reads
+                                // the menu, they do not decide what a pint costs.
+                                "/api/admin/cafe",
+                                "/api/admin/cafe/**",
                                 "/api/admin/users",
                                 "/api/admin/users/**")
                         .hasRole("ADMIN")

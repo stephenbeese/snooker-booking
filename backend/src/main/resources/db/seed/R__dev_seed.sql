@@ -93,3 +93,15 @@ CROSS JOIN app_user u
 WHERE t.name = 'Table 2'
   AND u.email = 'customer@snookerclub.test'
 ON CONFLICT (reference) DO NOTHING;
+
+-- ---------------------------------------------------------------- cafe / bar
+-- A short menu so the cafe screen is not empty on first run, including one withdrawn item
+-- so the "taken off the menu" state is visible without an admin having to create it.
+-- Prices are integer pence, as everywhere else.
+INSERT INTO cafe_item (name, description, price_pence, display_order, active) VALUES
+    ('Flat white',   'Local roast, oat milk on request',  275, 0, TRUE),
+    ('Tea',          NULL,                                180, 1, TRUE),
+    ('Lager (pint)', NULL,                                480, 2, TRUE),
+    ('Cheese toastie', 'Served with salad',               450, 3, TRUE),
+    ('Bacon roll',   'Weekends only',                     395, 4, FALSE)
+ON CONFLICT (name) DO NOTHING;

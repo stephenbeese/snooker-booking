@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router';
 import { AdminBookingDetailPage } from '@/features/admin/AdminBookingDetailPage';
 import { AdminBookingsPage } from '@/features/admin/AdminBookingsPage';
+import { AdminCafePage } from '@/features/admin/AdminCafePage';
 import { AdminCustomerDetailPage } from '@/features/admin/AdminCustomerDetailPage';
 import { AdminCustomersPage } from '@/features/admin/AdminCustomersPage';
 import { AdminDiaryPage } from '@/features/admin/AdminDiaryPage';
@@ -102,6 +103,14 @@ export const router = createBrowserRouter([
             element: (
               <RequireAdmin>
                 <AdminTablesPage />
+              </RequireAdmin>
+            ),
+          },
+          {
+            path: 'cafe',
+            element: (
+              <RequireAdmin>
+                <AdminCafePage />
               </RequireAdmin>
             ),
           },

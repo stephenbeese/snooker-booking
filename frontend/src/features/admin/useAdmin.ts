@@ -2,8 +2,12 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { queryKeys } from '@/lib/queryKeys';
 import type { Role } from '@/features/auth/types';
 import {
+  createCafeItem,
   createTableType,
   deleteOpeningHoursOverride,
+  fetchCafeItems,
+  setCafeItemActive,
+  updateCafeItem,
   fetchAdminTableTypes,
   fetchOpeningHoursOverrides,
   reorderTables,
@@ -46,6 +50,7 @@ import type {
   AdminBookingFilters,
   AdminCustomerFilters,
   AdminUserFilters,
+  CafeItemInput,
   CounterPaymentStatus,
   CreateUserInput,
   PricingRuleInput,
@@ -446,5 +451,42 @@ export function useSetUserActive() {
 export function useResetUserPassword() {
   return useUserMutation(({ id, password }: { id: number; password: string }) =>
     resetUserPassword(id, password),
+  );
+}
+
+// -------------------------------------------------------------- cafe / bar
+
+export function useCafeItems() {
+  return useQuery({ queryKey: queryKeys.adminCafeItems(), queryFn: fetchCafeItems });
+}
+
+/**
+ * Every menu mutation invalidates the menu, and nothing else.
+ *
+ * <p>Deliberately not `useInvalidateClubStructure`: the cafe changes nothing about what tables
+ * exist or what is bookable, so sweeping it into that group would refetch availability every
+ * time a price moved — and refetch the menu every time a table was renamed.
+ */
+function useCafeMutation<TArgs, TResult>(mutationFn: (args: TArgs) => Promise<TResult>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.adminCafeItems() }),
+  });
+}
+
+export function useCreateCafeItem() {
+  return useCafeMutation((input: CafeItemInput) => createCafeItem(input));
+}
+
+export function useUpdateCafeItem() {
+  return useCafeMutation(({ id, input }: { id: number; input: CafeItemInput }) =>
+    updateCafeItem(id, input),
+  );
+}
+
+export function useSetCafeItemActive() {
+  return useCafeMutation(({ id, active }: { id: number; active: boolean }) =>
+    setCafeItemActive(id, active),
   );
 }
