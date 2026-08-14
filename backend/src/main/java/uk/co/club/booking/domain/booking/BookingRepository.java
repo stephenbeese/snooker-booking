@@ -221,6 +221,20 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     List<Booking> findStartingBetween(
             @Param("windowStart") Instant windowStart, @Param("windowEnd") Instant windowEnd);
 
+    /**
+     * How many bookings each of these customers has, for the customer directory.
+     *
+     * <p>One query for a whole page rather than a count per row. Customers with no bookings are
+     * simply absent from the result — there is nothing to group — so the caller treats a missing
+     * id as zero rather than expecting a row of zero.
+     */
+    @Query("""
+            SELECT b.userId, COUNT(b) FROM Booking b
+            WHERE b.userId IN :userIds
+            GROUP BY b.userId
+            """)
+    List<Object[]> countByUserIds(@Param("userIds") Collection<Long> userIds);
+
     /** How many bookings hold each status in a window. Counted in the database, not in Java. */
     @Query("""
             SELECT b.status, COUNT(b) FROM Booking b

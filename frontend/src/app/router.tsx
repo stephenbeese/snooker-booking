@@ -1,7 +1,10 @@
 import { createBrowserRouter } from 'react-router';
 import { AdminBookingDetailPage } from '@/features/admin/AdminBookingDetailPage';
 import { AdminBookingsPage } from '@/features/admin/AdminBookingsPage';
+import { AdminCustomerDetailPage } from '@/features/admin/AdminCustomerDetailPage';
+import { AdminCustomersPage } from '@/features/admin/AdminCustomersPage';
 import { AdminDashboardPage } from '@/features/admin/AdminDashboardPage';
+import { AdminLayout } from '@/features/admin/AdminLayout';
 import { AdminMaintenancePage } from '@/features/admin/AdminMaintenancePage';
 import { AdminSettingsPage } from '@/features/admin/AdminSettingsPage';
 import { AdminUsersPage } from '@/features/admin/AdminUsersPage';
@@ -62,77 +65,63 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
       },
-      // Staff area, in two tiers that mirror SecurityConfig exactly: RequireStaff for the day
-      // job, RequireAdmin for the club's configuration and its accounts. Either only decides
-      // what renders — the server decides what is allowed, and every /api/admin/** endpoint is
-      // role-gated independently of anything here.
+      // Staff area, in two tiers that mirror SecurityConfig exactly: RequireStaff on the layout
+      // for the day job, RequireAdmin on the individual children that configure the club or its
+      // accounts. Either only decides what renders — the server decides what is allowed, and
+      // every /api/admin/** endpoint is role-gated independently of anything here.
+      //
+      // Nested so that AdminLayout's nav renders once around every staff screen. RequireStaff
+      // sits on the parent rather than on each child: a new admin route added below inherits
+      // the guard instead of needing to remember it, and the one that forgot would be an
+      // unguarded screen rather than merely an unnavigable one.
       {
         path: '/admin',
         element: (
           <RequireStaff>
-            <AdminDashboardPage />
+            <AdminLayout />
           </RequireStaff>
         ),
-      },
-      {
-        path: '/admin/bookings',
-        element: (
-          <RequireStaff>
-            <AdminBookingsPage />
-          </RequireStaff>
-        ),
-      },
-      {
-        // Before the /:reference route: "telephone" would otherwise be captured as a booking
-        // reference and send staff to a 404 for a booking that was never meant to exist.
-        path: '/admin/bookings/telephone',
-        element: (
-          <RequireStaff>
-            <AdminTelephoneBookingPage />
-          </RequireStaff>
-        ),
-      },
-      {
-        path: '/admin/bookings/:reference',
-        element: (
-          <RequireStaff>
-            <AdminBookingDetailPage />
-          </RequireStaff>
-        ),
-      },
-      {
-        path: '/admin/tables',
-        element: (
-          <RequireAdmin>
-            <AdminTablesPage />
-          </RequireAdmin>
-        ),
-      },
-      {
-        path: '/admin/maintenance',
-        element: (
-          <RequireStaff>
-            <AdminMaintenancePage />
-          </RequireStaff>
-        ),
-      },
-      {
-        path: '/admin/settings',
-        element: (
-          <RequireAdmin>
-            <AdminSettingsPage />
-          </RequireAdmin>
-        ),
-      },
-      {
-        // Admin-only, and the most consequential of the lot: whoever reaches this can grant
-        // themselves and anyone else the run of the club.
-        path: '/admin/users',
-        element: (
-          <RequireAdmin>
-            <AdminUsersPage />
-          </RequireAdmin>
-        ),
+        children: [
+          { index: true, element: <AdminDashboardPage /> },
+          { path: 'bookings', element: <AdminBookingsPage /> },
+          {
+            // Before the /:reference route: "telephone" would otherwise be captured as a
+            // booking reference and send staff to a 404 for a booking that was never meant to
+            // exist.
+            path: 'bookings/telephone',
+            element: <AdminTelephoneBookingPage />,
+          },
+          { path: 'bookings/:reference', element: <AdminBookingDetailPage /> },
+          { path: 'customers', element: <AdminCustomersPage /> },
+          { path: 'customers/:id', element: <AdminCustomerDetailPage /> },
+          { path: 'maintenance', element: <AdminMaintenancePage /> },
+          {
+            path: 'tables',
+            element: (
+              <RequireAdmin>
+                <AdminTablesPage />
+              </RequireAdmin>
+            ),
+          },
+          {
+            path: 'settings',
+            element: (
+              <RequireAdmin>
+                <AdminSettingsPage />
+              </RequireAdmin>
+            ),
+          },
+          {
+            // Admin-only, and the most consequential of the lot: whoever reaches this can grant
+            // themselves and anyone else the run of the club.
+            path: 'users',
+            element: (
+              <RequireAdmin>
+                <AdminUsersPage />
+              </RequireAdmin>
+            ),
+          },
+        ],
       },
       {
         path: '/status',

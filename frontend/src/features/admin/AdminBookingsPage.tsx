@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import type { BookingStatus } from '@/features/booking/types';
-import { formatSlotTime } from '@/lib/datetime';
+import { formatSlotTime, todayIso } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
+import { useDebounced } from '@/lib/useDebounced';
 import { PaymentBadge } from './components/PaymentBadge';
 import { StatusBadge, STATUS_LABEL } from './components/StatusBadge';
 import { useAdminBookings, useTables } from './useAdmin';
@@ -33,10 +34,30 @@ export function AdminBookingsPage() {
   const filters = filtersFromParams(searchParams);
   const { data, isPending, isError, error, isPlaceholderData } = useAdminBookings(filters);
 
-  // The text box is local so typing does not fire a request per keystroke; it is pushed into
-  // the URL on submit. Seeded from the URL so a shared link shows its own search term.
+  // The text box is local, then debounced into the URL — every other filter on this form
+  // applies as you change it, and the search box used to be the one that demanded a button.
+  // Local state keeps typing responsive; the debounce keeps it to one request per pause.
   const [searchInput, setSearchInput] = useState(filters.search ?? '');
-  useEffect(() => setSearchInput(filters.search ?? ''), [filters.search]);
+  const debouncedSearch = useDebounced(searchInput.trim());
+
+  // Push the settled term into the URL, where every other filter already lives, so a searched
+  // list is still a shareable link. Guarded on it having actually changed: without that, the
+  // effect writes the same value back on every render and the browser history fills up.
+  useEffect(() => {
+    if (debouncedSearch !== (filters.search ?? '')) {
+      update({ search: debouncedSearch || null });
+    }
+    // `update` is redefined each render, and `filters` with it. Depending on either would
+    // re-run this every render regardless of whether the term moved.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
+
+  // A term arriving from the URL — the back button, or a link a colleague sent — must reach the
+  // box. Only when the two genuinely differ, or this fights the line above for control of it.
+  useEffect(() => {
+    const fromUrl = filters.search ?? '';
+    setSearchInput((current) => (current.trim() === fromUrl ? current : fromUrl));
+  }, [filters.search]);
 
   function update(changes: Record<string, string | null>) {
     const next = new URLSearchParams(searchParams);
@@ -74,22 +95,16 @@ export function AdminBookingsPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-3xl font-semibold tracking-tight text-felt-900">Bookings</h1>
-        <Link
-          to="/admin"
-          className="text-sm font-medium text-felt-700 underline underline-offset-2 hover:text-felt-900"
-        >
-          Back to dashboard
-        </Link>
-      </div>
+      {/* No "back to dashboard" link: AdminLayout's nav is on every staff screen now, so a
+          second way back would be one more thing to keep in step with it. */}
+      <h1 className="text-3xl font-semibold tracking-tight text-felt-900">Bookings</h1>
 
+      {/* Still a form, so Enter behaves and the fieldset below groups properly — but submitting
+          has nothing left to do now that every control applies on change. Preventing the default
+          stops Enter reloading the page and losing the filters. */}
       <form
         className="mt-8 rounded-card border border-ink-200 bg-white p-5 shadow-card"
-        onSubmit={(event) => {
-          event.preventDefault();
-          update({ search: searchInput.trim() || null });
-        }}
+        onSubmit={(event) => event.preventDefault()}
       >
         <div className="flex flex-wrap items-end gap-4">
           <div className="min-w-[16rem] flex-1">
@@ -155,11 +170,15 @@ export function AdminBookingsPage() {
             </select>
           </div>
 
+          {/* Sets both ends of the range, not just `from`. A one-sided "today onwards" is a
+              different question from "what is happening today", and the latter is what someone
+              clicking a button called Today is asking. */}
           <button
-            type="submit"
+            type="button"
+            onClick={() => update({ from: todayIso(), to: todayIso() })}
             className="rounded-lg bg-felt-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-felt-800"
           >
-            Search
+            Today
           </button>
         </div>
 
