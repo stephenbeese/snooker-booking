@@ -1,7 +1,10 @@
 package uk.co.club.booking.support;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -17,7 +20,8 @@ import uk.co.club.booking.domain.payment.CheckoutGateway;
  * code in the system.
  *
  * <p>Records what it was asked to do so tests can assert on it, notably that a session is
- * expired when a hold is swept.
+ * expired when a hold is swept, and that a second payable session is never created for a
+ * booking that has already been paid.
  */
 public class StubCheckoutGateway implements CheckoutGateway {
 
@@ -26,8 +30,20 @@ public class StubCheckoutGateway implements CheckoutGateway {
     private final List<String> expired = new ArrayList<>();
     private final List<String> idempotencyKeys = new ArrayList<>();
 
+    /**
+     * What each session looks like when asked about, keyed by session id.
+     *
+     * <p>Modelled rather than assumed, because the double-charge guard turns entirely on this
+     * answer: a stub that always reported "open and unpaid" would let a second session be
+     * created and the test would pass against the very bug it exists to catch.
+     */
+    private final Map<String, SessionState> sessions = new HashMap<>();
+
     /** When set, createSession throws instead — for testing the provider-failure path. */
     private volatile RuntimeException failure;
+
+    /** When true, fetchSession reports "cannot tell" — an unreachable Stripe. */
+    private volatile boolean fetchUnavailable;
 
     @Override
     public synchronized CheckoutSession createSession(
@@ -38,13 +54,64 @@ public class StubCheckoutGateway implements CheckoutGateway {
         created.add(request);
         idempotencyKeys.add(idempotencyKey);
         int n = counter.incrementAndGet();
-        return new CheckoutSession(
-                "cs_test_" + n, "https://checkout.stripe.test/pay/cs_test_" + n, "pi_test_" + n);
+        String sessionId = "cs_test_" + n;
+        String url = "https://checkout.stripe.test/pay/" + sessionId;
+        // A newly created session is open and unpaid, exactly as at Stripe.
+        sessions.put(sessionId, new SessionState(sessionId, false, true, url, "pi_test_" + n));
+        return new CheckoutSession(sessionId, url, "pi_test_" + n);
     }
 
     @Override
     public synchronized void expireSession(String sessionId) {
         expired.add(sessionId);
+        sessions.computeIfPresent(
+                sessionId,
+                (id, state) -> new SessionState(
+                        id, state.paid(), false, state.url(), state.paymentIntentId()));
+    }
+
+    @Override
+    public synchronized Optional<SessionState> fetchSession(String sessionId) {
+        if (fetchUnavailable) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(sessions.get(sessionId));
+    }
+
+    /**
+     * Marks a session paid at the provider without telling the application.
+     *
+     * <p>This is the situation the double-charge guard exists for: the money is taken but the
+     * confirming webhook never arrives, so the booking still reads as awaiting payment.
+     */
+    public synchronized void markPaidAtProviderOnly(String sessionId) {
+        sessions.put(sessionId, withState(sessionId, true, false));
+    }
+
+    /**
+     * Lapses a session at the provider, as Stripe does after its own timeout.
+     *
+     * <p>Deliberately does not record an expiry call, unlike {@link #expireSession}. A test that
+     * arranges "this session is dead" through the recording method cannot then assert that the
+     * application expired it — its own setup already put the id in the list, so the assertion
+     * holds whether or not the production code did anything. The first version of that test was
+     * written the wrong way round and survived deleting the code it was meant to protect.
+     */
+    public synchronized void lapseSession(String sessionId) {
+        sessions.put(sessionId, withState(sessionId, false, false));
+    }
+
+    private SessionState withState(String sessionId, boolean paid, boolean open) {
+        SessionState state = sessions.get(sessionId);
+        if (state == null) {
+            throw new IllegalArgumentException("No such stub session: " + sessionId);
+        }
+        return new SessionState(sessionId, paid, open, state.url(), state.paymentIntentId());
+    }
+
+    /** Makes fetchSession report that the provider could not be reached. */
+    public void makeFetchUnavailable() {
+        this.fetchUnavailable = true;
     }
 
     public synchronized List<CheckoutRequest> created() {
@@ -67,7 +134,11 @@ public class StubCheckoutGateway implements CheckoutGateway {
         created.clear();
         expired.clear();
         idempotencyKeys.clear();
+        // Both of these too: a session left paid, or a fetch left unavailable, would leak into
+        // the next test as a booking that mysteriously refuses to start a checkout.
+        sessions.clear();
         failure = null;
+        fetchUnavailable = false;
     }
 
     /**

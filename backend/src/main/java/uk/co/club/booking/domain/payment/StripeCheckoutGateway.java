@@ -5,6 +5,7 @@ import com.stripe.exception.StripeException;
 import com.stripe.model.checkout.Session;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.checkout.SessionCreateParams;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -81,6 +82,30 @@ public class StripeCheckoutGateway implements CheckoutGateway {
                     ErrorCode.PAYMENT_PROVIDER_ERROR,
                     "We could not start the payment. Your slot is held for a few more minutes — "
                             + "please try again.");
+        }
+    }
+
+    @Override
+    public Optional<CheckoutGateway.SessionState> fetchSession(String sessionId) {
+        try {
+            Session session = stripe.checkout().sessions().retrieve(sessionId);
+            return Optional.of(new CheckoutGateway.SessionState(
+                    session.getId(),
+                    // "paid" is Stripe's own word for the money having been taken. Deliberately
+                    // not derived from status == "complete": a session completed with a zero
+                    // total or an async method that later fails is complete but not paid.
+                    "paid".equals(session.getPaymentStatus()),
+                    // Only an open session can still be paid, so only an open one is worth
+                    // handing back to the customer instead of creating another.
+                    "open".equals(session.getStatus()),
+                    session.getUrl(),
+                    session.getPaymentIntent()));
+        } catch (StripeException ex) {
+            // Empty means "could not find out", never "not paid". The caller must not treat an
+            // unreachable Stripe as licence to start a second checkout — that is precisely how
+            // a customer gets charged twice.
+            log.warn("Could not retrieve Stripe session {}: {}", sessionId, ex.getMessage());
+            return Optional.empty();
         }
     }
 

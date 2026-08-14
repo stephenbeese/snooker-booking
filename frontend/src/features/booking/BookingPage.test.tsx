@@ -1,4 +1,5 @@
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeBooking as aBooking } from '@/test/factories';
 import { renderWithRouter } from '@/test/renderWithProviders';
@@ -60,6 +61,82 @@ describe('BookingPage', () => {
 
     expect(await screen.findByText('Payment needed')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /pay now/i })).toBeInTheDocument();
+  });
+
+  it('shows the booking as paid when Pay now finds it was already paid for', async () => {
+    // The recovery path for a missed webhook. The server checks with Stripe, finds the money
+    // was taken, confirms the booking and refuses the checkout with PAYMENT_NOT_REQUIRED.
+    // That refusal is good news, so it must read as a confirmed booking rather than an error.
+    let confirmed = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if ((init?.method ?? 'GET').toUpperCase() === 'POST' && url.includes('/checkout')) {
+          // The server confirms the booking as a side effect of this refusal.
+          confirmed = true;
+          return new Response(
+            JSON.stringify({
+              code: 'PAYMENT_NOT_REQUIRED',
+              message: 'This booking has already been paid for.',
+            }),
+            { status: 422, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response(
+          JSON.stringify(
+            aBooking({ status: confirmed ? 'CONFIRMED' : 'PENDING_PAYMENT' }),
+          ),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithRouter(<BookingPage />, {
+      route: '/bookings/SNK-ABC123',
+      path: '/bookings/:reference',
+    });
+
+    await user.click(await screen.findByRole('button', { name: /pay now/i }));
+
+    expect(await screen.findByText('Booking confirmed')).toBeInTheDocument();
+  });
+
+  it('says so when the payment page could not be opened', async () => {
+    // Refusing is right when the server cannot check the previous attempt with Stripe, but
+    // refusing invisibly leaves a button that does nothing when clicked.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if ((init?.method ?? 'GET').toUpperCase() === 'POST' && url.includes('/checkout')) {
+          return new Response(
+            JSON.stringify({
+              code: 'PAYMENT_PROVIDER_ERROR',
+              message: 'We could not check your previous payment.',
+            }),
+            { status: 502, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response(JSON.stringify(aBooking({ status: 'PENDING_PAYMENT' })), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithRouter(<BookingPage />, {
+      route: '/bookings/SNK-ABC123',
+      path: '/bookings/:reference',
+    });
+
+    await user.click(await screen.findByRole('button', { name: /pay now/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'could not check your previous payment',
+    );
   });
 
   it('explains an expired booking and offers to rebook', async () => {

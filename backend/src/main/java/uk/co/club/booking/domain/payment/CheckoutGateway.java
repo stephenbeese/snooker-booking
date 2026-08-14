@@ -1,5 +1,7 @@
 package uk.co.club.booking.domain.payment;
 
+import java.util.Optional;
+
 /**
  * The payment provider, behind an interface.
  *
@@ -30,6 +32,29 @@ public interface CheckoutGateway {
      * <p>Best-effort: the session may already be complete or expired, which is not an error.
      */
     void expireSession(String sessionId);
+
+    /**
+     * Asks the provider what actually became of a session.
+     *
+     * <p>Exists because the webhook is not guaranteed to arrive. Without a way to ask, a
+     * payment that succeeded at Stripe but whose {@code checkout.session.completed} was
+     * delayed, dropped or never forwarded leaves the booking looking unpaid — and the customer
+     * is then offered a second checkout for money they have already handed over.
+     *
+     * @return empty when the session cannot be read, which is treated as "unknown" rather than
+     *     as "unpaid": guessing unpaid is what takes the money twice.
+     */
+    Optional<SessionState> fetchSession(String sessionId);
+
+    /**
+     * A session as the provider currently sees it.
+     *
+     * @param paid whether the money has actually been taken
+     * @param open whether the customer could still pay this session, so it can be reused
+     *     instead of a second payable session being created alongside it
+     */
+    record SessionState(
+            String sessionId, boolean paid, boolean open, String url, String paymentIntentId) {}
 
     /** What the club needs Stripe to collect. */
     record CheckoutRequest(

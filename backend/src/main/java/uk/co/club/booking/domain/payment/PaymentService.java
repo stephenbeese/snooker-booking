@@ -99,6 +99,16 @@ public class PaymentService {
                     ErrorCode.PAYMENT_NOT_REQUIRED, "This booking is not awaiting payment.");
         }
 
+        // Before creating anything payable, settle what the previous attempt actually did.
+        // The booking status above is not enough on its own: it still reads PENDING_PAYMENT
+        // for a payment that succeeded at Stripe whose webhook was delayed, dropped, or —
+        // in development — never forwarded at all. Skipping this check is what charges a
+        // customer twice for one slot.
+        Optional<String> existing = reuseOrSettleExistingAttempt(booking);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+
         Payment payment = self.getObject().recordAttempt(booking);
 
         CheckoutGateway.CheckoutSession session = checkoutGateway.createSession(
@@ -117,6 +127,94 @@ public class PaymentService {
 
         self.getObject().attachSession(payment.getId(), session);
         return session.url();
+    }
+
+    /**
+     * Decides whether a new payable session may be created at all.
+     *
+     * <p>The double-charge this prevents: the customer pays, the confirming webhook does not
+     * arrive, the booking still reads PENDING_PAYMENT, the page offers "Pay now", and Stripe —
+     * given a fresh idempotency key derived from the new attempt row — happily creates a second
+     * session and takes the money again. Both charges are real and only one is refundable
+     * without someone noticing.
+     *
+     * <p>Three outcomes, in order of precedence:
+     *
+     * <ul>
+     *   <li><b>Already paid.</b> Confirm the booking from Stripe's answer and hand back no URL.
+     *       This makes a missed webhook self-healing on the customer's next click.
+     *   <li><b>Still open.</b> Return the existing session's URL. The customer carries on with
+     *       the checkout they already have rather than acquiring a second payable one.
+     *   <li><b>Unknown.</b> Stripe could not be read. Refuse rather than charge: an unreachable
+     *       provider is not evidence that no money was taken.
+     * </ul>
+     *
+     * <p><b>Not locked.</b> Two genuinely simultaneous clicks can both read "no session yet"
+     * and each create one, because this reads outside any lock. That is a narrower window than
+     * the bug it fixes — which needed only a slow webhook and a page reload, seconds or minutes
+     * apart — and closing it means a row lock on the booking for the duration of a Stripe
+     * round trip, which is the pattern this class deliberately avoids (see the class javadoc on
+     * why HTTP calls stay outside transactions). If it ever bites, the fix is a short advisory
+     * lock keyed on the booking id, taken and released around this method only.
+     *
+     * @return the URL to send the customer to, or empty when a genuinely new session is needed
+     */
+    private Optional<String> reuseOrSettleExistingAttempt(Booking booking) {
+        Optional<Payment> maybeLatest = paymentRepository.findByBookingIdOrderByIdDesc(booking.getId())
+                .stream()
+                .filter(candidate -> candidate.getStripeCheckoutSessionId() != null)
+                .findFirst();
+        if (maybeLatest.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Payment latest = maybeLatest.get();
+        if (latest.getStatus().isSettled()) {
+            // Settled locally but the booking is still pending: staff took the money at the
+            // counter between the customer opening this page and clicking. Nothing to pay.
+            throw new BusinessRuleException(
+                    ErrorCode.PAYMENT_NOT_REQUIRED, "This booking has already been paid for.");
+        }
+        if (latest.getStatus() == PaymentStatus.FAILED) {
+            // A declined card is the one case where a brand-new session is right: the old one
+            // cannot be paid, and the customer wants to try a different card.
+            return Optional.empty();
+        }
+
+        String sessionId = latest.getStripeCheckoutSessionId();
+        Optional<CheckoutGateway.SessionState> maybeState = checkoutGateway.fetchSession(sessionId);
+        if (maybeState.isEmpty()) {
+            // Deliberately a refusal, not a fallthrough to creating a session. If Stripe cannot
+            // be reached we do not know whether the previous attempt took the money, and
+            // guessing "it did not" is what charges the customer twice.
+            throw new BusinessRuleException(
+                    ErrorCode.PAYMENT_PROVIDER_ERROR,
+                    "We could not check your previous payment. Your slot is still held — "
+                            + "please try again in a moment.");
+        }
+
+        CheckoutGateway.SessionState state = maybeState.get();
+        if (state.paid()) {
+            log.info(
+                    "Session {} for booking {} was already paid; confirming without a new checkout",
+                    sessionId,
+                    booking.getReference());
+            // Through markPaid, not a bespoke update: it is the same idempotent path the
+            // webhook uses, so a late webhook arriving afterwards is a harmless no-op.
+            self.getObject().markPaid(sessionId, state.paymentIntentId(), null);
+            throw new BusinessRuleException(
+                    ErrorCode.PAYMENT_NOT_REQUIRED,
+                    "This booking has already been paid for. Refresh to see it confirmed.");
+        }
+        if (state.open() && state.url() != null) {
+            log.debug("Reusing open session {} for booking {}", sessionId, booking.getReference());
+            return Optional.of(state.url());
+        }
+
+        // Expired or abandoned, and definitely unpaid: a new session is safe. Expiring the old
+        // one first means it cannot be paid later from a tab left open.
+        checkoutGateway.expireSession(sessionId);
+        return Optional.empty();
     }
 
     /**
