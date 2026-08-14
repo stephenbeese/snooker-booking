@@ -97,6 +97,9 @@ which is reachable, because Stripe's minimum session expiry (30 min) outlives th
 - Java 21 (a newer JDK on `PATH` is fine — Gradle pins the toolchain to 21)
 - Node 22+ and Yarn 4 (via Corepack)
 - Docker with Compose v2+, **or** a local PostgreSQL 16+
+- The [Stripe CLI](https://stripe.com/docs/stripe-cli) (`brew install stripe/stripe-cli/stripe`,
+  then `stripe login`) — required to take a payment locally, because Stripe cannot reach a
+  `localhost` webhook without it
 
 ---
 
@@ -153,7 +156,39 @@ DATABASE_USERNAME=snooker DATABASE_PASSWORD=snooker \
 ./gradlew bootRun --args='--spring.profiles.active=dev'
 ```
 
-### 4. Frontend
+### 4. Stripe webhooks
+
+```bash
+./run-webhooks.sh
+```
+
+**Leave this running in its own terminal whenever you intend to take a payment.** It is the
+third process this app needs locally, alongside the backend and the frontend.
+
+Stripe confirms a payment by calling `POST /api/webhooks/stripe`, which it cannot reach on
+`localhost` without the CLI forwarding it. With no listener the money is taken, the
+application never hears about it, the booking stays `PENDING_PAYMENT`, the page spins on
+"Confirming your payment…", and the hold sweeper eventually cancels a booking the customer
+has already paid for.
+
+The script checks two things that otherwise fail silently and identically: that the CLI is
+installed and authenticated, and that its signing secret matches `STRIPE_WEBHOOK_SECRET` in
+`.env`. A mismatched secret means every event is rejected as unsigned — indistinguishable
+from no listener at all, and the reason it prints the correct value rather than just
+complaining.
+
+To recover a payment whose webhook was missed while the listener was down, find the event
+and resend it:
+
+```bash
+stripe events resend evt_XXXXXXXX
+```
+
+Since the double-charge fix, clicking **Pay now** on a booking that was in fact already paid
+also repairs it: the server asks Stripe what became of the previous session, confirms the
+booking from that answer, and refuses to open a second checkout.
+
+### 5. Frontend
 
 ```bash
 cd frontend
@@ -291,15 +326,20 @@ Only `SNK-DEMO01` from the seed should ever appear there. Cancelled and expired 
 harmlessly — the overlap constraint ignores both — so they are left alone rather than deleted,
 which keeps the history of what a run did.
 
-`stripe-checkout.spec.ts` types a real test card into Stripe's hosted page. For the webhook
-to reach a local backend, forward it and start the backend with the CLI's signing secret:
+`stripe-checkout.spec.ts` types a real test card into Stripe's hosted page. The webhook must
+be forwarded for it to pass:
 
 ```bash
-stripe listen --forward-to localhost:8080/api/webhooks/stripe
+./run-webhooks.sh
 ```
 
-Without the forwarder the payment still completes and the booking still confirms — the
-browser-return path handles it — but the webhook half of the confirmation is not exercised.
+**Without the forwarder the payment completes at Stripe but the booking does not confirm.**
+The webhook is the only thing that confirms a payment — there is no browser-return
+confirmation to fall back on, despite the `?payment=complete` parameter's appearance. That
+parameter is only a hint to the UI to show a spinner and poll; it changes nothing on the
+server. A payment taken with no listener running stays `PENDING_PAYMENT` until either the
+event is resent or the customer clicks **Pay now** again, which now reconciles against Stripe
+rather than charging a second time.
 
 ---
 

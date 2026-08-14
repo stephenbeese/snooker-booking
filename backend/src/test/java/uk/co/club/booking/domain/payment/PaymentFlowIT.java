@@ -1,6 +1,7 @@
 package uk.co.club.booking.domain.payment;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -11,6 +12,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
+import uk.co.club.booking.common.error.BusinessRuleException;
+import uk.co.club.booking.common.error.ErrorCode;
 import uk.co.club.booking.common.time.ClubClock;
 import uk.co.club.booking.domain.booking.Booking;
 import uk.co.club.booking.domain.booking.BookingPolicy;
@@ -323,6 +326,110 @@ class PaymentFlowIT extends AbstractIntegrationTest {
                 null,
                 source,
                 null);
+    }
+
+    // ------------------------------------------------------- the double-charge guard
+
+    @Test
+    @DisplayName("a paid booking whose webhook never arrived is confirmed, not charged again")
+    void reconcilesInsteadOfChargingTwice() {
+        // The real incident this guards: the customer paid, the webhook was never delivered
+        // (no forwarder running), the booking stayed PENDING_PAYMENT, the page offered "Pay
+        // now", and a second genuine charge was taken for the same slot.
+        Booking booking = createOnlineBooking(LocalTime.of(19, 0));
+        paymentService.startCheckout(booking);
+        String firstSession = latestSessionId(booking.getId());
+
+        // Money taken at Stripe; the application is told nothing.
+        gateway.markPaidAtProviderOnly(firstSession);
+
+        assertThatThrownBy(() -> paymentService.startCheckout(booking))
+                .isInstanceOf(BusinessRuleException.class)
+                .satisfies(thrown -> assertThat(((BusinessRuleException) thrown).getCode())
+                        .isEqualTo(ErrorCode.PAYMENT_NOT_REQUIRED));
+
+        // The decisive assertion: exactly one session was ever created. A second would be a
+        // second payable checkout, which is the bug.
+        assertThat(gateway.created()).hasSize(1);
+
+        // And the refusal is not merely a refusal — it repaired the booking from Stripe's
+        // answer, so the customer sees it confirmed rather than stuck.
+        Booking reloaded = bookingRepository.findById(booking.getId()).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(paymentRepository.findByBookingIdOrderByIdDesc(booking.getId()))
+                .extracting(Payment::getStatus)
+                .containsExactly(PaymentStatus.SUCCEEDED);
+    }
+
+    @Test
+    @DisplayName("clicking pay twice reuses the open session rather than creating a second")
+    void reusesAnOpenSession() {
+        // The impatient double-click, or a reload of the booking page. Both sessions would be
+        // payable, so the customer can end up paying each of them.
+        Booking booking = createOnlineBooking(LocalTime.of(19, 0));
+
+        String first = paymentService.startCheckout(booking);
+        String second = paymentService.startCheckout(booking);
+
+        assertThat(second).isEqualTo(first);
+        assertThat(gateway.created()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("a declined card still gets a fresh session, so another card can be tried")
+    void allowsRetryAfterDecline() {
+        // The guard must not overreach: a genuinely failed payment is the case retrying exists
+        // for, and the old session cannot be paid.
+        Booking booking = createOnlineBooking(LocalTime.of(19, 0));
+        paymentService.startCheckout(booking);
+
+        // Keyed on the payment intent, which is what the payment_intent.payment_failed webhook
+        // carries — not on the session id.
+        paymentService.markFailed(
+                latestPaymentIntentId(booking.getId()), "card_declined", "Your card was declined.");
+
+        String retryUrl = paymentService.startCheckout(booking);
+
+        assertThat(gateway.created()).hasSize(2);
+        assertThat(retryUrl).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("an unreachable Stripe refuses the checkout rather than risking a second charge")
+    void refusesWhenTheProviderCannotBeAsked() {
+        // "Could not find out" must never be treated as "not paid". Creating a session here is
+        // exactly how the customer is charged twice, so the honest answer is to refuse and let
+        // them try again in a moment — the hold survives either way.
+        Booking booking = createOnlineBooking(LocalTime.of(19, 0));
+        paymentService.startCheckout(booking);
+        gateway.makeFetchUnavailable();
+
+        assertThatThrownBy(() -> paymentService.startCheckout(booking))
+                .isInstanceOf(BusinessRuleException.class)
+                .satisfies(thrown -> assertThat(((BusinessRuleException) thrown).getCode())
+                        .isEqualTo(ErrorCode.PAYMENT_PROVIDER_ERROR));
+
+        assertThat(gateway.created()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("a lapsed session is replaced, and expired again so it cannot be paid later")
+    void replacesAnExpiredSession() {
+        Booking booking = createOnlineBooking(LocalTime.of(19, 0));
+        paymentService.startCheckout(booking);
+        String firstSession = latestSessionId(booking.getId());
+
+        // Neither open nor paid: the customer wandered off and the session lapsed at Stripe.
+        gateway.lapseSession(firstSession);
+
+        paymentService.startCheckout(booking);
+
+        assertThat(gateway.created()).hasSize(2);
+        // Counted from zero, because lapseSession above deliberately does NOT record an expiry.
+        // Asserting merely that the id appears in the list would pass without the guard at all,
+        // since the test's own setup would have put it there — which is exactly what the first
+        // version of this test did, and it survived deleting the code it was written to protect.
+        assertThat(gateway.expiredSessions()).containsExactly(firstSession);
     }
 
     /** Drags a hold's expiry into the past so the sweeper will pick it up. */

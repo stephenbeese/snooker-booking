@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { Button } from '@/components/ui/Button';
+import { ApiError } from '@/lib/apiError';
 import { formatSlotTime } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
 import { CancelBookingDialog } from './CancelBookingDialog';
@@ -20,14 +21,31 @@ export function BookingPage() {
   const justPaid = searchParams.get('payment') === 'complete';
 
   // Poll only when we have reason to expect a change: the webhook may still be in flight.
-  const { data: booking, isPending, isError, error } = useBooking(reference, { poll: justPaid });
+  const {
+    data: booking,
+    isPending,
+    isError,
+    error,
+    refetch,
+  } = useBooking(reference, { poll: justPaid });
   const retry = useRetryCheckout();
   const [cancelling, setCancelling] = useState(false);
 
   async function handleRetry() {
-    const response = await retry.mutateAsync(reference);
-    // A full navigation, not a router push: Stripe Checkout is a different origin.
-    window.location.assign(response.checkoutUrl);
+    try {
+      const response = await retry.mutateAsync(reference);
+      // A full navigation, not a router push: Stripe Checkout is a different origin.
+      window.location.assign(response.checkoutUrl);
+    } catch (caught) {
+      // PAYMENT_NOT_REQUIRED is the good outcome, not a failure: the server checked with
+      // Stripe and found this booking already paid — typically a webhook that never arrived.
+      // It has confirmed the booking as a side effect, so refetching shows it as booked.
+      if (caught instanceof ApiError && caught.code === 'PAYMENT_NOT_REQUIRED') {
+        await refetch();
+        return;
+      }
+      // Anything else is rendered by the banner below from the mutation's error state.
+    }
   }
 
   if (isPending) {
@@ -56,6 +74,13 @@ export function BookingPage() {
         justPaid={justPaid}
         onRetry={handleRetry}
         retrying={retry.isPending}
+        retryError={
+          retry.error instanceof ApiError
+            ? retry.error.message
+            : retry.error
+              ? 'Could not open the payment page. Please try again.'
+              : null
+        }
       />
 
       <dl className="mt-6 divide-y divide-ink-200 overflow-hidden rounded-card border border-ink-200 bg-white shadow-card">
@@ -107,9 +132,12 @@ function StatusBanner({
   justPaid,
   onRetry,
   retrying,
+  retryError,
 }: {
   booking: Booking;
   justPaid: boolean;
+  /** Shown next to "Pay now": a refusal there must not fail silently. */
+  retryError: string | null;
   onRetry: () => void;
   retrying: boolean;
 }) {
@@ -174,6 +202,14 @@ function StatusBanner({
         <Button className="mt-4" size="lg" onClick={onRetry} disabled={retrying}>
           {retrying ? 'Opening payment…' : 'Pay now'}
         </Button>
+        {/* Without this the button silently does nothing when the server refuses — for
+            instance because it could not reach Stripe to check whether the last attempt
+            already took the money. Refusing is correct; refusing invisibly is not. */}
+        {retryError && (
+          <p role="alert" className="mt-3 text-sm font-medium text-rose-800">
+            {retryError}
+          </p>
+        )}
       </div>
     );
   }
