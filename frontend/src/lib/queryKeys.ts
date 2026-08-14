@@ -46,8 +46,6 @@ export const queryKeys = {
   adminUsers: (filters: unknown) => ['admin', 'users', filters] as const,
   // Its own namespace rather than a variant of adminUsers: they are different endpoints with
   // different permissions, and a shared prefix would let one invalidate the other.
-  adminCustomers: (filters: unknown) => ['admin', 'customers', filters] as const,
-  adminCustomer: (id: number) => ['admin', 'customers', 'one', id] as const,
   adminBlocks: (from: string, to: string) => ['admin', 'blocks', from, to] as const,
   adminClubDetails: () => ['admin', 'settings', 'club'] as const,
   adminOpeningHours: () => ['admin', 'settings', 'opening-hours'] as const,

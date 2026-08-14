@@ -1,4 +1,5 @@
 import { Link, useSearchParams } from 'react-router';
+import { PageShell } from '@/components/ui/PageShell';
 import { useAdminAvailability, useTableTypes } from '@/features/availability/useAvailability';
 import { addDays, formatDateLong, todayIso } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
@@ -58,9 +59,7 @@ export function AdminDiaryPage() {
   const isError = day.isError || availability.isError;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-semibold tracking-tight text-felt-900">Diary</h1>
-      <p className="mt-1 text-sm text-ink-500">{formatDateLong(date)}</p>
+    <PageShell title="Calendar" description={formatDateLong(date)} width="lg">
 
       <form
         className="mt-8 rounded-card border border-ink-200 bg-white p-5 shadow-card"
@@ -160,7 +159,7 @@ export function AdminDiaryPage() {
           tableId={tableId}
         />
       )}
-    </div>
+    </PageShell>
   );
 }
 

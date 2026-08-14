@@ -66,7 +66,27 @@ export function AppLayout() {
         Skip to content
       </a>
 
-      <header className="sticky top-0 z-40 border-b border-ink-200/80 bg-white/85 backdrop-blur-md">
+      {/*
+        The height is published as a custom property so anything that has to stack beneath the
+        header — the staff nav, in-page anchors — can offset by what the header actually is
+        rather than by a number copied from it. It is not a constant: the brand is the club's
+        own name, and a long one wraps, which a hardcoded `top-14` would silently get wrong.
+      */}
+      <header
+        ref={(node) => {
+          if (!node) return;
+          const publish = () =>
+            document.documentElement.style.setProperty(
+              '--header-height',
+              `${node.offsetHeight}px`,
+            );
+          publish();
+          const observer = new ResizeObserver(publish);
+          observer.observe(node);
+          return () => observer.disconnect();
+        }}
+        className="sticky top-0 z-40 border-b border-ink-200/80 bg-white/85 backdrop-blur-md"
+      >
         {/*
           One spacing rhythm. Previously the nav set gap-6, the link cluster gap-1 (whose items
           each add px-3, so the visual gap was 1.75rem) and the auth cluster gap-3 — three

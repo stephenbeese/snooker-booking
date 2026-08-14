@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-type Width = 'sm' | 'md' | 'lg';
+type Width = 'sm' | 'detail' | 'md' | 'lg';
 
 interface PageShellProps {
   /** Rendered as the page's h1. Omit only for pages that supply their own heading. */
@@ -22,9 +22,11 @@ interface PageShellProps {
  * A page picks a width from the three below; it does not invent one.
  */
 const WIDTH_CLASSES: Record<Width, string> = {
-  /** Forms and single-column reading: sign in, a booking, your profile. */
+  /** Forms and single-column reading: sign in, your profile. */
   sm: 'max-w-2xl',
-  /** The default. Most list and detail screens. */
+  /** One record and its panels — a booking, a customer. Wider than a form, narrower than a list. */
+  detail: 'max-w-4xl',
+  /** The default. Most list screens. */
   md: 'max-w-6xl',
   /** Wide data only — the diary grid, where every extra column earns its keep. */
   lg: 'max-w-7xl',

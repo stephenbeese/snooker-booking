@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { TextField } from '@/components/ui/TextField';
+import { PageShell } from '@/components/ui/PageShell';
 import { AvailabilityGrid } from '@/features/availability/components/AvailabilityGrid';
 import type { Slot } from '@/features/availability/types';
 import { useAdminAvailability, useTableTypeLabel } from '@/features/availability/useAvailability';
@@ -150,12 +151,10 @@ export function AdminTelephoneBookingPage() {
     tableId !== null && selectedSlot ? { tableId, startAt: selectedSlot.startAt } : null;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
-      <h1 className="text-2xl font-semibold tracking-tight text-felt-900">Telephone booking</h1>
-      <p className="mt-2 text-sm text-ink-600">
-        Confirmed straight away, with no online payment — take payment at the counter. Notice
-        and advance limits do not apply, but the table must genuinely be free.
-      </p>
+    <PageShell
+      title="New booking"
+      description="Confirmed straight away, with no online payment — take payment at the counter. Notice and advance limits do not apply, but the table must genuinely be free."
+    >
 
       {created && (
         <div
@@ -319,6 +318,6 @@ export function AdminTelephoneBookingPage() {
           {isSubmitting ? 'Booking…' : 'Take booking'}
         </Button>
       </form>
-    </div>
+    </PageShell>
   );
 }

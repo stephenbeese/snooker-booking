@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { TextField } from '@/components/ui/TextField';
 import { useToast } from '@/components/ui/Toast';
+import { PageShell } from '@/components/ui/PageShell';
 import { ApiError } from '@/lib/apiError';
 import { formatSlotTime } from '@/lib/datetime';
 import {
@@ -110,13 +111,10 @@ export function AdminMaintenancePage() {
   const activeTables = (tables ?? []).filter((table) => table.active);
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10">
-      <h1 className="text-2xl font-semibold tracking-tight text-felt-900">Maintenance</h1>
-      <p className="mt-2 text-sm text-ink-600">
-        A blocked table cannot be booked, by customers or by staff. Existing bookings are never
-        overwritten — if any fall inside the period, the block is refused and they are listed so
-        you can deal with them first.
-      </p>
+    <PageShell
+      title="Maintenance"
+      description="A blocked table cannot be booked, by customers or by staff. Existing bookings are never overwritten — if any fall inside the period, the block is refused and they are listed so you can deal with them first."
+    >
 
       <form
         onSubmit={handleSubmit(onSubmit)}
@@ -223,6 +221,6 @@ export function AdminMaintenancePage() {
           </tbody>
         </table>
       )}
-    </div>
+    </PageShell>
   );
 }

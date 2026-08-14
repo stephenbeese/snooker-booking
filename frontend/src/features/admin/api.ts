@@ -3,9 +3,6 @@ import type { Role } from '@/features/auth/types';
 import type {
   AdminBooking,
   AdminBookingFilters,
-  AdminCustomer,
-  AdminCustomerDetail,
-  AdminCustomerFilters,
   AdminDashboard,
   AdminTable,
   AdminTableType,
@@ -310,29 +307,6 @@ export function fetchAdminUsers(
   }
   params.set('page', String(filters.page ?? 0));
   return apiRequest<Paged<AdminUser>>(`/api/admin/users?${params.toString()}`);
-}
-
-/**
- * The customer directory.
- *
- * <p>A different endpoint from the account directory above, not the same one with a role
- * filter: `/api/admin/users` is admin-only because it hands out roles, while looking a caller
- * up is a job for whoever is on the counter.
- */
-export function fetchAdminCustomers(
-  filters: AdminCustomerFilters,
-): Promise<Paged<AdminCustomer>> {
-  const params = new URLSearchParams();
-  if (filters.search) {
-    params.set('search', filters.search);
-  }
-  params.set('page', String(filters.page ?? 0));
-  return apiRequest<Paged<AdminCustomer>>(`/api/admin/customers?${params.toString()}`);
-}
-
-/** One customer and their bookings, which arrive on the same response. */
-export function fetchAdminCustomer(id: number): Promise<AdminCustomerDetail> {
-  return apiRequest<AdminCustomerDetail>(`/api/admin/customers/${id}`);
 }
 
 export function createAdminUser(input: CreateUserInput): Promise<AdminUser> {

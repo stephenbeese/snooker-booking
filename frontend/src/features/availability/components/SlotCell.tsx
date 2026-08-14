@@ -12,12 +12,23 @@ interface SlotCellProps {
    * than just "selected".
    */
   spanLabel?: string | undefined;
+  /**
+   * When the booking finishes, e.g. "12:00". Printed at the right-hand end of the bar.
+   *
+   * <p>Not the end cell's own start time, which is what it showed at first: a 10:00 booking for
+   * two hours ends at 12:00, but its last half-hour cell *starts* at 11:30, so the bar read
+   * "10:00 … 11:30" for a booking that runs to noon.
+   */
+  spanEndTime?: string | undefined;
   onSelect: (slot: Slot) => void;
 }
 
-export function SlotCell({ slot, span, spanLabel, onSelect }: SlotCellProps) {
+export function SlotCell({ slot, span, spanLabel, spanEndTime, onSelect }: SlotCellProps) {
   const time = formatSlotTime(slot.startTime);
   const { className, label, interactive, text } = slotAppearance(slot, time, span);
+
+  // The far end of the bar shows when the booking finishes, not when its last cell begins.
+  const shown = (span === 'end' || span === 'only') && spanEndTime ? spanEndTime : text;
 
   // Inside a booking, every cell says what the booking is rather than repeating "selected"
   // four times over. The start keeps its own time in the label so the anchor stays findable.
@@ -42,7 +53,7 @@ export function SlotCell({ slot, span, spanLabel, onSelect }: SlotCellProps) {
     >
       {/* A non-breaking space rather than nothing, so a blank middle cell keeps the row's
           height instead of collapsing and breaking the bar it is part of. */}
-      {text === '' ? ' ' : text}
+      {shown === '' ? ' ' : shown}
     </button>
   );
 }

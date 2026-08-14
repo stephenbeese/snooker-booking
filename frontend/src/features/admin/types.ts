@@ -291,35 +291,6 @@ export interface AdminUserFilters {
 }
 
 /**
- * A customer as the counter sees them.
- *
- * <p>No `role`: everything the customers endpoint returns is a customer by construction, so a
- * role here would be a constant pretending to be data.
- */
-export interface AdminCustomer {
-  id: number;
-  email: string;
-  firstName: string;
-  lastName: string;
-  fullName: string;
-  phone: string | null;
-  active: boolean;
-  createdAt: string;
-  bookingCount: number;
-}
-
-/** One customer with their bookings, as the detail endpoint returns them together. */
-export interface AdminCustomerDetail {
-  customer: AdminCustomer;
-  bookings: AdminBooking[];
-}
-
-export interface AdminCustomerFilters {
-  search?: string | undefined;
-  page?: number | undefined;
-}
-
-/**
  * Something the club sells at the cafe or bar.
  *
  * <p>`pricePence` is integer pence, as all money here is. Formatted for display at the edge with

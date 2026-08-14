@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import { PageShell } from '@/components/ui/PageShell';
 import { formatSlotTime, todayIso } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
 import { StatusBadge } from './components/StatusBadge';
@@ -10,24 +11,21 @@ export function AdminDashboardPage() {
   const { data: today } = useAdminDay(todayIso());
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-felt-900">Today at a glance</h1>
-          <p className="mt-1 text-sm text-ink-600">
-            {dashboard ? formatFullDate(dashboard.date) : 'Loading the club’s figures…'}
-          </p>
-        </div>
-        {/* Just the one action. The five links that used to sit here are AdminLayout's nav now,
-            and two of them — Tables and Settings — were shown to STAFF, who are refused both.
-            Taking a booking is the thing someone opens this screen wanting to do. */}
+    <PageShell
+      title="Today at a glance"
+      description={dashboard ? formatFullDate(dashboard.date) : 'Loading the club’s figures…'}
+      actions={
+        /* Just the one action. The five links that used to sit here are AdminLayout's nav now,
+           and two of them — Tables and Settings — were shown to STAFF, who are refused both.
+           Taking a booking is the thing someone opens this screen wanting to do. */
         <Link
           to="/admin/bookings/telephone"
           className="rounded-xl bg-felt-700 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-felt-800"
         >
           Telephone booking
         </Link>
-      </div>
+      }
+    >
 
       {isError && (
         <div role="alert" className="mt-8 rounded-card border border-rose-200 bg-rose-50 p-4">
@@ -110,7 +108,7 @@ export function AdminDashboardPage() {
           </ul>
         )}
       </section>
-    </div>
+    </PageShell>
   );
 }
 

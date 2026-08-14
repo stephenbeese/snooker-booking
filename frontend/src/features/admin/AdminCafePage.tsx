@@ -8,6 +8,7 @@ import { Panel } from '@/components/ui/Panel';
 import { Select } from '@/components/ui/Select';
 import { TextField } from '@/components/ui/TextField';
 import { useToast } from '@/components/ui/Toast';
+import { PageShell } from '@/components/ui/PageShell';
 import { ApiError } from '@/lib/apiError';
 import { formatPence, penceToPounds, poundsToPence } from '@/lib/money';
 import {
@@ -168,12 +169,10 @@ export function AdminCafePage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10">
-      <h1 className="text-2xl font-semibold tracking-tight text-felt-900">Cafe &amp; bar</h1>
-      <p className="mt-2 text-sm text-ink-600">
-        What the club sells alongside table time. Items are taken off the menu rather than
-        deleted, so a withdrawn one can be put back and still explains itself later.
-      </p>
+    <PageShell
+      title="Menu items"
+      description="What the club sells alongside table time. Items are taken off the menu rather than deleted, so a withdrawn one can be put back and still explains itself later."
+    >
 
       <form
         onSubmit={handleSubmit(onSubmit)}
@@ -302,7 +301,7 @@ export function AdminCafePage() {
       )}
 
       <CategoriesSection />
-    </div>
+    </PageShell>
   );
 }
 

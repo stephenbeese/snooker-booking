@@ -239,9 +239,14 @@ export function BookPage() {
       </section>
 
       {selected && selectedTable && selectedSlot && (
-        // Sticky at the bottom of the viewport on a phone: the grid is tall, and a summary
-        // that scrolls away takes the "Book and pay" button with it.
-        <aside className="sticky bottom-4 mt-6 rounded-card border border-felt-200 bg-felt-50 p-5 shadow-lifted">
+        // Pinned to the bottom of the viewport: the grid is tall, and a summary that scrolls
+        // away takes the "Book and pay" button with it.
+        //
+        // `bottom-0` with its own background band, not `bottom-4` floating over the page. At
+        // bottom-4 the grid showed through the gap beneath it and around its rounded corners,
+        // so the panel read as sitting *on* the table rather than in front of it. z-30 keeps
+        // it above the grid's sticky column, which is z-20.
+        <aside className="sticky bottom-0 z-30 -mx-4 mt-6 border-t border-felt-200 bg-felt-50 p-5 shadow-lifted sm:-mx-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-xs font-medium uppercase tracking-wide text-felt-700">

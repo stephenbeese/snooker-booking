@@ -232,6 +232,37 @@ describe('AvailabilityGrid', () => {
     expect(middle).toHaveAccessibleName('Part of your booking, 10:00 to 11:30');
   });
 
+  it('labels the far end with when the booking finishes, not when its last cell starts', () => {
+    // A 10:00 booking for 90 minutes ends at 11:30, but its last half-hour cell *starts* at
+    // 11:00 — so the bar read "10:00 … 11:00" for a booking that runs to half past.
+    renderGrid(makeAvailability(), { tableId: 1, startAt: '2026-08-20T10:00:00Z' }, 90);
+
+    const cells = bookingCells();
+    expect(cells[0]!.textContent?.trim()).toBe('10:00');
+    expect(cells[cells.length - 1]!.textContent?.trim()).toBe('11:30');
+  });
+
+  it('spans a booking that runs past the last bookable start time', () => {
+    // `bookableForRequestedDuration` answers "could a booking of this length START here",
+    // which is false for every cell near closing — but those are exactly the cells a long
+    // booking occupies. Reading it here collapsed the bar to its first cell whenever the
+    // selection ran towards the end of the day.
+    const table = makeTable({
+      slots: [
+        makeSlot({ startTime: '10:00:00', bookableForRequestedDuration: true }),
+        makeSlot({ startTime: '10:30:00', bookableForRequestedDuration: false }),
+        makeSlot({ startTime: '11:00:00', bookableForRequestedDuration: false }),
+      ],
+    });
+    renderGrid(
+      makeAvailability({ tables: [table] }),
+      { tableId: 1, startAt: '2026-08-20T10:00:00Z' },
+      90,
+    );
+
+    expect(bookingCells()).toHaveLength(3);
+  });
+
   it('stops the run at a cell that is already taken', () => {
     // A booking is refused if anything in its way is occupied, so painting the bar through a
     // taken cell would show a booking the club will not sell. The server normally refuses the

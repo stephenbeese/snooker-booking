@@ -31,7 +31,7 @@ test.describe('Staff permissions', () => {
     await expect(page.getByRole('heading', { name: /bookings/i })).toBeVisible();
 
     await page.goto('/admin/bookings/telephone');
-    await expect(page.getByRole('heading', { name: /telephone booking/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /new booking/i })).toBeVisible();
 
     await page.goto('/admin/maintenance');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
@@ -46,7 +46,13 @@ test.describe('Staff permissions', () => {
     }
 
     // And is offered the way back to work rather than a customer page: they do work here.
-    await expect(page.getByRole('link', { name: /dashboard/i })).toHaveAttribute('href', '/admin');
+    //
+    // Exact, because /dashboard/i also matches the nav's own "Dashboard" link — two elements,
+    // which Playwright's strict mode refuses. Both point at /admin, so the assertion always
+    // held; it just could not be evaluated.
+    await expect(
+      page.getByRole('link', { name: 'Back to the dashboard', exact: true }),
+    ).toHaveAttribute('href', '/admin');
   });
 
   test('the API refuses staff even when the browser is bypassed', async ({ page }) => {
@@ -86,7 +92,7 @@ test.describe('Staff permissions', () => {
     await login(page, ADMIN);
 
     await page.goto('/admin/users');
-    await expect(page.getByRole('heading', { name: 'People' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Manage staff' })).toBeVisible();
 
     await page.goto('/admin/settings');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();

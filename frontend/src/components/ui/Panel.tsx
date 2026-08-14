@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 type Tone = 'default' | 'warning' | 'danger';
 
 interface PanelProps {
+  /** Anchor target, for pages long enough to need jump links. */
+  id?: string;
   /** Rendered as an h2. Omit for a panel that is only a container. */
   title?: ReactNode;
   description?: ReactNode;
@@ -36,6 +38,7 @@ const TITLE_CLASSES: Record<Tone, string> = {
 };
 
 export function Panel({
+  id,
   title,
   description,
   actions,
@@ -46,6 +49,7 @@ export function Panel({
 }: PanelProps) {
   return (
     <section
+      id={id}
       className={[
         'rounded-card border shadow-card',
         TONE_CLASSES[tone],

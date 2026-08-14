@@ -27,11 +27,12 @@ const DAY_MESSAGE: Record<string, string> = {
  * <p>Everything needed is already on the wire — the chosen start, the requested duration and the
  * day's increment — so this needs no API change.
  *
- * <p>The run stops at the first cell the server did not mark bookable. That guard matters: a
- * booking is refused if anything in its way is taken, so painting the bar straight through an
- * occupied cell would show a booking the club will not sell. In practice the server has already
- * refused the start cell in that case, but the grid must not depend on that to avoid drawing a
- * lie.
+ * <p>The run stops at the first cell that is not free, so the bar never paints through time the
+ * club has already sold. It deliberately does NOT consult `bookableForRequestedDuration`: that
+ * answers "could a booking of the requested length START here", which is false for every cell
+ * near closing time and for the tail of any run — the last two hours before close cannot start a
+ * two-hour booking, but they are exactly the hours a two-hour booking occupies. Reading it here
+ * truncated the bar to its first cell whenever the selection ran towards the end of the day.
  */
 function spanFor(
   table: TableAvailability,
@@ -59,9 +60,9 @@ function spanFor(
   const covered: Slot[] = [];
   for (let index = startIndex; index < table.slots.length && covered.length < wanted; index++) {
     const slot = table.slots[index]!;
-    // The start cell's own bookability is the server's verdict on the whole booking and is
-    // handled by slotAppearance; from the second cell on, an unavailable cell ends the run.
-    if (index > startIndex && (!slot.available || slot.bookableForRequestedDuration === false)) {
+    // Only "is this time free". The start cell's own bookability is the server's verdict on the
+    // whole booking and is handled by slotAppearance.
+    if (index > startIndex && !slot.available) {
       break;
     }
     covered.push(slot);
@@ -113,12 +114,13 @@ export function AvailabilityGrid({
         .find((table) => table.tableId === selected.tableId)
         ?.slots.find((slot) => slot.startAt === selected.startAt)
     : undefined;
-  const spanLabel =
+  const spanEndTime =
     selectedSlot && durationMinutes
-      ? `${formatSlotTime(selectedSlot.startTime)} to ${addMinutesToTime(
-          selectedSlot.startTime,
-          durationMinutes,
-        )}`
+      ? addMinutesToTime(selectedSlot.startTime, durationMinutes)
+      : undefined;
+  const spanLabel =
+    selectedSlot && spanEndTime
+      ? `${formatSlotTime(selectedSlot.startTime)} to ${spanEndTime}`
       : undefined;
 
   return (
@@ -210,6 +212,7 @@ export function AvailabilityGrid({
                           slot={slot}
                           span={span.get(slot.startAt) ?? null}
                           spanLabel={spanLabel}
+                          spanEndTime={spanEndTime}
                           onSelect={(picked) => onSelect(table.tableId, picked)}
                         />
                       </td>

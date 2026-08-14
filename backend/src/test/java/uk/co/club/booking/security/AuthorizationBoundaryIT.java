@@ -126,13 +126,7 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
                             "date", "2030-01-01",
                             "startTime", "14:00:00",
                             "endTime", "18:00:00")),
-            new Endpoint(HttpMethod.DELETE, "/api/admin/maintenance-blocks/1", null),
-            // The customer directory. Staff rather than admin because "when is this caller in
-            // next" is a counter question — and deliberately a separate path from
-            // /api/admin/users, which is admin-only precisely so that reaching customers does
-            // not also hand out the account directory.
-            new Endpoint(HttpMethod.GET, "/api/admin/customers", null),
-            new Endpoint(HttpMethod.GET, "/api/admin/customers/1", null));
+            new Endpoint(HttpMethod.DELETE, "/api/admin/maintenance-blocks/1", null));
 
     /**
      * Configuring the club, and deciding who may do so. ADMIN only.

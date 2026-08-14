@@ -12,17 +12,51 @@ import { useCurrentUser } from '@/features/auth/useAuth';
  * <p>`end` for the dashboard alone, because every other admin path begins with `/admin` and
  * would otherwise light it up permanently.
  */
-const NAV: { to: string; label: string; end?: boolean; adminOnly?: boolean }[] = [
-  { to: '/admin', label: 'Dashboard', end: true },
-  { to: '/admin/bookings', label: 'Bookings' },
-  { to: '/admin/diary', label: 'Diary' },
-  { to: '/admin/bookings/telephone', label: 'Telephone' },
-  { to: '/admin/customers', label: 'Customers' },
-  { to: '/admin/maintenance', label: 'Maintenance' },
-  { to: '/admin/tables', label: 'Tables', adminOnly: true },
-  { to: '/admin/cafe', label: 'Cafe & bar', adminOnly: true },
-  { to: '/admin/settings', label: 'Settings', adminOnly: true },
-  { to: '/admin/users', label: 'Staff accounts', adminOnly: true },
+interface NavItem {
+  to: string;
+  label: string;
+  end?: boolean;
+  adminOnly?: boolean;
+}
+
+/**
+ * The staff area's screens, in three groups.
+ *
+ * <p>Ten equal links in one scrolling strip gave no clue which were the day job and which were
+ * configuration you touch twice a year — and on a phone the far end was off-screen with nothing
+ * to say so. Grouping puts the daily work first and the club's setup behind a divider.
+ */
+const NAV_GROUPS: { name: string; items: NavItem[] }[] = [
+  {
+    name: 'Day to day',
+    items: [
+      { to: '/admin', label: 'Dashboard', end: true },
+      { to: '/admin/bookings', label: 'Bookings' },
+      { to: '/admin/diary', label: 'Calendar' },
+      // "New booking" rather than "Telephone": the screen takes a booking for someone who is
+      // not booking it themselves, whether they rang up or are stood at the counter, and the
+      // old label described only half of what it is used for.
+      { to: '/admin/bookings/telephone', label: 'New booking' },
+    ],
+  },
+  {
+    name: 'The club',
+    items: [
+      // Its own item rather than folded into Manage tables: marking a table out of service is
+      // a counter job that STAFF do, while Manage tables is admin-only, so merging the two
+      // would have taken a capability away from staff to tidy a label.
+      { to: '/admin/maintenance', label: 'Maintenance' },
+      { to: '/admin/tables', label: 'Manage tables', adminOnly: true },
+      { to: '/admin/cafe', label: 'Menu items', adminOnly: true },
+    ],
+  },
+  {
+    name: 'Setup',
+    items: [
+      { to: '/admin/settings', label: 'Club settings', adminOnly: true },
+      { to: '/admin/users', label: 'Manage staff', adminOnly: true },
+    ],
+  },
 ];
 
 /**
@@ -41,31 +75,52 @@ const NAV: { to: string; label: string; end?: boolean; adminOnly?: boolean }[] =
  */
 export function AdminLayout() {
   const { data: user } = useCurrentUser();
-  const visible = NAV.filter((item) => !item.adminOnly || mayAdminister(user?.role));
+  const groups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !item.adminOnly || mayAdminister(user?.role)),
+  })).filter((group) => group.items.length > 0);
 
   return (
     <div>
-      <div className="border-b border-ink-200 bg-ink-50">
+      {/* Sticks directly beneath the site header, offset by the height that header publishes as
+          --header-height rather than by a number copied from it — the brand is the club's own
+          name, and a long one wraps. z-30 keeps this under the header (z-40) and over the
+          booking grid's sticky column (z-20). Opaque, not translucent: content scrolls
+          underneath and would otherwise show through the labels. */}
+      <div
+        className="sticky z-30 border-b border-line bg-surface-sunken"
+        style={{ top: 'var(--header-height, 3.5rem)' }}
+      >
+        {/* no-scrollbar: the row still scrolls on a narrow phone, but the bar itself was
+            drawing across the links. The group dividers are what signal there is more to the
+            right. */}
         <nav
           aria-label="Staff"
-          className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4 py-2 sm:px-6"
+          className="no-scrollbar mx-auto flex max-w-6xl items-center gap-1 overflow-x-auto px-4 py-2 sm:px-6"
         >
-          {visible.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end ?? false}
-              className={({ isActive }) =>
-                [
-                  'whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition-colors',
-                  isActive
-                    ? 'bg-white font-medium text-felt-900 shadow-sm'
-                    : 'text-ink-600 hover:bg-white/70 hover:text-felt-900',
-                ].join(' ')
-              }
-            >
-              {item.label}
-            </NavLink>
+          {groups.map((group, index) => (
+            <div key={group.name} className="flex items-center gap-1">
+              {index > 0 && (
+                <span aria-hidden className="mx-2 h-5 w-px shrink-0 bg-ink-300" />
+              )}
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end ?? false}
+                  className={({ isActive }) =>
+                    [
+                      'whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition-colors',
+                      isActive
+                        ? 'bg-surface font-medium text-felt-900 shadow-sm'
+                        : 'text-fg-muted hover:bg-surface/70 hover:text-felt-900',
+                    ].join(' ')
+                  }
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
           ))}
         </nav>
       </div>
