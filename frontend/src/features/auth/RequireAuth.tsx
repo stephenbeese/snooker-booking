@@ -16,10 +16,13 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   if (isPending) {
     // Rendering the redirect while the session check is still in flight would bounce a
     // signed-in user to the login page on every hard refresh.
+    //
+    // A div, not a <main>: AppLayout already provides the page's single main landmark, and
+    // nesting a second one inside it breaks landmark navigation for a screen reader.
     return (
-      <main className="mx-auto max-w-2xl px-4 py-12">
-        <p className="text-sm text-gray-500">Loading…</p>
-      </main>
+      <div className="mx-auto max-w-2xl px-4 py-12">
+        <p className="text-sm text-fg-muted">Loading…</p>
+      </div>
     );
   }
 

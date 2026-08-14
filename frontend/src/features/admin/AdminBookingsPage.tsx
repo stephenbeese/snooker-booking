@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { PageShell } from '@/components/ui/PageShell';
 import { Link, useSearchParams } from 'react-router';
 import type { BookingStatus } from '@/features/booking/types';
 import { formatSlotTime, todayIso } from '@/lib/datetime';
@@ -94,10 +95,9 @@ export function AdminBookingsPage() {
   const totalPages = data?.totalPages ?? 0;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      {/* No "back to dashboard" link: AdminLayout's nav is on every staff screen now, so a
-          second way back would be one more thing to keep in step with it. */}
-      <h1 className="text-3xl font-semibold tracking-tight text-felt-900">Bookings</h1>
+    // No "back to dashboard" link: AdminLayout's nav is on every staff screen now, so a
+    // second way back would be one more thing to keep in step with it.
+    <PageShell title="Bookings">
 
       {/* Still a form, so Enter behaves and the fieldset below groups properly — but submitting
           has nothing left to do now that every control applies on change. Preventing the default
@@ -314,7 +314,7 @@ export function AdminBookingsPage() {
           )}
         </>
       )}
-    </div>
+    </PageShell>
   );
 }
 

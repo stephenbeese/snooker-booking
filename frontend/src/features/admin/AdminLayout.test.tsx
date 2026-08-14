@@ -35,20 +35,29 @@ describe('AdminLayout', () => {
     renderWithRouter(<AdminLayout />, { route: '/admin', path: '/admin' });
 
     const nav = await screen.findByRole('navigation', { name: 'Staff' });
-    expect(await screen.findByRole('link', { name: 'Settings' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Club settings' })).toBeInTheDocument();
     expect(nav).toBeInTheDocument();
     for (const label of [
       'Dashboard',
       'Bookings',
-      'Diary',
-      'Telephone',
-      'Customers',
+      'Calendar',
+      'New booking',
       'Maintenance',
     ]) {
       expect(screen.getByRole('link', { name: label })).toBeInTheDocument();
     }
-    expect(screen.getByRole('link', { name: 'Tables' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Staff accounts' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Manage tables' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Menu items' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Manage staff' })).toBeInTheDocument();
+  });
+
+  it('does not offer a customer directory to anyone', () => {
+    // The screen and its endpoints were removed outright rather than hidden: a link nobody
+    // can see is still a URL anyone can type, and the API was what actually decided.
+    mockSession('ADMIN');
+    renderWithRouter(<AdminLayout />, { route: '/admin', path: '/admin' });
+
+    expect(screen.queryByRole('link', { name: /customer/i })).not.toBeInTheDocument();
   });
 
   it('does not offer staff the screens they would be refused', async () => {
@@ -59,13 +68,14 @@ describe('AdminLayout', () => {
     renderWithRouter(<AdminLayout />, { route: '/admin', path: '/admin' });
 
     expect(await screen.findByRole('link', { name: 'Bookings' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Customers' })).toBeInTheDocument();
-    // The diary is a staff tool above all — it is what someone on the counter looks at.
-    expect(screen.getByRole('link', { name: 'Diary' })).toBeInTheDocument();
+    // The calendar is a staff tool above all — it is what someone on the counter looks at,
+    // as is marking a table out of service.
+    expect(screen.getByRole('link', { name: 'Calendar' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Maintenance' })).toBeInTheDocument();
 
-    expect(screen.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Tables' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Staff accounts' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Club settings' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Manage tables' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Manage staff' })).not.toBeInTheDocument();
   });
 
   it('shows no admin links while the session is still loading', async () => {
@@ -75,9 +85,9 @@ describe('AdminLayout', () => {
     mockSession('ADMIN');
     renderWithRouter(<AdminLayout />, { route: '/admin', path: '/admin' });
 
-    expect(screen.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Club settings' })).not.toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument(),
+      expect(screen.getByRole('link', { name: 'Club settings' })).toBeInTheDocument(),
     );
   });
 });

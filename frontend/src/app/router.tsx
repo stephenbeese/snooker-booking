@@ -3,8 +3,6 @@ import { AdminBookingDetailPage } from '@/features/admin/AdminBookingDetailPage'
 import { AdminBookingsPage } from '@/features/admin/AdminBookingsPage';
 import { AdminCafePage } from '@/features/admin/AdminCafePage';
 import { MenuPage } from '@/features/cafe/MenuPage';
-import { AdminCustomerDetailPage } from '@/features/admin/AdminCustomerDetailPage';
-import { AdminCustomersPage } from '@/features/admin/AdminCustomersPage';
 import { AdminDiaryPage } from '@/features/admin/AdminDiaryPage';
 import { AdminDashboardPage } from '@/features/admin/AdminDashboardPage';
 import { AdminLayout } from '@/features/admin/AdminLayout';
@@ -26,6 +24,7 @@ import { ForgotPasswordPage } from '@/features/profile/ForgotPasswordPage';
 import { ProfilePage } from '@/features/profile/ProfilePage';
 import { ResetPasswordPage } from '@/features/profile/ResetPasswordPage';
 import { AppLayout } from './AppLayout';
+import { ErrorPage } from './ErrorPage';
 
 /**
  * Declarative (SPA) mode. Deliberately not React Router's framework mode: data fetching
@@ -34,6 +33,9 @@ import { AppLayout } from './AppLayout';
 export const router = createBrowserRouter([
   {
     element: <AppLayout />,
+    // Inside the layout, so a 404 or a thrown render error still arrives with the site's header,
+    // nav and footer around it — a bare error screen strands people with only the back button.
+    errorElement: <ErrorPage />,
     children: [
       { path: '/', element: <HomePage /> },
       { path: '/book', element: <BookPage /> },
@@ -99,8 +101,6 @@ export const router = createBrowserRouter([
           },
           { path: 'bookings/:reference', element: <AdminBookingDetailPage /> },
           { path: 'diary', element: <AdminDiaryPage /> },
-          { path: 'customers', element: <AdminCustomersPage /> },
-          { path: 'customers/:id', element: <AdminCustomerDetailPage /> },
           { path: 'maintenance', element: <AdminMaintenancePage /> },
           {
             path: 'tables',
@@ -151,6 +151,9 @@ export const router = createBrowserRouter([
           </section>
         ),
       },
+      // Last, and a real page: an unmatched path previously rendered the chrome around an empty
+      // <main>, which is indistinguishable from a page that failed to load.
+      { path: '*', element: <ErrorPage notFound /> },
     ],
   },
 ]);

@@ -3,9 +3,6 @@ import type { Role } from '@/features/auth/types';
 import type {
   AdminBooking,
   AdminBookingFilters,
-  AdminCustomer,
-  AdminCustomerDetail,
-  AdminCustomerFilters,
   AdminDashboard,
   AdminTable,
   AdminTableType,
@@ -312,29 +309,6 @@ export function fetchAdminUsers(
   return apiRequest<Paged<AdminUser>>(`/api/admin/users?${params.toString()}`);
 }
 
-/**
- * The customer directory.
- *
- * <p>A different endpoint from the account directory above, not the same one with a role
- * filter: `/api/admin/users` is admin-only because it hands out roles, while looking a caller
- * up is a job for whoever is on the counter.
- */
-export function fetchAdminCustomers(
-  filters: AdminCustomerFilters,
-): Promise<Paged<AdminCustomer>> {
-  const params = new URLSearchParams();
-  if (filters.search) {
-    params.set('search', filters.search);
-  }
-  params.set('page', String(filters.page ?? 0));
-  return apiRequest<Paged<AdminCustomer>>(`/api/admin/customers?${params.toString()}`);
-}
-
-/** One customer and their bookings, which arrive on the same response. */
-export function fetchAdminCustomer(id: number): Promise<AdminCustomerDetail> {
-  return apiRequest<AdminCustomerDetail>(`/api/admin/customers/${id}`);
-}
-
 export function createAdminUser(input: CreateUserInput): Promise<AdminUser> {
   return apiRequest<AdminUser>('/api/admin/users', {
     method: 'POST',
@@ -416,6 +390,20 @@ export function updateCafeCategory(
   return apiRequest<CafeCategory>(`/api/admin/cafe/categories/${encodeURIComponent(code)}`, {
     method: 'PUT',
     body: JSON.stringify({ label, displayOrder: displayOrder ?? null }),
+  });
+}
+
+/**
+ * Rewrites the whole running order in one request.
+ *
+ * <p>Every code, not a subset — the server refuses a partial list rather than guessing where the
+ * absent ones belong. One write rather than a PUT per category, so the menu is never seen
+ * half-reordered.
+ */
+export function reorderCafeCategories(categoryCodes: string[]): Promise<CafeCategory[]> {
+  return apiRequest<CafeCategory[]>('/api/admin/cafe/categories/order', {
+    method: 'PUT',
+    body: JSON.stringify({ categoryCodes }),
   });
 }
 

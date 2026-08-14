@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { TextField } from '@/components/ui/TextField';
 import { useToast } from '@/components/ui/Toast';
+import { PageShell } from '@/components/ui/PageShell';
 import { ApiError } from '@/lib/apiError';
 import { useTableTypeLabel, useTableTypes } from '@/features/availability/useAvailability';
 import {
@@ -158,12 +159,10 @@ export function AdminTablesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10">
-      <h1 className="text-2xl font-semibold tracking-tight text-felt-900">Tables</h1>
-      <p className="mt-2 text-sm text-ink-600">
-        Tables are taken off sale rather than deleted, because past bookings refer to them. An
-        inactive table disappears from the booking grid straight away.
-      </p>
+    <PageShell
+      title="Manage tables"
+      description="Tables are taken off sale rather than deleted, because past bookings refer to them. An inactive table disappears from the booking grid straight away."
+    >
 
       <form
         onSubmit={handleSubmit(onSubmit)}
@@ -312,6 +311,6 @@ export function AdminTablesPage() {
           ))}
         </tbody>
       </table>
-    </div>
+    </PageShell>
   );
 }

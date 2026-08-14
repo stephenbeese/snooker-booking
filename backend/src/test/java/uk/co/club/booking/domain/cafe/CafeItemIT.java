@@ -2,6 +2,8 @@ package uk.co.club.booking.domain.cafe;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -312,6 +314,104 @@ class CafeItemIT extends AbstractIntegrationTest {
 
         assertThat(listItems()).extracting(item -> item.get("name")).containsExactly("First", "Second");
         assertThat(listItems()).extracting(item -> item.get("displayOrder")).containsExactly(0, 1);
+    }
+
+    @Test
+    @DisplayName("reordering the categories reorders the sections customers read")
+    void reordersCategories() {
+        // The point of the feature, asserted end to end rather than on display_order alone: a
+        // number in a column proves nothing about what the menu looks like.
+        createItem(Map.of(
+                "name", "Flat white", "pricePence", 275, "categoryCode", "HOT_DRINKS"));
+        createItem(Map.of("name", "Lager", "pricePence", 480, "categoryCode", "BEER_AND_CIDER"));
+        assertThat(sectionLabels()).containsExactly("Hot drinks", "Beer & cider");
+
+        List<String> reversed = new ArrayList<>(categoryCodes());
+        Collections.reverse(reversed);
+        ResponseEntity<String> response = admin.put(
+                "/api/admin/cafe/categories/order",
+                Map.of("categoryCodes", reversed),
+                String.class);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(sectionLabels()).containsExactly("Beer & cider", "Hot drinks");
+    }
+
+    @Test
+    @DisplayName("/order routes to the reorder endpoint, not to a rename of a category called order")
+    void orderIsNotTreatedAsACategoryCode() {
+        // Both patterns are a single segment, so they genuinely overlap: PUT /categories/order
+        // matches /{code} as readily as /order. Spring prefers the literal, but nothing in the
+        // codebase says so — without this, a future refactor that reordered or renamed the
+        // mappings would silently start validating the body as a rename, and the only symptom
+        // would be a 400 complaining that "label must not be blank".
+        ResponseEntity<String> response = admin.put(
+                "/api/admin/cafe/categories/order",
+                Map.of("categoryCodes", categoryCodes()),
+                String.class);
+
+        // 200 is itself the proof: /{code} would have validated this body as a rename and
+        // answered 400 with "label must not be blank", since a reorder body carries no label.
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getBody()).doesNotContain("must not be blank");
+    }
+
+    @Test
+    @DisplayName("a partial order is refused rather than merged")
+    void refusesAPartialOrder() {
+        // Whether the absent categories should lead, trail or hold their old positions has no
+        // single sensible answer, so guessing one would silently rearrange sections nobody
+        // touched.
+        ResponseEntity<String> response = admin.put(
+                "/api/admin/cafe/categories/order",
+                Map.of("categoryCodes", List.of("HOT_DRINKS")),
+                String.class);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(422);
+        assertThat(response.getBody()).contains("every category exactly once");
+    }
+
+    @Test
+    @DisplayName("a duplicated code is refused rather than silently winning twice")
+    void refusesADuplicatedCode() {
+        List<String> codes = new ArrayList<>(categoryCodes());
+        codes.set(1, codes.get(0));
+
+        ResponseEntity<String> response = admin.put(
+                "/api/admin/cafe/categories/order", Map.of("categoryCodes", codes), String.class);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(422);
+        assertThat(response.getBody()).contains("more than once");
+    }
+
+    @Test
+    @DisplayName("a withdrawn category keeps its place, and returns to it when restored")
+    void withdrawnCategoriesHoldTheirPosition() {
+        // Withdrawn categories take part in the ordering: excluding them would mean a retired
+        // section reappearing at the end, in a position nobody chose, whenever it came back.
+        assertThat(admin.put("/api/admin/cafe/categories/SNACKS/active?active=false", null, String.class)
+                        .getStatusCode()
+                        .value())
+                .isEqualTo(200);
+
+        List<String> order = new ArrayList<>(categoryCodes());
+        order.remove("SNACKS");
+        order.add(0, "SNACKS");
+        admin.put("/api/admin/cafe/categories/order", Map.of("categoryCodes", order), String.class);
+
+        assertThat(admin.put("/api/admin/cafe/categories/SNACKS/active?active=true", null, String.class)
+                        .getStatusCode()
+                        .value())
+                .isEqualTo(200);
+        assertThat(categoryCodes().get(0)).isEqualTo("SNACKS");
+    }
+
+    /** Every category code in its current running order, withdrawn ones included. */
+    @SuppressWarnings("unchecked")
+    private List<String> categoryCodes() {
+        return ((List<Map<String, Object>>) admin.get("/api/admin/cafe/categories", List.class)
+                        .getBody())
+                .stream().map(category -> (String) category.get("code")).toList();
     }
 
     private long createItem(Map<String, Object> body) {

@@ -1,7 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
+import { Link } from 'react-router';
+import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
+import { PageShell } from '@/components/ui/PageShell';
+import { Panel } from '@/components/ui/Panel';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { TextField } from '@/components/ui/TextField';
 import { useCurrentUser } from '@/features/auth/useAuth';
 import { ApiError } from '@/lib/apiError';
@@ -34,9 +39,9 @@ export function ProfilePage() {
 
   if (isPending) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-        <div className="h-64 animate-pulse rounded-card bg-ink-100" />
-      </div>
+      <PageShell width="sm">
+        <Skeleton className="h-64" label="Loading your profile" />
+      </PageShell>
     );
   }
 
@@ -45,8 +50,37 @@ export function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-semibold tracking-tight text-felt-900">Your account</h1>
+    <PageShell width="sm">
+      {/* An identity block rather than a bare heading. The page is reached from a nav link
+          labelled with the person's own first name, so it has to say plainly whose profile
+          this is and what is on it — otherwise "Your account" over two forms leaves people
+          wondering what else was meant to be here. */}
+      <div className="flex items-center gap-4">
+        <span
+          aria-hidden
+          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-felt-100 text-xl font-semibold text-felt-900"
+        >
+          {user.firstName.charAt(0).toUpperCase()}
+          {user.lastName.charAt(0).toUpperCase()}
+        </span>
+        <div className="min-w-0">
+          <h1 className="truncate text-2xl font-semibold tracking-tight text-felt-900 sm:text-3xl">
+            {user.firstName} {user.lastName}
+          </h1>
+          <p className="truncate text-sm text-fg-muted">{user.email}</p>
+        </div>
+      </div>
+
+      <p className="mt-6 text-sm text-fg-muted">
+        Your contact details and password.{' '}
+        <Link
+          to="/bookings"
+          className="font-medium text-felt-800 underline underline-offset-2 hover:text-felt-900"
+        >
+          Your bookings
+        </Link>{' '}
+        are on their own page.
+      </p>
 
       <DetailsCard
         key={user.id}
@@ -58,7 +92,7 @@ export function ProfilePage() {
         email={user.email}
       />
       <PasswordCard />
-    </div>
+    </PageShell>
   );
 }
 
@@ -79,9 +113,7 @@ function DetailsCard({ defaults, email }: { defaults: DetailsValues; email: stri
   }
 
   return (
-    <section className="mt-8 rounded-card border border-ink-200 bg-white p-6 shadow-card">
-      <h2 className="font-semibold tracking-tight text-felt-900">Your details</h2>
-
+    <Panel title="Your details" className="mt-8">
       <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-5" noValidate>
         <div className="grid gap-5 sm:grid-cols-2">
           <TextField
@@ -107,14 +139,12 @@ function DetailsCard({ defaults, email }: { defaults: DetailsValues; email: stri
           {...register('phone')}
         />
 
-        <div>
+        <div className="rounded-lg bg-surface-sunken px-3.5 py-3">
           <span className="block text-sm font-medium text-felt-900">Email address</span>
-          <p className="mt-1.5 text-sm text-ink-600">{email}</p>
+          <p className="mt-1 text-sm text-fg-muted">{email}</p>
           {/* Not editable here: it is the login identifier and the address reset mail goes to,
               so changing it needs proof of the new mailbox. */}
-          <p className="mt-1 text-xs text-ink-500">
-            Contact the club if you need to change this.
-          </p>
+          <p className="mt-1 text-xs text-ink-500">Contact the club if you need to change this.</p>
         </div>
 
         <Feedback
@@ -126,7 +156,7 @@ function DetailsCard({ defaults, email }: { defaults: DetailsValues; email: stri
           {isSubmitting ? 'Saving…' : 'Save changes'}
         </Button>
       </form>
-    </section>
+    </Panel>
   );
 }
 
@@ -154,12 +184,11 @@ function PasswordCard() {
   }
 
   return (
-    <section className="mt-6 rounded-card border border-ink-200 bg-white p-6 shadow-card">
-      <h2 className="font-semibold tracking-tight text-felt-900">Change password</h2>
-      <p className="mt-1 text-sm text-ink-600">
-        Changing your password signs you out on your other devices.
-      </p>
-
+    <Panel
+      title="Change password"
+      description="Changing your password signs you out on your other devices."
+      className="mt-6"
+    >
       <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-5" noValidate>
         <TextField
           label="Current password"
@@ -193,26 +222,20 @@ function PasswordCard() {
           {isSubmitting ? 'Changing…' : 'Change password'}
         </Button>
       </form>
-    </section>
+    </Panel>
   );
 }
 
 function Feedback({ error, success }: { error: unknown; success: string | null }) {
   if (error) {
     return (
-      <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3">
-        <p className="text-sm text-rose-800">
-          {error instanceof ApiError ? error.message : 'Something went wrong. Please try again.'}
-        </p>
-      </div>
+      <Alert tone="danger">
+        {error instanceof ApiError ? error.message : 'Something went wrong. Please try again.'}
+      </Alert>
     );
   }
   if (success) {
-    return (
-      <div role="status" className="rounded-lg border border-felt-200 bg-felt-50 p-3">
-        <p className="text-sm text-felt-900">{success}</p>
-      </div>
-    );
+    return <Alert tone="success">{success}</Alert>;
   }
   return null;
 }

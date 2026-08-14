@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
+import { PageShell } from '@/components/ui/PageShell';
 import { ApiError } from '@/lib/apiError';
 import { formatSlotTime } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
@@ -320,9 +321,17 @@ function CancelPanel({ booking }: { booking: AdminBooking }) {
   );
 }
 
+/**
+ * The page frame, kept as a local wrapper because every state — loading, error and loaded —
+ * needs the same heading and the same way back. Built on PageShell so the width and padding
+ * come from the same place as everywhere else rather than being chosen again here.
+ */
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+    <PageShell width="detail">
+      {/* "Booking" stays a small eyebrow rather than becoming the page's large heading: the
+          record's own heading below is the table and time, and two big headings stacked would
+          leave neither reading as the subject. */}
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-sm font-medium uppercase tracking-wide text-ink-500">Booking</h1>
         <Link
@@ -333,7 +342,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </Link>
       </div>
       <div className="mt-6">{children}</div>
-    </div>
+    </PageShell>
   );
 }
 

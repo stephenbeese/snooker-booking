@@ -222,6 +222,29 @@ describe('AdminSettingsPage', () => {
     expect(screen.getByText('£12.00')).toBeInTheDocument();
   });
 
+  it('gives every section a stable anchor id, which the jump links and e2e specs both rely on', async () => {
+    // The ids are not decoration. `admin-pricing.spec.ts` scopes all five of its tests to
+    // `section#pricing`, having previously matched on the word "Pricing" — which also appears
+    // in the table-types description ("every table and pricing rule"), so the wrong section
+    // won and the click waited out a 60-second timeout. Dropping an id here would put that
+    // back, as five slow, mystifying e2e failures a long way from the change that caused them.
+    mockApi();
+    const { container } = render();
+
+    await screen.findByText('Standard hourly rate');
+    for (const id of [
+      'opening-hours',
+      'special-hours',
+      'table-types',
+      'booking-rules',
+      'pricing',
+      'club-details',
+    ]) {
+      expect(container.querySelector(`section#${id}`), `section#${id} must exist`).not.toBeNull();
+      expect(container.querySelector(`a[href="#${id}"]`), `jump link to #${id}`).not.toBeNull();
+    }
+  });
+
   it('lists the special dates alongside the weekly hours, not instead of them', async () => {
     // Both sections read a path beginning /opening-hours. If the override list were served
     // the weekly rows, this section would render seven undated entries and the weekly one

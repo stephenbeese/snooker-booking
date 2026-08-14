@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import uk.co.club.booking.domain.admin.web.dto.CafeCategoryRequests.CafeCategoryInput;
+import uk.co.club.booking.domain.admin.web.dto.CafeCategoryRequests.CafeCategoryOrder;
 import uk.co.club.booking.domain.admin.web.dto.CafeCategoryRequests.CafeCategoryResponse;
 import uk.co.club.booking.domain.cafe.CafeCategoryService;
 
@@ -50,7 +51,23 @@ public class AdminCafeCategoryController {
                 categoryService.create(request.label(), request.displayOrder()));
     }
 
-    /** Renames or reorders. The code is immutable — see {@code CafeCategory}. */
+    /**
+     * Rewrites the whole running order at once.
+     *
+     * <p>{@code /order} and {@code /{code}} are both a single segment, so they genuinely overlap
+     * as URL patterns — the V17 CHECK constrains what may be *stored* as a code and has no say in
+     * routing. Spring resolves it: a literal segment always outranks a variable one, whatever the
+     * declaration order. Declared first anyway, so the two are read together rather than the
+     * ordering looking accidental.
+     */
+    @PutMapping("/order")
+    public List<CafeCategoryResponse> reorder(@Valid @RequestBody CafeCategoryOrder request) {
+        return categoryService.reorder(request.categoryCodes()).stream()
+                .map(CafeCategoryResponse::from)
+                .toList();
+    }
+
+    /** Renames or reorders one. The code is immutable — see {@code CafeCategory}. */
     @PutMapping("/{code}")
     public CafeCategoryResponse update(
             @PathVariable String code, @Valid @RequestBody CafeCategoryInput request) {

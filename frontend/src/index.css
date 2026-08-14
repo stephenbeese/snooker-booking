@@ -47,12 +47,29 @@
   --color-ink-800: oklch(0.27 0.007 158);
   --color-ink-900: oklch(0.19 0.006 158);
 
+  /*
+   * Semantic aliases over the palette above.
+   *
+   * `bg-white` says what a thing IS painted; `bg-surface` says what it is FOR. Only the
+   * second survives a theme change, so everything built or touched from here on uses
+   * these, and the raw families stay for the brand moments that genuinely mean "green".
+   * A dark mode later is then a redefinition of these five, not a second sweep of every
+   * file — which is the whole reason they exist before there is a dark mode to use them.
+   */
+  --color-surface: var(--color-white);
+  --color-surface-sunken: var(--color-ink-50);
+  --color-line: var(--color-ink-200);
+  --color-fg: var(--color-ink-800);
+  --color-fg-muted: var(--color-ink-600);
+
   /* Softer and wider than Tailwind's defaults. Shadows this diffuse read as depth
      rather than as a drop shadow, which is most of the "modern" look. */
   --shadow-card: 0 1px 2px oklch(0.26 0.07 158 / 0.04), 0 4px 16px oklch(0.26 0.07 158 / 0.06);
   --shadow-lifted: 0 2px 4px oklch(0.26 0.07 158 / 0.06), 0 12px 32px oklch(0.26 0.07 158 / 0.1);
 
   --radius-card: 0.875rem;
+  /* Page-level panels, a step up from a card so the two nest without looking identical. */
+  --radius-panel: 1.125rem;
 }
 
 @layer base {
@@ -106,6 +123,19 @@
     background-image:
       radial-gradient(ellipse 80% 60% at 20% 0%, oklch(0.35 0.09 158 / 0.55), transparent 60%),
       radial-gradient(ellipse 60% 50% at 90% 20%, oklch(0.44 0.11 158 / 0.35), transparent 55%);
+  }
+
+  /* Horizontal scrollers where the bar itself is visual noise: filter chips, the staff
+     nav. The content still scrolls by touch, wheel and keyboard — this hides the
+     indicator, it does not trap anything. Only use it where an edge fade or an obvious
+     cut-off row already signals that there is more to the right. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 
   /* Content entering on load. Deliberately one shared, short, subtle animation rather

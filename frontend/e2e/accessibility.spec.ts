@@ -59,8 +59,10 @@ test.describe('Accessibility', () => {
     await page.keyboard.press('Enter');
 
     // aria-pressed communicates the selection to a screen reader; without it the only
-    // feedback is a colour change.
-    await expect(page.getByRole('button', { name: /— selected$/ })).toHaveAttribute(
+    // feedback is a colour change. The name carries the whole booked range, not just
+    // "selected", because a booking covers several cells and the start cell alone does not
+    // say how far it runs — so this deliberately does not anchor at "selected".
+    await expect(page.getByRole('button', { name: /— selected(,|$)/ }).first()).toHaveAttribute(
       'aria-pressed',
       'true',
     );

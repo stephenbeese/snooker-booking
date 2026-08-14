@@ -4,30 +4,50 @@ import { slotAppearance } from './slotAppearance';
 
 describe('slotAppearance', () => {
   it('makes an available slot interactive', () => {
-    const appearance = slotAppearance(makeSlot({ startTime: '14:00:00' }), '14:00', false);
+    const appearance = slotAppearance(makeSlot({ startTime: '14:00:00' }), '14:00', null);
 
     expect(appearance.interactive).toBe(true);
     expect(appearance.label).toBe('14:00 — available');
   });
 
   it('marks the selected slot as such', () => {
-    const appearance = slotAppearance(makeSlot({ startTime: '14:00:00' }), '14:00', true);
+    const appearance = slotAppearance(makeSlot({ startTime: '14:00:00' }), '14:00', 'only');
 
     expect(appearance.label).toBe('14:00 — selected');
     expect(appearance.className).toContain('bg-felt-700');
   });
 
-  it('stops showing a selected slot as selected once it no longer fits the duration', () => {
-    // Order-dependent: checking `isSelected` first left the cell green, clickable and
-    // labelled "selected" after the customer lengthened the booking past what fits there,
-    // which is how a stale selection reached the summary bar priced for the old duration.
+  it('paints the middle of a booking as the booking, not as "does not fit"', () => {
+    // `bookableForRequestedDuration` answers "could a booking of this length START here", so
+    // for a 19:00–23:00 booking against a 23:00 close every cell from 19:30 on answers false —
+    // and those are exactly the cells the booking occupies. Testing it ahead of the span drew
+    // one dark cell at 19:00 followed by seven pale ones, each still printing its own time.
+    const slot = makeSlot({
+      startTime: '19:30:00',
+      bookableForRequestedDuration: false,
+      maxDurationMinutes: 210,
+    });
+
+    const appearance = slotAppearance(slot, '19:30', 'middle');
+
+    expect(appearance.className).toContain('bg-felt-700');
+    // Blank, so the run reads as one bar rather than a column of separate times.
+    expect(appearance.text).toBe('');
+  });
+
+  it('still refuses a lone selected cell that no longer fits the duration', () => {
+    // The other half of the ordering, and the reason it cannot simply be reversed. A single-
+    // cell span IS the anchor, and the anchor's own bookability is the server's verdict on the
+    // whole booking — so it must keep losing its selected look when the customer lengthens the
+    // booking past what fits. That is how a stale selection used to reach the summary bar
+    // priced for the old duration.
     const slot = makeSlot({
       startTime: '14:00:00',
       bookableForRequestedDuration: false,
       maxDurationMinutes: 90,
     });
 
-    const appearance = slotAppearance(slot, '14:00', true);
+    const appearance = slotAppearance(slot, '14:00', null);
 
     expect(appearance.interactive).toBe(false);
     expect(appearance.label).toBe('14:00 — Up to 1 hour 30 mins only');
@@ -42,7 +62,7 @@ describe('slotAppearance', () => {
   ] as const)('explains why a slot is unavailable: %s', (reason, expected) => {
     const slot = makeSlot({ startTime: '14:00:00', available: false, reason });
 
-    const appearance = slotAppearance(slot, '14:00', false);
+    const appearance = slotAppearance(slot, '14:00', null);
 
     expect(appearance.interactive).toBe(false);
     expect(appearance.label).toBe(`14:00 — ${expected}`);
@@ -52,12 +72,12 @@ describe('slotAppearance', () => {
     const booked = slotAppearance(
       makeSlot({ startTime: '14:00:00', available: false, reason: 'BOOKED' }),
       '14:00',
-      false,
+      null,
     );
     const maintenance = slotAppearance(
       makeSlot({ startTime: '14:00:00', available: false, reason: 'MAINTENANCE' }),
       '14:00',
-      false,
+      null,
     );
 
     expect(booked.className).not.toBe(maintenance.className);
@@ -74,7 +94,7 @@ describe('slotAppearance', () => {
       maxDurationMinutes: 60,
     });
 
-    const appearance = slotAppearance(slot, '22:00', false);
+    const appearance = slotAppearance(slot, '22:00', null);
 
     expect(appearance.interactive).toBe(false);
     expect(appearance.label).toBe('22:00 — Up to 1 hour only');
@@ -89,7 +109,7 @@ describe('slotAppearance', () => {
       maxDurationMinutes: 0,
     });
 
-    const appearance = slotAppearance(slot, '22:30', false);
+    const appearance = slotAppearance(slot, '22:30', null);
 
     expect(appearance.label).toBe('22:30 — Not enough time before closing');
   });
@@ -97,6 +117,6 @@ describe('slotAppearance', () => {
   it('keeps an available slot clickable when no duration was requested', () => {
     const slot = makeSlot({ startTime: '14:00:00', bookableForRequestedDuration: null });
 
-    expect(slotAppearance(slot, '14:00', false).interactive).toBe(true);
+    expect(slotAppearance(slot, '14:00', null).interactive).toBe(true);
   });
 });

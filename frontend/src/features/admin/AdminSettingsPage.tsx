@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
 import { useToast } from '@/components/ui/Toast';
+import { PageShell } from '@/components/ui/PageShell';
+import { Panel } from '@/components/ui/Panel';
 import { ApiError } from '@/lib/apiError';
 import { PricingRules } from './components/PricingRules';
 import { SettingsWarnings } from './components/SettingsWarnings';
@@ -45,24 +47,51 @@ function messageOf(error: unknown, fallback: string): string | null {
 }
 
 /**
- * The settings that decide what the club can sell.
+ * The six things about the club that are configurable, and the id each is anchored at.
  *
- * <p>One page with three sections rather than three routes: staff adjusting opening hours
- * often want to change the booking window in the same sitting, and the settings are small
- * enough that splitting them would add navigation without adding clarity.
+ * <p>Six stacked panels make the longest scroll in the app, and pricing — the one most often
+ * wanted — sits at the bottom. The jump links are what make that reachable. Splitting the page
+ * into six routes was considered and rejected: these settings are read against each other
+ * (opening hours and booking rules in particular), and separating them would mean navigating
+ * away to check the thing you are deciding against.
+ */
+const SECTIONS = [
+  { id: 'opening-hours', label: 'Opening hours' },
+  { id: 'special-hours', label: 'Special hours' },
+  { id: 'table-types', label: 'Table types' },
+  { id: 'booking-rules', label: 'Booking rules' },
+  { id: 'pricing', label: 'Pricing' },
+  { id: 'club-details', label: 'Club details' },
+];
+
+/**
+ * The settings that decide what the club can sell.
  *
  * <p>Each section saves independently. A failed save in one must not discard unsaved edits in
  * another, which a single page-wide form would do.
  */
 export function AdminSettingsPage() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="text-2xl font-semibold tracking-tight text-felt-900">Settings</h1>
-      <p className="mt-2 text-sm text-ink-600">
-        These control what customers can book. Changes apply to new bookings only — bookings
-        already taken are never cancelled automatically, but you will be told which ones a
-        change affects.
-      </p>
+    <PageShell
+      width="detail"
+      title="Club settings"
+      description="These control what customers can book. Changes apply to new bookings only —
+        bookings already taken are never cancelled automatically, but you will be told which ones
+        a change affects."
+    >
+      {/* `scroll-padding-top` is already set globally in index.css, so an anchored section
+          lands below the sticky header rather than under it. */}
+      <nav aria-label="Settings sections" className="mt-6 flex flex-wrap gap-2">
+        {SECTIONS.map((section) => (
+          <a
+            key={section.id}
+            href={`#${section.id}`}
+            className="rounded-full bg-surface-sunken px-3 py-1.5 text-sm text-ink-700 transition-colors hover:bg-felt-50 hover:text-felt-900"
+          >
+            {section.label}
+          </a>
+        ))}
+      </nav>
 
       <OpeningHoursSection />
       <SpecialHoursSection />
@@ -70,7 +99,7 @@ export function AdminSettingsPage() {
       <BookingRulesSection />
       <PricingSection />
       <ClubDetailsSection />
-    </div>
+    </PageShell>
   );
 }
 
@@ -103,10 +132,10 @@ function OpeningHoursSection() {
     toast('Opening hours saved.');
   }
 
-  if (isPending) return <Section title="Opening hours">Loading…</Section>;
+  if (isPending) return <Section id="opening-hours" title="Opening hours">Loading…</Section>;
 
   return (
-    <Section title="Opening hours">
+    <Section id="opening-hours" title="Opening hours">
       <p className="text-sm text-ink-600">
         A closed day disappears from the booking grid entirely. Times are kept when you close a
         day, so reopening restores them.
@@ -220,10 +249,10 @@ function SpecialHoursSection() {
     toast(`Special hours removed for ${formatDateLong(date)}.`);
   }
 
-  if (isPending) return <Section title="Special opening hours">Loading…</Section>;
+  if (isPending) return <Section id="special-hours" title="Special opening hours">Loading…</Section>;
 
   return (
-    <Section title="Special opening hours">
+    <Section id="special-hours" title="Special opening hours">
       <p className="text-sm text-ink-600">
         Hours for one date, overriding that day of the week. A date set to closed disappears
         from the booking grid and is refused by the booking form.
@@ -379,10 +408,10 @@ function TableTypesSection() {
     );
   }
 
-  if (isPending) return <Section title="Table types">Loading…</Section>;
+  if (isPending) return <Section id="table-types" title="Table types">Loading…</Section>;
 
   return (
-    <Section title="Table types">
+    <Section id="table-types" title="Table types">
       <p className="text-sm text-ink-600">
         The kinds of table you offer. Adding one makes it available on every table and pricing
         rule. A type in use cannot be withdrawn — change those tables first.
@@ -472,10 +501,10 @@ function BookingRulesSection() {
     toast('Booking rules saved.');
   }
 
-  if (isPending || !rules) return <Section title="Booking rules">Loading…</Section>;
+  if (isPending || !rules) return <Section id="booking-rules" title="Booking rules">Loading…</Section>;
 
   return (
-    <Section title="Booking rules">
+    <Section id="booking-rules" title="Booking rules">
       <div className="grid gap-4 sm:grid-cols-2">
         {RULE_FIELDS.map((field) => (
           <TextField
@@ -506,7 +535,7 @@ function BookingRulesSection() {
 
 function PricingSection() {
   return (
-    <Section title="Pricing">
+    <Section id="pricing" title="Pricing">
       <PricingRules />
     </Section>
   );
@@ -545,10 +574,10 @@ function ClubDetailsSection() {
     if (result) toast('Club details saved.');
   }
 
-  if (isPending || !club) return <Section title="Club details">Loading…</Section>;
+  if (isPending || !club) return <Section id="club-details" title="Club details">Loading…</Section>;
 
   return (
-    <Section title="Club details">
+    <Section id="club-details" title="Club details">
       <p className="text-sm text-ink-600">
         Shown on the public club page. These do not affect booking rules.
       </p>
@@ -576,12 +605,19 @@ function ClubDetailsSection() {
 
 // ---------------------------------------------------------------- shared
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  id,
+  title,
+  children,
+}: {
+  id: string;
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
-    <section className="mt-8 rounded-card border border-ink-200 bg-white p-6 shadow-card">
-      <h2 className="text-lg font-semibold text-felt-900">{title}</h2>
+    <Panel id={id} title={title} className="mt-8 scroll-mt-24">
       <div className="mt-3">{children}</div>
-    </section>
+    </Panel>
   );
 }
 

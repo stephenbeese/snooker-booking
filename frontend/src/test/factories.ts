@@ -1,4 +1,4 @@
-import type { AdminBooking, AdminCustomer } from '@/features/admin/types';
+import type { AdminBooking } from '@/features/admin/types';
 import type { Booking } from '@/features/booking/types';
 import type { DayAvailability, Slot, TableAvailability } from '@/features/availability/types';
 import type { User } from '@/features/auth/types';
@@ -119,21 +119,6 @@ export function makeAdminBooking(overrides: Partial<AdminBooking> = {}): AdminBo
     paymentStatus: 'SUCCEEDED',
     amountOutstandingPence: 0,
     payableAtCounter: false,
-    ...overrides,
-  };
-}
-
-export function makeAdminCustomer(overrides: Partial<AdminCustomer> = {}): AdminCustomer {
-  return {
-    id: 7,
-    email: 'customer@test.local',
-    firstName: 'Test',
-    lastName: 'Customer',
-    fullName: 'Test Customer',
-    phone: '07700 900123',
-    active: true,
-    createdAt: '2026-01-05T10:00:00Z',
-    bookingCount: 2,
     ...overrides,
   };
 }

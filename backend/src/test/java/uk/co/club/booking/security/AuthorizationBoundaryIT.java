@@ -126,13 +126,7 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
                             "date", "2030-01-01",
                             "startTime", "14:00:00",
                             "endTime", "18:00:00")),
-            new Endpoint(HttpMethod.DELETE, "/api/admin/maintenance-blocks/1", null),
-            // The customer directory. Staff rather than admin because "when is this caller in
-            // next" is a counter question — and deliberately a separate path from
-            // /api/admin/users, which is admin-only precisely so that reaching customers does
-            // not also hand out the account directory.
-            new Endpoint(HttpMethod.GET, "/api/admin/customers", null),
-            new Endpoint(HttpMethod.GET, "/api/admin/customers/1", null));
+            new Endpoint(HttpMethod.DELETE, "/api/admin/maintenance-blocks/1", null));
 
     /**
      * Configuring the club, and deciding who may do so. ADMIN only.
@@ -203,6 +197,12 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
                     HttpMethod.PUT,
                     "/api/admin/cafe/categories/HOT_DRINKS/active?active=true",
                     null),
+            // "order" is not a code any category could hold — the V17 CHECK requires
+            // ^[A-Z][A-Z0-9_]*$ — so this cannot be reached by dressing it up as a rename.
+            new Endpoint(
+                    HttpMethod.PUT,
+                    "/api/admin/cafe/categories/order",
+                    Map.of("categoryCodes", List.of("HOT_DRINKS"))),
             new Endpoint(HttpMethod.GET, "/api/admin/users", null),
             new Endpoint(HttpMethod.GET, "/api/admin/users/1", null),
             new Endpoint(

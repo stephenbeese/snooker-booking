@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
+import { PageShell } from '@/components/ui/PageShell';
 import { useCurrentUser } from '@/features/auth/useAuth';
 import type { Role } from '@/features/auth/types';
 import { ApiError } from '@/lib/apiError';
@@ -183,18 +184,15 @@ export function AdminUsersPage() {
   const users = data?.items ?? [];
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-felt-900">People</h1>
-          <p className="mt-2 text-sm text-ink-600">
-            Who can sign in, and what they are allowed to do.
-          </p>
-        </div>
+    <PageShell
+      title="Manage staff"
+      description="Who can sign in, and what they are allowed to do."
+      actions={
         <Button onClick={() => setShowCreate((open) => !open)}>
           {showCreate ? 'Cancel' : 'Add someone'}
         </Button>
-      </header>
+      }
+    >
 
       {notice && (
         <p
@@ -443,6 +441,6 @@ export function AdminUsersPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

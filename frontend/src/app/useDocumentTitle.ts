@@ -8,19 +8,24 @@ import { useLocation } from 'react-router';
 const EXACT: Record<string, string> = {
   '/': 'Home',
   '/book': 'Book a table',
-  '/menu': 'Cafe & bar',
+  // "Menu" for customers; the admin screen that manages it is "Menu items", since it covers
+  // more than the public list.
+  '/menu': 'Menu',
   '/login': 'Sign in',
   '/register': 'Create an account',
   '/forgot-password': 'Reset your password',
   '/reset-password': 'Choose a new password',
-  '/profile': 'Your account',
+  '/profile': 'Your profile',
   '/bookings': 'Your bookings',
   '/admin': 'Staff dashboard',
   '/admin/bookings': 'All bookings',
-  '/admin/bookings/telephone': 'Telephone booking',
-  '/admin/tables': 'Tables',
+  '/admin/bookings/telephone': 'New booking',
+  '/admin/tables': 'Manage tables',
+  '/admin/diary': 'Calendar',
+  '/admin/cafe': 'Menu items',
+  '/admin/users': 'Manage staff',
   '/admin/maintenance': 'Maintenance',
-  '/admin/settings': 'Settings',
+  '/admin/settings': 'Club settings',
 };
 
 /** Longest prefix wins, so /admin/bookings/SNK-1 is "Booking" rather than "All bookings". */

@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
+import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
+import { PageShell } from '@/components/ui/PageShell';
+import { Panel } from '@/components/ui/Panel';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { useCurrentUser } from '@/features/auth/useAuth';
 import { useCreateBooking } from '@/features/booking/useBookings';
 import { useClub } from '@/features/club/useClub';
@@ -16,8 +20,9 @@ import { formatPence } from '@/lib/money';
 import { AvailabilityGrid } from './components/AvailabilityGrid';
 import { DateSelector } from './components/DateSelector';
 import { DurationPicker } from './components/DurationPicker';
+import { TableTypeFilter } from './components/TableTypeFilter';
 import type { Slot } from './types';
-import { useAvailability } from './useAvailability';
+import { useAvailability, useTableTypeLabel } from './useAvailability';
 
 /**
  * Which cell is picked — the identity only.
@@ -46,9 +51,22 @@ export function BookPage() {
   // For the date picker's upper bound. The club publishes the window it actually sells; a
   // number hardcoded here would disagree the moment an admin changed it.
   const { data: club } = useClub();
+  const typeLabel = useTableTypeLabel();
   const createBooking = useCreateBooking();
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [droppedReason, setDroppedReason] = useState<string | null>(null);
+
+  // The type filter lives in the URL so a refresh, a back button or a shared link keeps it.
+  // It is applied here rather than by refetching with `tableId`: the server would return the
+  // same slots either way, and a round trip per chip tap would blank the grid for no gain.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tableType = searchParams.get('type');
+
+  const visibleTables = data?.tables.filter(
+    (table) => tableType === null || table.tableType === tableType,
+  );
+  const filteredAvailability =
+    data && visibleTables ? { ...data, tables: visibleTables } : undefined;
 
   // Resolved from the freshest grid, so a duration change re-derives the price, the end time
   // and whether the slot is still bookable at all.
@@ -134,61 +152,86 @@ export function BookPage() {
     setDroppedReason(null);
   }
 
-  return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <header>
-        <h1 className="text-3xl font-semibold tracking-tight text-felt-900">Book a table</h1>
-        <p className="mt-2 text-ink-600">Choose a date, then pick a table and start time.</p>
-      </header>
+  function changeTableType(next: string | null) {
+    setSearchParams(
+      (params) => {
+        if (next === null) {
+          params.delete('type');
+        } else {
+          params.set('type', next);
+        }
+        return params;
+      },
+      // Filtering is not a place in history: without this, leaving the page would mean pressing
+      // back once per chip tapped on the way in.
+      { replace: true },
+    );
+    setBookingError(null);
+    setDroppedReason(null);
 
-      <div className="mt-8 flex flex-wrap items-center gap-4 rounded-card border border-ink-200 bg-white p-4 shadow-card">
-        <DateSelector
-          date={date}
-          maxAdvanceDays={club?.maxAdvanceDays}
-          onChange={changeDate}
-        />
-        {data && (
-          <DurationPicker
-            options={data.durationOptions}
-            value={durationMinutes}
-            onChange={changeDuration}
-          />
+    // A selection on a table the filter just hid would stay live and bookable while invisible,
+    // leaving the summary bar quoting a table not on screen.
+    if (selected && next !== null && selectedTable && selectedTable.tableType !== next) {
+      setSelected(null);
+      setDroppedReason(
+        `${selectedTable.tableName} is hidden by the ${typeLabel(next)} filter, so your selection was cleared.`,
+      );
+    }
+  }
+
+  return (
+    <PageShell title="Book a table" description="Choose a date, then pick a table and start time.">
+      <Panel className="mt-8" flush>
+        <div className="flex flex-wrap items-center gap-4 p-4">
+          <DateSelector date={date} maxAdvanceDays={club?.maxAdvanceDays} onChange={changeDate} />
+          {data && (
+            <DurationPicker
+              options={data.durationOptions}
+              value={durationMinutes}
+              onChange={changeDuration}
+            />
+          )}
+        </div>
+        {/* Derived from the day's own tables, and renders nothing when the club has only one
+            kind — see TableTypeFilter. */}
+        {data && data.tables.length > 0 && (
+          <div className="border-t border-line p-4">
+            <TableTypeFilter
+              tables={data.tables}
+              value={tableType}
+              onChange={changeTableType}
+              label={typeLabel}
+            />
+          </div>
         )}
-      </div>
+      </Panel>
 
       {/* Outside the selection panel below, which only renders while something is selected.
           A message explaining why the selection was cleared cannot live inside the thing it
           is explaining the absence of. */}
       {(droppedReason || (bookingError && !selected)) && (
-        <div
-          role="alert"
-          className="mt-4 rounded-card border border-amber-200 bg-amber-50 p-3"
-        >
-          <p className="text-sm text-amber-900">{droppedReason ?? bookingError}</p>
-        </div>
+        <Alert tone="warning" className="mt-4">
+          {droppedReason ?? bookingError}
+        </Alert>
       )}
 
       <section className="mt-6" aria-live="polite" aria-busy={isPending}>
-        {isPending && (
-          <div className="space-y-2">
-            {Array.from({ length: 6 }, (_, index) => (
-              <div key={index} className="h-11 animate-pulse rounded-lg bg-ink-100" />
-            ))}
-          </div>
-        )}
+        {isPending && <Skeleton className="h-11" count={6} label="Loading availability" />}
 
         {isError && (
-          <div role="alert" className="rounded-card border border-rose-200 bg-rose-50 p-4">
-            <p className="text-sm font-medium text-rose-800">Could not load availability</p>
-            <p className="mt-1 text-sm text-rose-700">{error.message}</p>
-          </div>
+          <Alert tone="danger">
+            <span className="font-medium">Could not load availability</span>
+            <span className="mt-1 block">{error.message}</span>
+          </Alert>
         )}
 
-        {data && (
+        {filteredAvailability && (
           <div className={isPlaceholderData ? 'opacity-60 transition-opacity' : undefined}>
             <AvailabilityGrid
-              availability={data}
+              availability={filteredAvailability}
               selected={selected ? { tableId: selected.tableId, startAt: selected.startAt } : null}
+              durationMinutes={durationMinutes}
+              typeLabel={typeLabel}
               onSelect={handleSelect}
             />
           </div>
@@ -196,9 +239,14 @@ export function BookPage() {
       </section>
 
       {selected && selectedTable && selectedSlot && (
-        // Sticky at the bottom of the viewport on a phone: the grid is tall, and a summary
-        // that scrolls away takes the "Book and pay" button with it.
-        <aside className="sticky bottom-4 mt-6 rounded-card border border-felt-200 bg-felt-50 p-5 shadow-lifted">
+        // Pinned to the bottom of the viewport: the grid is tall, and a summary that scrolls
+        // away takes the "Book and pay" button with it.
+        //
+        // `bottom-0` with its own background band, not `bottom-4` floating over the page. At
+        // bottom-4 the grid showed through the gap beneath it and around its rounded corners,
+        // so the panel read as sitting *on* the table rather than in front of it. z-30 keeps
+        // it above the grid's sticky column, which is z-20.
+        <aside className="sticky bottom-0 z-30 -mx-4 mt-6 border-t border-felt-200 bg-felt-50 p-5 shadow-lifted sm:-mx-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-xs font-medium uppercase tracking-wide text-felt-700">
@@ -225,9 +273,12 @@ export function BookPage() {
                   <SelectionFact label="Duration" value={formatDuration(durationMinutes)} />
                 )}
                 {selectedSlot.pricePenceForRequestedDuration !== null && (
+                  // The one figure they are about to be charged, so it does not read at the
+                  // same weight as the day of the week.
                   <SelectionFact
                     label="Total"
                     value={formatPence(selectedSlot.pricePenceForRequestedDuration)}
+                    emphasis
                   />
                 )}
               </dl>
@@ -272,22 +323,37 @@ export function BookPage() {
               taken, the selection is cleared and the message is rendered above the grid
               instead — here it would unmount with the panel and never be read. */}
           {bookingError && selected && (
-            <div role="alert" className="mt-4 rounded-lg border border-rose-200 bg-white p-3">
-              <p className="text-sm text-rose-800">{bookingError}</p>
-            </div>
+            <Alert tone="danger" className="mt-4 bg-surface">
+              {bookingError}
+            </Alert>
           )}
         </aside>
       )}
-    </div>
+    </PageShell>
   );
 }
 
 /** One labelled fact in the selection summary. */
-function SelectionFact({ label, value }: { label: string; value: string }) {
+function SelectionFact({
+  label,
+  value,
+  emphasis = false,
+}: {
+  label: string;
+  value: string;
+  emphasis?: boolean;
+}) {
   return (
     <div>
       <dt className="text-xs font-medium uppercase tracking-wide text-felt-700">{label}</dt>
-      <dd className="mt-0.5 text-base font-semibold tracking-tight text-felt-900">{value}</dd>
+      <dd
+        className={[
+          'mt-0.5 font-semibold tracking-tight text-felt-900',
+          emphasis ? 'text-xl' : 'text-base',
+        ].join(' ')}
+      >
+        {value}
+      </dd>
     </div>
   );
 }
