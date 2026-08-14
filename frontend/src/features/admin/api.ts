@@ -8,6 +8,7 @@ import type {
   AdminCustomerFilters,
   AdminDashboard,
   AdminTable,
+  AdminTableType,
   AdminUser,
   AdminUserFilters,
   CreateUserInput,
@@ -15,6 +16,7 @@ import type {
   ClubDetails,
   ClubTable,
   CounterPaymentStatus,
+  DateHours,
   DayHours,
   MaintenanceBlock,
   MaintenanceBlockInput,
@@ -125,6 +127,54 @@ export function setTableActive(id: number, active: boolean): Promise<AdminTable>
   });
 }
 
+/**
+ * Rewrites every table's position in one request.
+ *
+ * <p>One call rather than a PUT per table: dragging produces a new order for the whole list
+ * at once, and applying it row by row would leave the list visibly inconsistent between
+ * requests — and permanently so if one failed halfway.
+ */
+export function reorderTables(tableIds: number[]): Promise<AdminTable[]> {
+  return apiRequest<AdminTable[]>('/api/admin/tables/order', {
+    method: 'PUT',
+    body: JSON.stringify({ tableIds }),
+  });
+}
+
+/** Every type including withdrawn ones. Admin-only — customers get `/api/tables/types`. */
+export function fetchAdminTableTypes(): Promise<AdminTableType[]> {
+  return apiRequest<AdminTableType[]>('/api/admin/table-types');
+}
+
+export function createTableType(
+  label: string,
+  displayOrder?: number,
+): Promise<AdminTableType> {
+  return apiRequest<AdminTableType>('/api/admin/table-types', {
+    method: 'POST',
+    body: JSON.stringify({ label, displayOrder: displayOrder ?? null }),
+  });
+}
+
+/** Renames or reorders. The code cannot change — tables and pricing rules reference it. */
+export function updateTableType(
+  code: string,
+  label: string,
+  displayOrder?: number,
+): Promise<AdminTableType> {
+  return apiRequest<AdminTableType>(`/api/admin/table-types/${encodeURIComponent(code)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ label, displayOrder: displayOrder ?? null }),
+  });
+}
+
+export function setTableTypeActive(code: string, active: boolean): Promise<AdminTableType> {
+  return apiRequest<AdminTableType>(
+    `/api/admin/table-types/${encodeURIComponent(code)}/active?active=${active}`,
+    { method: 'PUT' },
+  );
+}
+
 export function fetchMaintenanceBlocks(
   from: string,
   to: string,
@@ -181,6 +231,28 @@ export function updateOpeningHours(days: DayHours[]): Promise<SettingsUpdate<Day
     method: 'PUT',
     body: JSON.stringify({ days }),
   });
+}
+
+export function fetchOpeningHoursOverrides(): Promise<DateHours[]> {
+  return apiRequest<DateHours[]>('/api/admin/settings/opening-hours/overrides');
+}
+
+/** Upsert: the date is the identity, so saving the same date twice replaces it. */
+export function saveOpeningHoursOverride(
+  input: DateHours,
+): Promise<SettingsUpdate<DateHours[]>> {
+  return apiRequest<SettingsUpdate<DateHours[]>>(
+    '/api/admin/settings/opening-hours/overrides',
+    { method: 'PUT', body: JSON.stringify(input) },
+  );
+}
+
+/** Removes the override, returning the date to its ordinary weekday hours. */
+export function deleteOpeningHoursOverride(date: string): Promise<void> {
+  return apiRequest<void>(
+    `/api/admin/settings/opening-hours/overrides/${encodeURIComponent(date)}`,
+    { method: 'DELETE' },
+  );
 }
 
 export function fetchBookingRules(): Promise<BookingRules> {

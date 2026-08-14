@@ -2,8 +2,6 @@ package uk.co.club.booking.domain.table;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -22,9 +20,12 @@ public class SnookerTable {
     @Column(nullable = false, unique = true)
     private String name;
 
-    @Enumerated(EnumType.STRING)
+    /**
+     * The {@code code} of a {@link TableTypeEntity}, not an enum: types are data a manager can
+     * add to. The foreign key added in V15 is what keeps this honest.
+     */
     @Column(name = "table_type", nullable = false)
-    private TableType tableType = TableType.SNOOKER;
+    private String tableType = TableTypeEntity.SNOOKER;
 
     @Column(name = "display_order", nullable = false)
     private int displayOrder;
@@ -44,7 +45,7 @@ public class SnookerTable {
         // for JPA
     }
 
-    public SnookerTable(String name, TableType tableType, int displayOrder) {
+    public SnookerTable(String name, String tableType, int displayOrder) {
         this.name = name;
         this.tableType = tableType;
         this.displayOrder = displayOrder;
@@ -62,11 +63,11 @@ public class SnookerTable {
         this.name = name;
     }
 
-    public TableType getTableType() {
+    public String getTableType() {
         return tableType;
     }
 
-    public void setTableType(TableType tableType) {
+    public void setTableType(String tableType) {
         this.tableType = tableType;
     }
 

@@ -10,10 +10,9 @@ import uk.co.club.booking.common.error.ErrorCode;
 import uk.co.club.booking.common.error.NotFoundException;
 import uk.co.club.booking.common.time.ClubClock;
 import uk.co.club.booking.domain.availability.OpeningWindow;
-import uk.co.club.booking.domain.availability.SlotGenerator;
 import uk.co.club.booking.domain.club.BookingSettings;
 import uk.co.club.booking.domain.club.BookingSettingsRepository;
-import uk.co.club.booking.domain.club.OpeningHoursRepository;
+import uk.co.club.booking.domain.club.OpeningHoursResolver;
 import uk.co.club.booking.domain.table.MaintenanceBlockRepository;
 import uk.co.club.booking.domain.table.SnookerTable;
 import uk.co.club.booking.domain.table.SnookerTableRepository;
@@ -41,25 +40,22 @@ public class BookingValidator {
     private final SnookerTableRepository tableRepository;
     private final BookingRepository bookingRepository;
     private final MaintenanceBlockRepository blockRepository;
-    private final OpeningHoursRepository openingHoursRepository;
+    private final OpeningHoursResolver openingHoursResolver;
     private final BookingSettingsRepository bookingSettingsRepository;
-    private final SlotGenerator slotGenerator;
     private final ClubClock clubClock;
 
     public BookingValidator(
             SnookerTableRepository tableRepository,
             BookingRepository bookingRepository,
             MaintenanceBlockRepository blockRepository,
-            OpeningHoursRepository openingHoursRepository,
+            OpeningHoursResolver openingHoursResolver,
             BookingSettingsRepository bookingSettingsRepository,
-            SlotGenerator slotGenerator,
             ClubClock clubClock) {
         this.tableRepository = tableRepository;
         this.bookingRepository = bookingRepository;
         this.blockRepository = blockRepository;
-        this.openingHoursRepository = openingHoursRepository;
+        this.openingHoursResolver = openingHoursResolver;
         this.bookingSettingsRepository = bookingSettingsRepository;
-        this.slotGenerator = slotGenerator;
         this.clubClock = clubClock;
     }
 
@@ -186,9 +182,12 @@ public class BookingValidator {
      * booking silently spanning into the next day's hours.
      */
     private void validateWithinOpeningHours(CreateBookingCommand command, LocalDate startDate) {
-        OpeningWindow window = openingHoursRepository
-                .findByDayValue(OpeningHoursRepository.dayValue(startDate.getDayOfWeek()))
-                .flatMap(hours -> slotGenerator.openingWindow(startDate, hours))
+        // Through the resolver, never the repository directly: this is the write-side half of
+        // the pair that must agree with the grid. Resolving weekday hours here independently
+        // is what would let a date-specific override hide a day on the grid while this method
+        // went on accepting bookings for it.
+        OpeningWindow window = openingHoursResolver
+                .windowFor(startDate)
                 .orElseThrow(() -> new BusinessRuleException(
                         ErrorCode.CLUB_CLOSED, "The club is closed on that day."));
 

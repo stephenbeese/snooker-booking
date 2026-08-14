@@ -1,10 +1,8 @@
 package uk.co.club.booking.domain.admin.web.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
-import uk.co.club.booking.domain.table.TableType;
 
 /**
  * Creating or renaming a table.
@@ -15,6 +13,9 @@ import uk.co.club.booking.domain.table.TableType;
  */
 public record TableRequest(
         @NotBlank @Size(max = 100) String name,
-        @NotNull TableType tableType,
+        // NotBlank rather than NotNull: the type became a String in V15, and NotNull would
+        // let "" through to be rejected later as an unknown type — a 422 about the club's
+        // configuration, where the honest answer is a 400 about a missing field.
+        @NotBlank String tableType,
         @PositiveOrZero int displayOrder,
         @Size(max = 500) String notes) {}

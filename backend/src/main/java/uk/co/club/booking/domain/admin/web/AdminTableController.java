@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import uk.co.club.booking.domain.admin.web.dto.AdminTableResponse;
 import uk.co.club.booking.domain.admin.web.dto.TableRequest;
+import uk.co.club.booking.domain.admin.web.dto.TableTypeRequests;
 import uk.co.club.booking.domain.table.SnookerTableService;
 
 /**
@@ -74,5 +75,20 @@ public class AdminTableController {
     @PutMapping("/{id}/active")
     public AdminTableResponse setActive(@PathVariable long id, @RequestParam boolean active) {
         return AdminTableResponse.from(tableService.setActive(id, active));
+    }
+
+    /**
+     * Rewrites the whole display order at once.
+     *
+     * <p>Before {@code /{id}} would have been ambiguous, but "order" is not a number so the two
+     * cannot collide. One bulk write rather than a PUT per table — see
+     * {@link SnookerTableService#reorder} for why.
+     */
+    @PutMapping("/order")
+    public List<AdminTableResponse> reorder(
+            @Valid @RequestBody TableTypeRequests.TableOrder request) {
+        return tableService.reorder(request.tableIds()).stream()
+                .map(AdminTableResponse::from)
+                .toList();
     }
 }

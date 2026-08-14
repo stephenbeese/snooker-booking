@@ -152,6 +152,26 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
                     "/api/admin/tables/1",
                     Map.of("name", "Renamed", "tableType", "SNOOKER", "displayOrder", 1)),
             new Endpoint(HttpMethod.PUT, "/api/admin/tables/1/active?active=false", null),
+            // Phase 7. Reordering rewrites every table's position at once, so it is exactly as
+            // consequential as editing them individually.
+            new Endpoint(
+                    HttpMethod.PUT, "/api/admin/tables/order", Map.of("tableIds", List.of(1))),
+            // Phase 7. Table types are club configuration: adding one changes what every table
+            // and pricing rule may be. Note the path does NOT sit under /api/admin/tables/** —
+            // the hyphen makes "table-types" a separate segment, so it needs its own matcher in
+            // SecurityConfig and its own rows here. Without both it would fall through to the
+            // STAFF tier, and these lines are what would notice.
+            new Endpoint(HttpMethod.GET, "/api/admin/table-types", null),
+            new Endpoint(
+                    HttpMethod.POST,
+                    "/api/admin/table-types",
+                    Map.of("label", "Boundary Type")),
+            new Endpoint(
+                    HttpMethod.PUT,
+                    "/api/admin/table-types/SNOOKER",
+                    Map.of("label", "Snooker")),
+            new Endpoint(
+                    HttpMethod.PUT, "/api/admin/table-types/SNOOKER/active?active=true", null),
             new Endpoint(HttpMethod.GET, "/api/admin/users", null),
             new Endpoint(HttpMethod.GET, "/api/admin/users/1", null),
             new Endpoint(
@@ -179,6 +199,18 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
                     HttpMethod.PUT,
                     "/api/admin/settings/opening-hours",
                     Map.of("days", ALL_SEVEN_DAYS)),
+            // Phase 7. Special hours close the club on a date, which stops it selling — the
+            // same weight as the weekly hours above.
+            new Endpoint(HttpMethod.GET, "/api/admin/settings/opening-hours/overrides", null),
+            new Endpoint(
+                    HttpMethod.PUT,
+                    "/api/admin/settings/opening-hours/overrides",
+                    Map.of("date", "2099-12-25", "closed", true, "note", "Boundary")),
+            // A date that will not exist, for the same reason as the pricing-rule DELETE below.
+            new Endpoint(
+                    HttpMethod.DELETE,
+                    "/api/admin/settings/opening-hours/overrides/2098-01-01",
+                    null),
             new Endpoint(HttpMethod.GET, "/api/admin/settings/booking-rules", null),
             new Endpoint(HttpMethod.PUT, "/api/admin/settings/booking-rules", DEFAULT_RULES),
             new Endpoint(HttpMethod.GET, "/api/admin/settings/pricing-rules", null),
@@ -209,6 +241,11 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
             new Endpoint(HttpMethod.GET, "/api/health", null),
             new Endpoint(HttpMethod.GET, "/api/club", null),
             new Endpoint(HttpMethod.GET, "/api/tables", null),
+            // The type labels the booking grid renders. Public because browsing must not
+            // require an account, and listed here because "/api/tables" alone does not cover
+            // it — an unlisted path falls through to anyRequest() and the grid silently loses
+            // its labels for anyone logged out.
+            new Endpoint(HttpMethod.GET, "/api/tables/types", null),
             new Endpoint(HttpMethod.GET, "/api/auth/me", null));
 
     private record Endpoint(HttpMethod method, String path, Object body) {

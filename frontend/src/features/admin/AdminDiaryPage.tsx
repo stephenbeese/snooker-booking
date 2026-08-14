@@ -1,17 +1,10 @@
 import { Link, useSearchParams } from 'react-router';
-import { useAdminAvailability } from '@/features/availability/useAvailability';
-import type { TableType } from '@/features/availability/types';
+import { useAdminAvailability, useTableTypes } from '@/features/availability/useAvailability';
 import { addDays, formatDateLong, todayIso } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
 import { axisFor, rowFor, type DiaryCell } from './diary';
 import { useAdminDay } from './useAdmin';
 import type { AdminBooking } from './types';
-
-const TABLE_TYPES: { value: TableType; label: string }[] = [
-  { value: 'SNOOKER', label: 'Snooker' },
-  { value: 'ENGLISH_POOL', label: 'English pool' },
-  { value: 'AMERICAN_POOL', label: 'American pool' },
-];
 
 /** Why a slot cannot be sold, in the few words a cell has room for. */
 const UNAVAILABLE_TITLE: Record<string, string> = {
@@ -44,6 +37,7 @@ export function AdminDiaryPage() {
   const tableId = tableIdParam ? Number(tableIdParam) : undefined;
 
   const day = useAdminDay(date);
+  const { data: tableTypes } = useTableTypes();
   // No duration: the diary reports the day rather than fitting a booking into it, and asking
   // for one would grey out every slot too short for it.
   const availability = useAdminAvailability({ date });
@@ -121,8 +115,8 @@ export function AdminDiaryPage() {
               className="mt-1.5 rounded-lg border border-ink-300 px-3 py-2 text-sm text-felt-900"
             >
               <option value="">All types</option>
-              {TABLE_TYPES.map((type) => (
-                <option key={type.value} value={type.value}>
+              {(tableTypes ?? []).map((type) => (
+                <option key={type.code} value={type.code}>
                   {type.label}
                 </option>
               ))}

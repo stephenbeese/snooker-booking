@@ -4,15 +4,29 @@ import { TextField } from '@/components/ui/TextField';
 import { ApiError } from '@/lib/apiError';
 import { PricingRules } from './components/PricingRules';
 import { SettingsWarnings } from './components/SettingsWarnings';
+import { formatDateLong } from '@/lib/datetime';
 import {
+  useAdminTableTypes,
   useBookingRules,
   useClubDetails,
+  useCreateTableType,
+  useDeleteOpeningHoursOverride,
   useOpeningHours,
+  useOpeningHoursOverrides,
+  useSaveOpeningHoursOverride,
+  useSetTableTypeActive,
   useUpdateBookingRules,
   useUpdateClubDetails,
   useUpdateOpeningHours,
 } from './useAdmin';
-import type { BookingRules, ClubDetails, DayHours, SettingsWarning, Weekday } from './types';
+import type {
+  BookingRules,
+  ClubDetails,
+  DateHours,
+  DayHours,
+  SettingsWarning,
+  Weekday,
+} from './types';
 
 const WEEKDAY_LABEL: Record<Weekday, string> = {
   MONDAY: 'Monday',
@@ -50,6 +64,8 @@ export function AdminSettingsPage() {
       </p>
 
       <OpeningHoursSection />
+      <SpecialHoursSection />
+      <TableTypesSection />
       <BookingRulesSection />
       <PricingSection />
       <ClubDetailsSection />
@@ -134,6 +150,246 @@ function OpeningHoursSection() {
         error={messageOf(mutation.error, 'Could not save the opening hours.')}
       />
       <SettingsWarnings warnings={warnings} />
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------- special hours
+
+/** A blank override form: closed by default, which is the common case. */
+const BLANK_OVERRIDE: DateHours = {
+  date: '',
+  closed: true,
+  openTime: null,
+  closeTime: null,
+  note: null,
+};
+
+/**
+ * Opening hours for named dates — Christmas, a bank holiday, a private function.
+ *
+ * <p>Separate from the weekly hours above because they answer different questions: those set
+ * what an ordinary Tuesday looks like, these say that <em>this</em> Tuesday is not ordinary.
+ * An override wins outright over the weekday for its date.
+ */
+function SpecialHoursSection() {
+  const { data, isPending } = useOpeningHoursOverrides();
+  const save = useSaveOpeningHoursOverride();
+  const remove = useDeleteOpeningHoursOverride();
+  const [draft, setDraft] = useState<DateHours>(BLANK_OVERRIDE);
+  const [warnings, setWarnings] = useState<SettingsWarning[]>([]);
+
+  async function onSave() {
+    setWarnings([]);
+    if (!draft.date) return;
+    const result = await save.mutateAsync(draft).catch(() => null);
+    if (result) {
+      setWarnings(result.warnings);
+      setDraft(BLANK_OVERRIDE);
+    }
+  }
+
+  if (isPending) return <Section title="Special opening hours">Loading…</Section>;
+
+  return (
+    <Section title="Special opening hours">
+      <p className="text-sm text-ink-600">
+        Hours for one date, overriding that day of the week. A date set to closed disappears
+        from the booking grid and is refused by the booking form.
+      </p>
+
+      {data && data.length > 0 ? (
+        <ul className="mt-4 divide-y divide-ink-100">
+          {data.map((override) => (
+            <li key={override.date} className="flex flex-wrap items-center gap-3 py-2.5">
+              <span className="w-28 text-sm font-medium text-felt-900">
+                {formatDateLong(override.date)}
+              </span>
+              <span className="text-sm text-ink-700">
+                {override.closed
+                  ? 'Closed'
+                  : `${override.openTime?.slice(0, 5)}–${override.closeTime?.slice(0, 5)}`}
+              </span>
+              {override.note && (
+                <span className="text-sm text-ink-500">{override.note}</span>
+              )}
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="ml-auto"
+                disabled={remove.isPending}
+                onClick={() => remove.mutate(override.date)}
+              >
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-4 text-sm text-ink-500">
+          No special hours set. The club follows its weekly hours on every date.
+        </p>
+      )}
+
+      <div className="mt-5 flex flex-wrap items-end gap-3 border-t border-ink-100 pt-5">
+        <div>
+          <label htmlFor="override-date" className="block text-sm font-medium text-felt-900">
+            Date
+          </label>
+          <input
+            id="override-date"
+            type="date"
+            className="mt-1.5 rounded-lg px-3 py-2 text-sm ring-1 ring-inset ring-ink-300"
+            value={draft.date}
+            onChange={(event) => setDraft({ ...draft, date: event.target.value })}
+          />
+        </div>
+        <label className="flex items-center gap-2 pb-2 text-sm text-ink-700">
+          <input
+            type="checkbox"
+            checked={draft.closed}
+            onChange={(event) => setDraft({ ...draft, closed: event.target.checked })}
+          />
+          Closed all day
+        </label>
+        <div>
+          <label htmlFor="override-open" className="block text-sm font-medium text-felt-900">
+            Opens
+          </label>
+          <input
+            id="override-open"
+            type="time"
+            className="mt-1.5 rounded-lg px-3 py-2 text-sm ring-1 ring-inset ring-ink-300 disabled:bg-ink-50 disabled:text-ink-400"
+            disabled={draft.closed}
+            value={draft.openTime?.slice(0, 5) ?? ''}
+            onChange={(event) =>
+              setDraft({ ...draft, openTime: `${event.target.value}:00` })
+            }
+          />
+        </div>
+        <div>
+          <label htmlFor="override-close" className="block text-sm font-medium text-felt-900">
+            Closes
+          </label>
+          <input
+            id="override-close"
+            type="time"
+            className="mt-1.5 rounded-lg px-3 py-2 text-sm ring-1 ring-inset ring-ink-300 disabled:bg-ink-50 disabled:text-ink-400"
+            disabled={draft.closed}
+            value={draft.closeTime?.slice(0, 5) ?? ''}
+            onChange={(event) =>
+              setDraft({ ...draft, closeTime: `${event.target.value}:00` })
+            }
+          />
+        </div>
+        <div className="grow">
+          <label htmlFor="override-note" className="block text-sm font-medium text-felt-900">
+            Reason
+          </label>
+          <input
+            id="override-note"
+            type="text"
+            placeholder="Christmas Day"
+            className="mt-1.5 w-full rounded-lg px-3 py-2 text-sm ring-1 ring-inset ring-ink-300"
+            value={draft.note ?? ''}
+            onChange={(event) => setDraft({ ...draft, note: event.target.value })}
+          />
+        </div>
+      </div>
+
+      <SaveRow
+        onSave={onSave}
+        pending={save.isPending}
+        error={messageOf(
+          save.error ?? remove.error,
+          'Could not save those special hours.',
+        )}
+      />
+      <SettingsWarnings warnings={warnings} />
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------- table types
+
+/**
+ * The kinds of table the club holds.
+ *
+ * <p>Data rather than a fixed list since Phase 7, so a manager can add a format the club takes
+ * up without waiting for a deployment. There is no delete: tables and pricing rules reference
+ * a type by code, so withdrawing it takes it off the list of choices while leaving history
+ * readable — and the server refuses even that while any table still carries it.
+ */
+function TableTypesSection() {
+  const { data, isPending } = useAdminTableTypes();
+  const create = useCreateTableType();
+  const setActive = useSetTableTypeActive();
+  const [label, setLabel] = useState('');
+
+  async function add() {
+    if (!label.trim()) return;
+    const created = await create.mutateAsync({ label: label.trim() }).catch(() => null);
+    if (created) setLabel('');
+  }
+
+  if (isPending) return <Section title="Table types">Loading…</Section>;
+
+  return (
+    <Section title="Table types">
+      <p className="text-sm text-ink-600">
+        The kinds of table you offer. Adding one makes it available on every table and pricing
+        rule. A type in use cannot be withdrawn — change those tables first.
+      </p>
+
+      <ul className="mt-4 divide-y divide-ink-100">
+        {(data ?? []).map((type) => (
+          <li key={type.code} className="flex flex-wrap items-center gap-3 py-2.5">
+            <span
+              className={`text-sm font-medium ${type.active ? 'text-felt-900' : 'text-ink-400'}`}
+            >
+              {type.label}
+            </span>
+            <span className="font-mono text-xs text-ink-400">{type.code}</span>
+            {!type.active && <span className="text-xs text-ink-500">withdrawn</span>}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="ml-auto"
+              disabled={setActive.isPending}
+              onClick={() => setActive.mutate({ code: type.code, active: !type.active })}
+            >
+              {type.active ? 'Withdraw' : 'Restore'}
+            </Button>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-5 flex flex-wrap items-end gap-3 border-t border-ink-100 pt-5">
+        <div className="grow">
+          <label htmlFor="new-table-type" className="block text-sm font-medium text-felt-900">
+            New type
+          </label>
+          <input
+            id="new-table-type"
+            type="text"
+            placeholder="Chinese pool"
+            className="mt-1.5 w-full rounded-lg px-3 py-2 text-sm ring-1 ring-inset ring-ink-300"
+            value={label}
+            onChange={(event) => setLabel(event.target.value)}
+          />
+        </div>
+        <Button type="button" disabled={create.isPending || !label.trim()} onClick={add}>
+          {create.isPending ? 'Adding…' : 'Add type'}
+        </Button>
+      </div>
+
+      {(create.error ?? setActive.error) && (
+        <p role="alert" className="mt-4 text-sm font-medium text-rose-700">
+          {messageOf(create.error ?? setActive.error, 'Could not save that table type.')}
+        </p>
+      )}
     </Section>
   );
 }

@@ -10,11 +10,11 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Set;
 import org.springframework.format.annotation.DateTimeFormat;
-import uk.co.club.booking.domain.table.TableType;
 
 /**
  * Request bodies for the settings endpoints.
@@ -54,6 +54,20 @@ public final class SettingsRequests {
      */
     public record OpeningHoursUpdate(@NotEmpty @Valid List<DayHours> days) {}
 
+    /**
+     * Special hours for one date. Times may be null only when {@code closed}.
+     *
+     * <p>The date is in the body rather than the path because this is an upsert: the client
+     * states the whole intention ("25 December, closed, 'Christmas Day'") in one place, and
+     * there is no create/update distinction for it to get wrong.
+     */
+    public record OpeningHoursOverrideInput(
+            @NotNull @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            boolean closed,
+            @DateTimeFormat(iso = DateTimeFormat.ISO.TIME) LocalTime openTime,
+            @DateTimeFormat(iso = DateTimeFormat.ISO.TIME) LocalTime closeTime,
+            @Size(max = 200) String note) {}
+
     public record BookingRules(
             @NotNull @Positive Integer minDurationMinutes,
             @NotNull @Positive Integer maxDurationMinutes,
@@ -71,7 +85,7 @@ public final class SettingsRequests {
      */
     public record PricingRuleInput(
             @NotBlank @Size(max = 100) String name,
-            TableType tableType,
+            String tableType,
             /**
              * The days this rule covers. Null or empty both mean every day — the same thing a
              * null {@code dayOfWeek} meant before V12, so an older client that omits the field

@@ -3,20 +3,25 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Button } from '@/components/ui/Button';
+import { Select } from '@/components/ui/Select';
 import { TextField } from '@/components/ui/TextField';
 import { ApiError } from '@/lib/apiError';
-import { useAdminTables, useCreateTable, useSetTableActive, useUpdateTable } from './useAdmin';
+import { useTableTypeLabel, useTableTypes } from '@/features/availability/useAvailability';
+import {
+  useAdminTables,
+  useCreateTable,
+  useReorderTables,
+  useSetTableActive,
+  useUpdateTable,
+} from './useAdmin';
 import type { AdminTable, TableType } from './types';
-
-const TABLE_TYPES: { value: TableType; label: string }[] = [
-  { value: 'SNOOKER', label: 'Snooker' },
-  { value: 'ENGLISH_POOL', label: 'English pool' },
-  { value: 'AMERICAN_POOL', label: 'American pool' },
-];
 
 const schema = z.object({
   name: z.string().min(1, 'Give the table a name').max(100),
-  tableType: z.enum(['SNOOKER', 'ENGLISH_POOL', 'AMERICAN_POOL']),
+  // A plain string, not an enum: since Phase 7 the types are rows a manager can add, so a
+  // closed list here would reject a type the club had just created. The server checks the
+  // code against the table_type table, which is the only place that can know.
+  tableType: z.string().min(1, 'Choose a type'),
   // Coerced because a number input still hands back a string.
   displayOrder: z.coerce.number().int().min(0, 'Order cannot be negative'),
   // Always present, empty meaning "none" — see RegisterPage for why this is not .optional().
@@ -35,11 +40,39 @@ type FormValues = z.input<typeof schema>;
  */
 export function AdminTablesPage() {
   const { data: tables, isPending, isError, error } = useAdminTables();
+  const { data: tableTypes } = useTableTypes();
+  const typeLabel = useTableTypeLabel();
   const createTable = useCreateTable();
   const updateTable = useUpdateTable();
   const setActive = useSetTableActive();
+  const reorder = useReorderTables();
 
   const [editing, setEditing] = useState<AdminTable | null>(null);
+  const [dragging, setDragging] = useState<number | null>(null);
+
+  /**
+   * Moves one table to another position and sends the whole new order.
+   *
+   * <p>Positions come from the rendered list rather than from `displayOrder`, which is not
+   * unique — two tables sharing a number would otherwise swap unpredictably.
+   */
+  function move(from: number, to: number) {
+    if (!tables || to < 0 || to >= tables.length) return;
+    const ids = tables.map((table) => table.id);
+    ids.splice(to, 0, ...ids.splice(from, 1));
+    reorder.mutate(ids);
+  }
+
+  /** Drops the dragged table onto the target's position. */
+  function dropOn(targetId: number) {
+    if (dragging === null || dragging === targetId || !tables) return;
+    const ids = tables.map((table) => table.id);
+    const from = ids.indexOf(dragging);
+    const to = ids.indexOf(targetId);
+    setDragging(null);
+    if (from < 0 || to < 0) return;
+    move(from, to);
+  }
 
   const {
     register,
@@ -121,25 +154,13 @@ export function AdminTablesPage() {
 
         <TextField label="Name" error={errors.name?.message} {...register('name')} />
 
-        <div>
-          <label
-            htmlFor="tableType"
-            className="block text-sm font-medium text-felt-900"
-          >
-            Type
-          </label>
-          <select
-            id="tableType"
-            className="mt-1.5 block w-full rounded-lg bg-white px-3.5 py-2.5 text-sm text-ink-900 ring-1 ring-inset ring-ink-300 focus:ring-2 focus:ring-inset focus:ring-felt-600 focus:outline-none"
-            {...register('tableType')}
-          >
-            {TABLE_TYPES.map((type) => (
-              <option key={type.value} value={type.value}>
-                {type.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <Select label="Type" error={errors.tableType?.message} {...register('tableType')}>
+          {(tableTypes ?? []).map((type) => (
+            <option key={type.code} value={type.code}>
+              {type.label}
+            </option>
+          ))}
+        </Select>
 
         <TextField
           label="Display order"
@@ -178,6 +199,9 @@ export function AdminTablesPage() {
         <caption className="sr-only">Club tables</caption>
         <thead>
           <tr className="border-b border-ink-200 text-left text-ink-600">
+            <th scope="col" className="py-2 pr-2 font-medium">
+              <span className="sr-only">Reorder</span>
+            </th>
             <th scope="col" className="py-2 pr-4 font-medium">Name</th>
             <th scope="col" className="py-2 pr-4 font-medium">Type</th>
             <th scope="col" className="py-2 pr-4 font-medium">Order</th>
@@ -187,15 +211,56 @@ export function AdminTablesPage() {
           </tr>
         </thead>
         <tbody>
-          {tables.map((table) => (
+          {tables.map((table, index) => (
             <tr
               key={table.id}
-              className={`border-b border-ink-100 ${table.active ? '' : 'text-ink-400'}`}
+              draggable
+              onDragStart={() => setDragging(table.id)}
+              onDragEnd={() => setDragging(null)}
+              // Without preventDefault the drop never fires — the browser's default is to
+              // refuse the drag.
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={() => dropOn(table.id)}
+              className={[
+                'border-b border-ink-100',
+                table.active ? '' : 'text-ink-400',
+                dragging === table.id ? 'opacity-40' : '',
+              ].join(' ')}
             >
-              <td className="py-3 pr-4 font-medium">{table.name}</td>
-              <td className="py-3 pr-4">
-                {TABLE_TYPES.find((t) => t.value === table.tableType)?.label ?? table.tableType}
+              <td className="py-3 pr-2">
+                {/* Dragging alone would put reordering out of reach of anyone using a keyboard
+                    or a screen reader, so the same operation is also two ordinary buttons.
+                    The grip is decorative and hidden from assistive technology; the buttons
+                    are the accessible path, and they are not a lesser one — on a phone they
+                    are easier than dragging. */}
+                <div className="flex items-center gap-1">
+                  <span aria-hidden="true" className="cursor-grab text-ink-400">
+                    ⠿
+                  </span>
+                  <div className="flex flex-col">
+                    <button
+                      type="button"
+                      className="px-1 text-xs text-ink-500 hover:text-felt-900 disabled:opacity-30"
+                      disabled={index === 0 || reorder.isPending}
+                      aria-label={`Move ${table.name} up`}
+                      onClick={() => move(index, index - 1)}
+                    >
+                      ▲
+                    </button>
+                    <button
+                      type="button"
+                      className="px-1 text-xs text-ink-500 hover:text-felt-900 disabled:opacity-30"
+                      disabled={index === tables.length - 1 || reorder.isPending}
+                      aria-label={`Move ${table.name} down`}
+                      onClick={() => move(index, index + 1)}
+                    >
+                      ▼
+                    </button>
+                  </div>
+                </div>
               </td>
+              <td className="py-3 pr-4 font-medium">{table.name}</td>
+              <td className="py-3 pr-4">{typeLabel(table.tableType)}</td>
               <td className="py-3 pr-4">{table.displayOrder}</td>
               <td className="py-3 pr-4">{table.active ? 'On sale' : 'Inactive'}</td>
               <td className="py-3 pr-4">{table.notes ?? '—'}</td>

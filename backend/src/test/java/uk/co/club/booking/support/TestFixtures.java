@@ -14,7 +14,7 @@ import uk.co.club.booking.domain.club.OpeningHours;
 import uk.co.club.booking.domain.club.PricingRule;
 import uk.co.club.booking.domain.table.MaintenanceBlock;
 import uk.co.club.booking.domain.table.SnookerTable;
-import uk.co.club.booking.domain.table.TableType;
+import uk.co.club.booking.domain.table.TableTypeEntity;
 
 /**
  * Builders for domain objects in unit tests.
@@ -60,10 +60,10 @@ public final class TestFixtures {
     }
 
     public static SnookerTable table(long id, String name) {
-        return table(id, name, TableType.SNOOKER, true);
+        return table(id, name, TableTypeEntity.SNOOKER, true);
     }
 
-    public static SnookerTable table(long id, String name, TableType type, boolean active) {
+    public static SnookerTable table(long id, String name, String type, boolean active) {
         SnookerTable table = new SnookerTable(name, type, (int) id);
         table.setActive(active);
         setField(table, "id", id);

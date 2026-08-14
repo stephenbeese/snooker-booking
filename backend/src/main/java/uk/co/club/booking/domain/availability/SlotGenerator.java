@@ -3,6 +3,7 @@ package uk.co.club.booking.domain.availability;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Component;
 import uk.co.club.booking.common.time.ClubClock;
 import uk.co.club.booking.domain.club.BookingSettings;
 import uk.co.club.booking.domain.club.OpeningHours;
+import uk.co.club.booking.domain.club.OpeningHoursOverride;
 
 /**
  * Turns opening hours plus the configured increment into the grid's time axis.
@@ -39,12 +41,29 @@ public class SlotGenerator {
      *     not resolve to a positive window (possible if hours straddle a DST gap)
      */
     public Optional<OpeningWindow> openingWindow(LocalDate date, OpeningHours hours) {
-        if (hours.isClosed() || hours.getOpenTime() == null || hours.getCloseTime() == null) {
+        return openingWindow(date, hours.isClosed(), hours.getOpenTime(), hours.getCloseTime());
+    }
+
+    /**
+     * The same resolution for a date-specific override.
+     *
+     * <p>An override deliberately shares this method rather than resolving its own instants:
+     * the spring-forward guard below is easy to omit and impossible to notice missing until a
+     * March morning, and one copy of it is the only way both sources stay guarded.
+     */
+    public Optional<OpeningWindow> openingWindow(LocalDate date, OpeningHoursOverride override) {
+        return openingWindow(
+                date, override.isClosed(), override.getOpenTime(), override.getCloseTime());
+    }
+
+    private Optional<OpeningWindow> openingWindow(
+            LocalDate date, boolean closed, LocalTime openTime, LocalTime closeTime) {
+        if (closed || openTime == null || closeTime == null) {
             return Optional.empty();
         }
 
-        Instant openAt = clubClock.toInstant(date, hours.getOpenTime());
-        Instant closeAt = clubClock.toInstant(date, hours.getCloseTime());
+        Instant openAt = clubClock.toInstant(date, openTime);
+        Instant closeAt = clubClock.toInstant(date, closeTime);
 
         if (!openAt.isBefore(closeAt)) {
             // Reachable if opening hours straddle a spring-forward gap, where both
@@ -53,13 +72,12 @@ public class SlotGenerator {
             log.warn(
                     "Opening hours for {} resolve to a non-positive window ({} to {}); treating as closed",
                     date,
-                    hours.getOpenTime(),
-                    hours.getCloseTime());
+                    openTime,
+                    closeTime);
             return Optional.empty();
         }
 
-        return Optional.of(
-                new OpeningWindow(openAt, closeAt, hours.getOpenTime(), hours.getCloseTime()));
+        return Optional.of(new OpeningWindow(openAt, closeAt, openTime, closeTime));
     }
 
     /**

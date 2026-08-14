@@ -1,5 +1,5 @@
 import { apiRequest } from '@/lib/apiClient';
-import type { DayAvailability } from './types';
+import type { DayAvailability, TableTypeOption } from './types';
 
 export interface AvailabilityQuery {
   date: string;
@@ -28,4 +28,15 @@ export function fetchAvailability(query: AvailabilityQuery): Promise<DayAvailabi
  */
 export function fetchAdminAvailability(query: AvailabilityQuery): Promise<DayAvailability> {
   return apiRequest<DayAvailability>(`/api/admin/availability?${availabilityParams(query)}`);
+}
+
+/**
+ * The table types the club offers, with the label to render for each.
+ *
+ * <p>Public and read-only. Since Phase 7 the codes are rows a manager can add, so every screen
+ * that shows a type must look its label up here rather than hold a hardcoded map — one that a
+ * newly added type would simply be missing from.
+ */
+export function fetchTableTypes(): Promise<TableTypeOption[]> {
+  return apiRequest<TableTypeOption[]>('/api/tables/types');
 }

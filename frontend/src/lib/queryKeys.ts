@@ -20,6 +20,10 @@ export const queryKeys = {
 
   club: () => ['club'] as const,
   tables: () => ['tables'] as const,
+  // The public code→label list every screen renders types with. Separate from adminTableTypes
+  // below: this one is readable by anyone and lists only active types, so sharing a key would
+  // serve a customer the withdrawn ones.
+  tableTypes: () => ['table-types'] as const,
   bookingSettings: () => ['booking-settings'] as const,
 
   currentUser: () => ['current-user'] as const,
@@ -46,4 +50,7 @@ export const queryKeys = {
   adminOpeningHours: () => ['admin', 'settings', 'opening-hours'] as const,
   adminBookingRules: () => ['admin', 'settings', 'booking-rules'] as const,
   adminPricingRules: () => ['admin', 'settings', 'pricing-rules'] as const,
+  adminOpeningHoursOverrides: () => ['admin', 'settings', 'opening-hours', 'overrides'] as const,
+  // Every type including withdrawn ones, which only an admin may see — see tableTypes above.
+  adminTableTypes: () => ['admin', 'table-types'] as const,
 } as const;

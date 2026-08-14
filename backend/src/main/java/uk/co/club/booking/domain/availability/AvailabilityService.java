@@ -21,7 +21,7 @@ import uk.co.club.booking.domain.booking.BookingStatus;
 import uk.co.club.booking.domain.club.BookingSettings;
 import uk.co.club.booking.domain.club.BookingSettingsRepository;
 import uk.co.club.booking.domain.club.OpeningHours;
-import uk.co.club.booking.domain.club.OpeningHoursRepository;
+import uk.co.club.booking.domain.club.OpeningHoursResolver;
 import uk.co.club.booking.domain.club.PricingService;
 import uk.co.club.booking.domain.table.MaintenanceBlock;
 import uk.co.club.booking.domain.table.MaintenanceBlockRepository;
@@ -42,7 +42,7 @@ public class AvailabilityService {
     private final SnookerTableRepository tableRepository;
     private final BookingRepository bookingRepository;
     private final MaintenanceBlockRepository blockRepository;
-    private final OpeningHoursRepository openingHoursRepository;
+    private final OpeningHoursResolver openingHoursResolver;
     private final BookingSettingsRepository bookingSettingsRepository;
     private final SlotGenerator slotGenerator;
     private final PricingService pricingService;
@@ -52,7 +52,7 @@ public class AvailabilityService {
             SnookerTableRepository tableRepository,
             BookingRepository bookingRepository,
             MaintenanceBlockRepository blockRepository,
-            OpeningHoursRepository openingHoursRepository,
+            OpeningHoursResolver openingHoursResolver,
             BookingSettingsRepository bookingSettingsRepository,
             SlotGenerator slotGenerator,
             PricingService pricingService,
@@ -60,7 +60,7 @@ public class AvailabilityService {
         this.tableRepository = tableRepository;
         this.bookingRepository = bookingRepository;
         this.blockRepository = blockRepository;
-        this.openingHoursRepository = openingHoursRepository;
+        this.openingHoursResolver = openingHoursResolver;
         this.bookingSettingsRepository = bookingSettingsRepository;
         this.slotGenerator = slotGenerator;
         this.pricingService = pricingService;
@@ -106,10 +106,9 @@ public class AvailabilityService {
 
         List<SnookerTable> tables = selectTables(tableIds);
 
-        Optional<OpeningWindow> maybeWindow =
-                openingHoursRepository
-                        .findByDayValue(OpeningHoursRepository.dayValue(date.getDayOfWeek()))
-                        .flatMap(hours -> slotGenerator.openingWindow(date, hours));
+        // Through the resolver, never the repository directly — see OpeningHoursResolver for
+        // why the read side and the write side must not answer this question separately.
+        Optional<OpeningWindow> maybeWindow = openingHoursResolver.windowFor(date);
 
         List<DayAvailability.DurationOption> durationOptions = durationOptions(settings);
 

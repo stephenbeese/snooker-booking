@@ -30,6 +30,12 @@ const PEAK = {
   catchAll: false,
 };
 
+const TABLE_TYPES = [
+  { code: 'SNOOKER', label: 'Snooker' },
+  { code: 'ENGLISH_POOL', label: 'English pool' },
+  { code: 'AMERICAN_POOL', label: 'American pool' },
+];
+
 const WEEK_NAMES = [
   'Monday',
   'Tuesday',
@@ -60,6 +66,11 @@ function mockApi(rules: unknown[] = [CATCH_ALL, PEAK], onWrite?: () => Response)
       if (url.includes('/pricing-rules')) {
         if (method === 'GET') return json(rules);
         return onWrite ? onWrite() : json({ ...CATCH_ALL, id: 3 }, method === 'POST' ? 201 : 200);
+      }
+      // Type labels are server data since Phase 7 rather than a hardcoded map, so the rule
+      // table and the type picker both need this to render anything but bare codes.
+      if (url.includes('/api/tables/types')) {
+        return json(TABLE_TYPES);
       }
       return new Response(null, { status: 204 });
     }),

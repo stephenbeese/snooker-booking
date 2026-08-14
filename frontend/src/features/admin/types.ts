@@ -3,7 +3,15 @@ import type { Role } from '@/features/auth/types';
 
 export type BookingSource = 'ONLINE' | 'TELEPHONE' | 'ADMIN';
 
-export type TableType = 'SNOOKER' | 'ENGLISH_POOL' | 'AMERICAN_POOL';
+/**
+ * A table type's code, e.g. "SNOOKER".
+ *
+ * <p>A bare string rather than a union since Phase 7: types are rows a manager can add, so a
+ * closed union here would be a second source of truth that a newly added type falsifies —
+ * and `Record<TableType, string>` label maps would stop compiling every time the club took
+ * up a new format. Labels come from `GET /api/tables/types`.
+ */
+export type TableType = string;
 
 /** Mirrors the server's `PaymentStatus`. */
 export type PaymentStatus =
@@ -163,6 +171,28 @@ export interface DayHours {
   closed: boolean;
   openTime: string | null;
   closeTime: string | null;
+}
+
+/**
+ * Special hours for one date, overriding that date's weekday hours.
+ *
+ * <p>Times are kept on a closed date for the same reason as {@link DayHours}: reopening it
+ * restores what was there rather than presenting an empty form.
+ */
+export interface DateHours {
+  date: string;
+  closed: boolean;
+  openTime: string | null;
+  closeTime: string | null;
+  note: string | null;
+}
+
+/** A kind of table, as staff manage it. The code is immutable; the label is not. */
+export interface AdminTableType {
+  code: TableType;
+  label: string;
+  displayOrder: number;
+  active: boolean;
 }
 
 export interface BookingRules {
