@@ -7,6 +7,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -44,6 +45,7 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
 
     private static final String CUSTOMER_PASSWORD = "CustomerPass123!";
     private static final String ADMIN_PASSWORD = "AdminPass123!";
+    private static final String STAFF_PASSWORD = "StaffPass123!";
 
     @Autowired private TestRestTemplate rest;
     @Autowired private IntegrationFixtures fixtures;
@@ -75,8 +77,14 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
             "priority", 0,
             "active", true);
 
-    /** Every admin path, so a new one added without a test still has to pass this list. */
-    private static final List<Endpoint> ADMIN_ENDPOINTS = List.of(
+    /**
+     * The day job: what someone working the counter needs. STAFF and ADMIN both reach these.
+     *
+     * <p>Kept separate from {@link #ADMIN_ONLY_ENDPOINTS} because the STAFF matrix has to
+     * assert both halves — that STAFF get in here, and that they are refused there. A single
+     * combined list could only ever test one of the two.
+     */
+    private static final List<Endpoint> STAFF_ENDPOINTS = List.of(
             new Endpoint(HttpMethod.GET, "/api/admin/dashboard", null),
             new Endpoint(HttpMethod.GET, "/api/admin/bookings", null),
             new Endpoint(HttpMethod.GET, "/api/admin/bookings/day", null),
@@ -102,16 +110,6 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
                             "customerEmail", "boundary@test.local",
                             "firstName", "Bound",
                             "lastName", "Ary")),
-            new Endpoint(HttpMethod.GET, "/api/admin/tables", null),
-            new Endpoint(
-                    HttpMethod.POST,
-                    "/api/admin/tables",
-                    Map.of("name", "Boundary New Table", "tableType", "SNOOKER", "displayOrder", 9)),
-            new Endpoint(
-                    HttpMethod.PUT,
-                    "/api/admin/tables/1",
-                    Map.of("name", "Renamed", "tableType", "SNOOKER", "displayOrder", 1)),
-            new Endpoint(HttpMethod.PUT, "/api/admin/tables/1/active?active=false", null),
             new Endpoint(
                     HttpMethod.GET, "/api/admin/maintenance-blocks?from=2030-01-01&to=2030-01-02", null),
             new Endpoint(
@@ -122,7 +120,43 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
                             "date", "2030-01-01",
                             "startTime", "14:00:00",
                             "endTime", "18:00:00")),
-            new Endpoint(HttpMethod.DELETE, "/api/admin/maintenance-blocks/1", null),
+            new Endpoint(HttpMethod.DELETE, "/api/admin/maintenance-blocks/1", null));
+
+    /**
+     * Configuring the club, and deciding who may do so. ADMIN only.
+     *
+     * <p>The users endpoints are the load-bearing ones. A STAFF member who could reach
+     * {@code PUT /api/admin/users/{id}/role} could make themselves ADMIN, and every other
+     * line in this list would become advisory.
+     */
+    private static final List<Endpoint> ADMIN_ONLY_ENDPOINTS = List.of(
+            new Endpoint(HttpMethod.GET, "/api/admin/tables", null),
+            new Endpoint(
+                    HttpMethod.POST,
+                    "/api/admin/tables",
+                    Map.of("name", "Boundary New Table", "tableType", "SNOOKER", "displayOrder", 9)),
+            new Endpoint(
+                    HttpMethod.PUT,
+                    "/api/admin/tables/1",
+                    Map.of("name", "Renamed", "tableType", "SNOOKER", "displayOrder", 1)),
+            new Endpoint(HttpMethod.PUT, "/api/admin/tables/1/active?active=false", null),
+            new Endpoint(HttpMethod.GET, "/api/admin/users", null),
+            new Endpoint(HttpMethod.GET, "/api/admin/users/1", null),
+            new Endpoint(
+                    HttpMethod.POST,
+                    "/api/admin/users",
+                    Map.of(
+                            "email", "boundary-new-staff@test.local",
+                            "password", "BoundaryPass123!",
+                            "firstName", "Bound",
+                            "lastName", "Ary",
+                            "role", "STAFF")),
+            new Endpoint(HttpMethod.PUT, "/api/admin/users/1/role", Map.of("role", "ADMIN")),
+            new Endpoint(HttpMethod.PUT, "/api/admin/users/1/active?active=true", null),
+            new Endpoint(
+                    HttpMethod.PUT,
+                    "/api/admin/users/1/password",
+                    Map.of("password", "BoundaryPass123!")),
             // Phase 6. Settings decide what the whole club can sell and what it charges, so
             // they are the most consequential writes in the admin area.
             new Endpoint(HttpMethod.GET, "/api/admin/settings/club", null),
@@ -142,6 +176,16 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
             // means refused", and deleting the seeded catch-all rule would break every later
             // test in the class by leaving the club unable to price anything.
             new Endpoint(HttpMethod.DELETE, "/api/admin/settings/pricing-rules/999999", null));
+
+    /**
+     * Every admin path, so a new one added without a test still has to pass this list.
+     *
+     * <p>The union of both tiers, built rather than written out again: a third copy of these
+     * endpoints is a third place to forget one, and the sweeps that use it — anonymous and
+     * customer — care only that nothing under /api/admin is reachable, not which tier it is in.
+     */
+    private static final List<Endpoint> ADMIN_ENDPOINTS =
+            Stream.concat(STAFF_ENDPOINTS.stream(), ADMIN_ONLY_ENDPOINTS.stream()).toList();
 
     /** Endpoints any signed-in user may reach, but an anonymous one may not. */
     private static final List<Endpoint> CUSTOMER_ENDPOINTS = List.of(
@@ -168,6 +212,7 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
         long victimId = fixtures.aCustomer("victim@test.local", CUSTOMER_PASSWORD);
         fixtures.aCustomer("attacker@test.local", CUSTOMER_PASSWORD);
         fixtures.anAdmin("boundary-admin@test.local", ADMIN_PASSWORD);
+        fixtures.aUser("boundary-staff@test.local", STAFF_PASSWORD, "STAFF");
 
         Instant start = Instant.now().plus(3, ChronoUnit.DAYS).truncatedTo(ChronoUnit.HOURS);
         fixtures.aBooking("SNK-VICTIM", tableId, start, 60, "CONFIRMED", victimId, null);
@@ -238,6 +283,49 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
         // The mirror image of the tests above. Without it, a filter chain that denied everything
         // to everybody would pass them both and lock staff out of their own club.
         assertThat(refused).as("admin endpoints refused to an admin").isEmpty();
+    }
+
+    @Test
+    @DisplayName("a staff member reaches the day job")
+    void staffIsAdmitted() {
+        // The half of the STAFF split that is easy to get wrong in the safe direction: a
+        // matcher that denied everything would pass the refusal test below and leave the
+        // counter unable to take a booking.
+        HttpClient staff =
+                HttpClient.anonymous(rest).login("boundary-staff@test.local", STAFF_PASSWORD);
+
+        List<String> refused = new ArrayList<>();
+        for (Endpoint endpoint : STAFF_ENDPOINTS) {
+            int status = staff.statusOf(endpoint.method(), endpoint.path(), endpoint.body());
+            if (status == 401 || status == 403) {
+                refused.add(endpoint + " -> " + status);
+            }
+        }
+
+        assertThat(refused).as("staff endpoints refused to a staff member").isEmpty();
+    }
+
+    @Test
+    @DisplayName("a staff member cannot configure the club or hand out roles")
+    void staffCannotReachAdminOnly() {
+        // The half that matters for security. 403 specifically, not merely "not 2xx": a 401
+        // would send the SPA to the login page, where signing in again changes nothing
+        // because the session was never the problem.
+        HttpClient staff =
+                HttpClient.anonymous(rest).login("boundary-staff@test.local", STAFF_PASSWORD);
+
+        List<String> allowed = new ArrayList<>();
+        for (Endpoint endpoint : ADMIN_ONLY_ENDPOINTS) {
+            int status = staff.statusOf(endpoint.method(), endpoint.path(), endpoint.body());
+            if (status != 403) {
+                allowed.add(endpoint + " -> " + status);
+            }
+        }
+
+        assertThat(allowed)
+                .as("admin-only endpoints reachable by staff — a staff member who reaches "
+                        + "/api/admin/users/{id}/role can make themselves an admin")
+                .isEmpty();
     }
 
     @Test

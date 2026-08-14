@@ -41,12 +41,12 @@ import uk.co.club.booking.security.AppUserPrincipal;
 /**
  * Staff booking management.
  *
- * <p>Authorisation is not implemented here. Every path under {@code /api/admin/**} requires the
- * ADMIN role in {@code SecurityConfig}, which is checked before this class is reached — a
- * per-method check as well would be a second place to forget. What this class does owe is the
- * discipline of never re-implementing a rule: cancellation goes through the same
- * {@code BookingService.cancel} the customer endpoint uses, differing only in the
- * {@code isAdmin} flag it passes.
+ * <p>Authorisation is not implemented here. {@code SecurityConfig} requires STAFF or ADMIN for
+ * everything in this class and reserves ADMIN for the club's configuration and its accounts,
+ * checked before this class is reached — a per-method check as well would be a second place to
+ * forget. What this class does owe is the discipline of never re-implementing a rule:
+ * cancellation goes through the same {@code BookingService.cancel} the customer endpoint uses,
+ * differing only in the {@code isStaff} flag it passes.
  */
 @RestController
 @RequestMapping("/api/admin")

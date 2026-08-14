@@ -34,6 +34,9 @@ export const queryKeys = {
   adminBooking: (reference: string) => ['admin', 'bookings', 'one', reference] as const,
   adminDay: (date: string) => ['admin', 'day', date] as const,
   adminTables: () => ['admin', 'tables'] as const,
+  // The whole filter object, as with adminBookings: two filters are two result sets, and
+  // sharing a key shows the previous filter's rows while the new request is in flight.
+  adminUsers: (filters: unknown) => ['admin', 'users', filters] as const,
   adminBlocks: (from: string, to: string) => ['admin', 'blocks', from, to] as const,
   adminClubDetails: () => ['admin', 'settings', 'club'] as const,
   adminOpeningHours: () => ['admin', 'settings', 'opening-hours'] as const,

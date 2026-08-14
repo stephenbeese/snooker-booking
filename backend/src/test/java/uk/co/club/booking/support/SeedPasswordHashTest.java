@@ -18,6 +18,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 class SeedPasswordHashTest {
 
     private static final String ADMIN_PASSWORD = "Admin123!";
+    private static final String STAFF_PASSWORD = "Staff123!";
     private static final String CUSTOMER_PASSWORD = "Customer123!";
 
     // Must stay in sync with SecurityConfig's encoder strength.
@@ -26,6 +27,7 @@ class SeedPasswordHashTest {
     @Test
     void seedHashesMatchDocumentedDevPasswords() {
         assertThat(encoder.matches(ADMIN_PASSWORD, DevSeedHashes.ADMIN)).isTrue();
+        assertThat(encoder.matches(STAFF_PASSWORD, DevSeedHashes.STAFF)).isTrue();
         assertThat(encoder.matches(CUSTOMER_PASSWORD, DevSeedHashes.CUSTOMER)).isTrue();
     }
 
@@ -40,6 +42,7 @@ class SeedPasswordHashTest {
             return;
         }
         System.out.println("ADMIN    = " + encoder.encode(ADMIN_PASSWORD));
+        System.out.println("STAFF    = " + encoder.encode(STAFF_PASSWORD));
         System.out.println("CUSTOMER = " + encoder.encode(CUSTOMER_PASSWORD));
     }
 
@@ -47,6 +50,8 @@ class SeedPasswordHashTest {
     static final class DevSeedHashes {
         static final String ADMIN =
                 "$2a$12$fsgQIPwM2GVsuZbiGT6tPORv86U6QoLUMvNciv9hcNPcr2cwU56ae";
+        static final String STAFF =
+                "$2a$12$yVgaitypNGmYI448aFb6NOe3z5t6MxG6TfFXaoH2pUXSsOpEy02I2";
         static final String CUSTOMER =
                 "$2a$12$iwawPf4TEAo6wCZolJnPvuUB3KlLXgo/iRr7ENRSLnlDZQOOtyCYW";
 

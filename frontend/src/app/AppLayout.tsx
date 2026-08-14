@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { Button } from '@/components/ui/Button';
+import { isStaff } from '@/features/auth/types';
 import { useCurrentUser, useLogout } from '@/features/auth/useAuth';
 import { useClub } from '@/features/club/useClub';
 import { Logo } from './Logo';
@@ -48,7 +49,9 @@ export function AppLayout() {
             {user && <NavItem to="/bookings">My bookings</NavItem>}
             {/* Hiding this from customers is tidiness, not access control: the route guard and
                 the server's role check are what actually keep them out. */}
-            {user?.role === 'ADMIN' && <NavItem to="/admin">Staff</NavItem>}
+            {user !== undefined && user !== null && isStaff(user.role) && (
+              <NavItem to="/admin">Staff</NavItem>
+            )}
           </div>
 
           <div className="hidden items-center gap-3 sm:flex">
@@ -118,7 +121,9 @@ export function AppLayout() {
             <div className="flex flex-col gap-1">
               <NavItem to="/book">Book a table</NavItem>
               {user && <NavItem to="/bookings">My bookings</NavItem>}
-              {user?.role === 'ADMIN' && <NavItem to="/admin">Staff</NavItem>}
+              {user !== undefined && user !== null && isStaff(user.role) && (
+              <NavItem to="/admin">Staff</NavItem>
+            )}
             </div>
             <div className="mt-3 flex flex-col gap-2 border-t border-ink-200 pt-3">
               {user ? (

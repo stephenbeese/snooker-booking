@@ -1,4 +1,5 @@
 import type { BookingStatus } from '@/features/booking/types';
+import type { Role } from '@/features/auth/types';
 
 export type BookingSource = 'ONLINE' | 'TELEPHONE' | 'ADMIN';
 
@@ -204,4 +205,38 @@ export interface TelephoneBookingInput {
   lastName: string;
   customerPhone?: string | null;
   notes?: string | null;
+}
+
+/**
+ * An account as an admin sees it.
+ *
+ * <p>No password field in either direction: the hash never leaves the server, and a new
+ * password is sent through a dedicated request rather than as part of the account.
+ */
+export interface AdminUser {
+  id: number;
+  email: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  phone: string | null;
+  role: Role;
+  active: boolean;
+  createdAt: string;
+}
+
+/** What an admin types to create an account for someone who works here. */
+export interface CreateUserInput {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  role: Role;
+}
+
+export interface AdminUserFilters {
+  role?: Role | undefined;
+  search?: string | undefined;
+  page?: number | undefined;
 }

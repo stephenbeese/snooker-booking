@@ -16,6 +16,14 @@ VALUES ('admin@snookerclub.test',
         'Club', 'Manager', '0161 000 0001', 'ADMIN')
 ON CONFLICT (email) DO NOTHING;
 
+-- A STAFF account, so the role split can be exercised without an admin first creating one.
+-- Reaches bookings, the telephone grid and maintenance; refused settings, tables and users.
+INSERT INTO app_user (email, password_hash, first_name, last_name, phone, role)
+VALUES ('staff@snookerclub.test',
+        '$2a$12$yVgaitypNGmYI448aFb6NOe3z5t6MxG6TfFXaoH2pUXSsOpEy02I2',
+        'Sam', 'Counter', '0161 000 0002', 'STAFF')
+ON CONFLICT (email) DO NOTHING;
+
 INSERT INTO app_user (email, password_hash, first_name, last_name, phone, role)
 VALUES ('customer@snookerclub.test',
         '$2a$12$iwawPf4TEAo6wCZolJnPvuUB3KlLXgo/iRr7ENRSLnlDZQOOtyCYW',

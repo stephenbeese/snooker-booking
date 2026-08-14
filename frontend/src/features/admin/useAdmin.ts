@@ -1,7 +1,10 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
+import type { Role } from '@/features/auth/types';
 import {
   cancelBookingAsAdmin,
+  changeUserRole,
+  createAdminUser,
   createMaintenanceBlock,
   createTable,
   createTelephoneBooking,
@@ -11,6 +14,7 @@ import {
   fetchAdminBookings,
   fetchAdminDay,
   fetchAdminTables,
+  fetchAdminUsers,
   fetchBookingRules,
   fetchClubDetails,
   fetchDashboard,
@@ -19,13 +23,21 @@ import {
   fetchPricingRules,
   fetchTables,
   savePricingRule,
+  resetUserPassword,
   setTableActive,
+  setUserActive,
   updateBookingRules,
   updateClubDetails,
   updateOpeningHours,
   updateTable,
 } from './api';
-import type { AdminBookingFilters, PricingRuleInput, TableInput } from './types';
+import type {
+  AdminBookingFilters,
+  AdminUserFilters,
+  CreateUserInput,
+  PricingRuleInput,
+  TableInput,
+} from './types';
 
 export function useAdminDashboard() {
   return useQuery({
@@ -259,4 +271,56 @@ export function useAdminCancelBooking() {
       await queryClient.invalidateQueries({ queryKey: ['bookings'] });
     },
   });
+}
+
+// ---------------------------------------------------------------- accounts
+
+export function useAdminUsers(filters: AdminUserFilters) {
+  return useQuery({
+    queryKey: queryKeys.adminUsers(filters),
+    queryFn: () => fetchAdminUsers(filters),
+    // Keeps the current page on screen while a new search resolves, so typing does not
+    // flash an empty table between keystrokes.
+    placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * Every account mutation invalidates the whole directory rather than patching one row.
+ *
+ * <p>A role change can alter more than the row it targets — the "last admin" rule means the
+ * server may refuse a later change that the client would have thought fine — so refetching
+ * keeps the screen honest about what is now permitted.
+ */
+function useUserMutation<TArgs, TResult>(mutationFn: (args: TArgs) => Promise<TResult>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      // The acting admin may have changed their own standing, and the header reads role
+      // from here to decide which links to show.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.currentUser() });
+    },
+  });
+}
+
+export function useCreateAdminUser() {
+  return useUserMutation((input: CreateUserInput) => createAdminUser(input));
+}
+
+export function useChangeUserRole() {
+  return useUserMutation(({ id, role }: { id: number; role: Role }) => changeUserRole(id, role));
+}
+
+export function useSetUserActive() {
+  return useUserMutation(({ id, active }: { id: number; active: boolean }) =>
+    setUserActive(id, active),
+  );
+}
+
+export function useResetUserPassword() {
+  return useUserMutation(({ id, password }: { id: number; password: string }) =>
+    resetUserPassword(id, password),
+  );
 }

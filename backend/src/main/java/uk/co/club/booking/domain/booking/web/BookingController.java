@@ -114,7 +114,7 @@ public class BookingController {
             @PathVariable String reference, @AuthenticationPrincipal AppUserPrincipal principal) {
         Booking booking = bookingService.requireByReference(reference);
         // 404 rather than 403 for somebody else's booking — see BookingService.requireOwnership.
-        bookingService.requireOwnership(booking, principal.id(), principal.isAdmin());
+        bookingService.requireOwnership(booking, principal.id(), principal.isStaff());
         return toResponse(booking, principal);
     }
 
@@ -136,11 +136,11 @@ public class BookingController {
             @AuthenticationPrincipal AppUserPrincipal principal) {
 
         Booking booking = bookingService.requireByReference(reference);
-        bookingService.requireOwnership(booking, principal.id(), principal.isAdmin());
+        bookingService.requireOwnership(booking, principal.id(), principal.isStaff());
 
         String reason = request == null ? null : request.reason();
         boolean cancelled =
-                bookingService.cancel(booking, principal.id(), principal.isAdmin(), reason);
+                bookingService.cancel(booking, principal.id(), principal.isStaff(), reason);
 
         if (cancelled) {
             // After the cancelling transaction has committed, so a failure here cannot roll back
@@ -165,7 +165,7 @@ public class BookingController {
     public CheckoutResponse retryCheckout(
             @PathVariable String reference, @AuthenticationPrincipal AppUserPrincipal principal) {
         Booking booking = bookingService.requireByReference(reference);
-        bookingService.requireOwnership(booking, principal.id(), principal.isAdmin());
+        bookingService.requireOwnership(booking, principal.id(), principal.isStaff());
         String checkoutUrl = paymentService.startCheckout(booking);
         return new CheckoutResponse(toResponse(booking, principal), checkoutUrl);
     }
@@ -179,6 +179,6 @@ public class BookingController {
      */
     private BookingResponse toResponse(Booking booking, AppUserPrincipal principal) {
         return BookingResponse.from(
-                booking, clubClock, bookingService.cancellation(booking, principal.isAdmin()));
+                booking, clubClock, bookingService.cancellation(booking, principal.isStaff()));
     }
 }

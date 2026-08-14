@@ -124,7 +124,36 @@ public class SecurityConfig {
                         .permitAll()
                         // Admin rules come before anyRequest(), which matches everything
                         // and would otherwise shadow them.
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        //
+                        // Narrowest first. Spring takes the FIRST matcher that matches, so
+                        // listing "/api/admin/**" above these would swallow them and hand
+                        // STAFF the club's configuration. Order here is the authorisation.
+                        //
+                        // What ADMIN keeps to itself is everything that changes the club
+                        // rather than serving a customer: opening hours, pricing, the tables,
+                        // and who else has access. Handing out roles is the one that matters
+                        // most — a STAFF member who could edit users could make themselves
+                        // ADMIN, and the split would mean nothing.
+                        //
+                        // Both forms of each path. The wildcard alone is in fact sufficient
+                        // here — Spring's PathPatternParser matches "/api/admin/tables/**"
+                        // against the bare "/api/admin/tables" too, which was verified rather
+                        // than assumed — but that is a property of the matcher implementation,
+                        // not of this rule. Spelling out the base path costs one line and
+                        // keeps the boundary correct if the matcher is ever swapped for one
+                        // that reads "/**" as "at least one more segment", which is how
+                        // AntPathMatcher behaved.
+                        .requestMatchers(
+                                "/api/admin/settings",
+                                "/api/admin/settings/**",
+                                "/api/admin/tables",
+                                "/api/admin/tables/**",
+                                "/api/admin/users",
+                                "/api/admin/users/**")
+                        .hasRole("ADMIN")
+                        // Everything else under /api/admin is the day job: bookings, the
+                        // telephone grid, maintenance blocks, the dashboard.
+                        .requestMatchers("/api/admin/**").hasAnyRole("STAFF", "ADMIN")
                         // Default deny: a new endpoint is unreachable until it is
                         // deliberately opened, rather than public until someone notices.
                         .anyRequest().authenticated())

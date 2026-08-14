@@ -56,11 +56,11 @@ public class CancellationPolicy {
     /**
      * Decides without throwing. Used when building a response that must describe the option.
      *
-     * @param isAdmin staff bypass the notice period only. They do not bypass the terminal-state
+     * @param isStaff staff bypass the notice period only. They do not bypass the terminal-state
      *     check, because "cancel a booking that already happened" is not a policy an admin may
      *     override — it is a request that does not mean anything.
      */
-    public Decision evaluate(Booking booking, boolean isAdmin) {
+    public Decision evaluate(Booking booking, boolean isStaff) {
         Instant now = clubClock.now();
 
         if (booking.getStatus().isTerminal()) {
@@ -80,7 +80,7 @@ public class CancellationPolicy {
         // An unpaid hold is not a commitment the notice period protects — the club has no
         // money and the sweeper would release the slot within minutes anyway. Letting the
         // customer release it immediately returns the slot to sale sooner.
-        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT || isAdmin) {
+        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT || isStaff) {
             return Decision.allowed(null);
         }
 
@@ -100,8 +100,8 @@ public class CancellationPolicy {
     }
 
     /** Throwing form, for the cancel endpoint itself. */
-    public void requireCancellable(Booking booking, boolean isAdmin) {
-        Decision decision = evaluate(booking, isAdmin);
+    public void requireCancellable(Booking booking, boolean isStaff) {
+        Decision decision = evaluate(booking, isStaff);
         if (!decision.cancellable()) {
             throw new BusinessRuleException(decision.reason(), decision.message());
         }
