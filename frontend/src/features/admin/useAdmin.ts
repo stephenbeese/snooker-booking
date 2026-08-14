@@ -40,6 +40,7 @@ import {
   fetchPricingRules,
   fetchTables,
   recordCounterPayment,
+  amendBooking,
   fetchPaymentDecisions,
   answerPaymentDecision,
   savePricingRule,
@@ -371,6 +372,32 @@ export function useRecordCounterPayment() {
   return useMutation({
     mutationFn: ({ reference, status }: { reference: string; status: CounterPaymentStatus }) =>
       recordCounterPayment(reference, status),
+    onSuccess: async (booking) => {
+      queryClient.setQueryData(queryKeys.adminBooking(booking.reference), booking);
+      await queryClient.invalidateQueries({ queryKey: ['admin'] });
+    },
+  });
+}
+
+/**
+ * Moves a booking.
+ *
+ * <p>Invalidates the whole admin tree: the booking has left one slot and taken another, so the
+ * diary, the day's list and the dashboard are all now describing where it used to be.
+ */
+export function useAmendBooking() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      reference,
+      ...input
+    }: {
+      reference: string;
+      tableId: number;
+      date: string;
+      startTime: string;
+      durationMinutes: number;
+    }) => amendBooking(reference, input),
     onSuccess: async (booking) => {
       queryClient.setQueryData(queryKeys.adminBooking(booking.reference), booking);
       await queryClient.invalidateQueries({ queryKey: ['admin'] });

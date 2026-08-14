@@ -25,12 +25,21 @@ export function useAvailability({ date, durationMinutes, tableIds }: Availabilit
  * physical still enforced. A separate endpoint rather than a parameter on the public one,
  * so relaxing a rule for staff can never be requested by a customer's browser.
  */
-export function useAdminAvailability({ date, durationMinutes, tableIds }: AvailabilityQuery) {
+export function useAdminAvailability({
+  date,
+  durationMinutes,
+  tableIds,
+  // Defaults to on, so every existing caller is unaffected. Off is for a grid behind a control
+  // the user has not opened yet: this fetches a whole day, and screens that merely *might* show
+  // one should not pay for it on every render.
+  enabled = true,
+}: AvailabilityQuery & { enabled?: boolean }) {
   return useQuery({
     queryKey: queryKeys.adminAvailability(date, durationMinutes, tableIds),
     queryFn: () => fetchAdminAvailability({ date, durationMinutes, tableIds }),
     placeholderData: keepPreviousData,
     staleTime: 15_000,
+    enabled,
   });
 }
 

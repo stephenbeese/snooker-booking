@@ -25,6 +25,8 @@ public enum ErrorCode {
     // Cancellation
     CANCELLATION_TOO_LATE,
     BOOKING_NOT_CANCELLABLE,
+    /** Cancelled, expired or already played. There is nothing left to move. */
+    BOOKING_NOT_AMENDABLE,
 
     // Auth
     AUTHENTICATION_REQUIRED,

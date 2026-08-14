@@ -5,6 +5,7 @@ import { useTableTypeLabel } from '@/features/availability/useAvailability';
 import { ApiError } from '@/lib/apiError';
 import { formatSlotTime } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
+import { AmendBookingPanel } from './AmendBookingPanel';
 import { PaymentBadge } from './PaymentBadge';
 import { StatusBadge } from './StatusBadge';
 import { useAdminBooking, useAdminCancelBooking, useRecordCounterPayment } from '../useAdmin';
@@ -127,6 +128,8 @@ export function BookingDetail({ reference }: { reference: string }) {
           <p className="mt-2 whitespace-pre-wrap text-sm text-ink-700">{booking.notes}</p>
         </section>
       )}
+
+      <AmendBookingPanel booking={booking} />
 
       <CancelPanel booking={booking} />
     </>

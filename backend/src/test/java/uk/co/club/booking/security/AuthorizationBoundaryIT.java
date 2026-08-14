@@ -142,6 +142,17 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
      * line in this list would become advisory.
      */
     private static final List<Endpoint> ADMIN_ONLY_ENDPOINTS = List.of(
+            // Moving a booking. The one write under /api/admin/bookings that STAFF may not do,
+            // and gated by method rather than path — GET on the same URL is the booking detail
+            // screen, which staff need. A path-only rule would take that away with it.
+            new Endpoint(
+                    HttpMethod.PUT,
+                    "/api/admin/bookings/SNK-VICTIM",
+                    Map.of(
+                            "tableId", 1,
+                            "date", "2030-01-02",
+                            "startTime", "19:00:00",
+                            "durationMinutes", 60)),
             new Endpoint(HttpMethod.GET, "/api/admin/tables", null),
             new Endpoint(
                     HttpMethod.POST,

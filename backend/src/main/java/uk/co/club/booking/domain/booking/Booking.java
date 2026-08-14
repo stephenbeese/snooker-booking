@@ -90,6 +90,13 @@ public class Booking {
     @Column(name = "cancelled_by_user_id")
     private Long cancelledByUserId;
 
+    /** When this booking was last moved, and by whom. Null until it is. */
+    @Column(name = "amended_at")
+    private Instant amendedAt;
+
+    @Column(name = "amended_by_user_id")
+    private Long amendedByUserId;
+
     @Column(name = "cancellation_reason")
     private String cancellationReason;
 
@@ -236,6 +243,22 @@ public class Booking {
 
     public void setCancelledAt(Instant cancelledAt) {
         this.cancelledAt = cancelledAt;
+    }
+
+    public Instant getAmendedAt() {
+        return amendedAt;
+    }
+
+    public void setAmendedAt(Instant amendedAt) {
+        this.amendedAt = amendedAt;
+    }
+
+    public Long getAmendedByUserId() {
+        return amendedByUserId;
+    }
+
+    public void setAmendedByUserId(Long amendedByUserId) {
+        this.amendedByUserId = amendedByUserId;
     }
 
     public Long getCancelledByUserId() {

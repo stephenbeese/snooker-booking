@@ -98,6 +98,23 @@ export function recordCounterPayment(
   );
 }
 
+/**
+ * Moves a booking to a new time, table, or both.
+ *
+ * <p>Sends the club's local date and time, not an instant: the server owns that conversion, and
+ * it is the same shape the telephone booking endpoint takes. No price travels — what a booking
+ * costs was settled when it was made.
+ */
+export function amendBooking(
+  reference: string,
+  input: { tableId: number; date: string; startTime: string; durationMinutes: number },
+): Promise<AdminBooking> {
+  return apiRequest<AdminBooking>(`/api/admin/bookings/${encodeURIComponent(reference)}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
 export function fetchPaymentDecisions(): Promise<PaymentDecision[]> {
   return apiRequest<PaymentDecision[]>('/api/admin/payments/decisions');
 }
