@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { CUSTOMER, login, nextNonSunday } from './support/helpers';
+import { CUSTOMER, login, openDay } from './support/helpers';
 
 /**
  * Keyboard and screen-reader basics on the paths that matter.
@@ -29,7 +29,7 @@ test.describe('Accessibility', () => {
 
   test('every slot in the grid announces its time and its state', async ({ page }) => {
     await page.goto('/book');
-    await page.getByLabel('Booking date').fill(nextNonSunday());
+    await page.getByLabel('Booking date').fill(openDay());
     await expect(page.getByRole('button', { name: /— available$/ }).first()).toBeVisible();
 
     // A cell whose accessible name is just "10:00" tells a screen-reader user nothing about
@@ -47,7 +47,7 @@ test.describe('Accessibility', () => {
   test('a keyboard user can select a slot and reach the book button', async ({ page }) => {
     await login(page, CUSTOMER);
     await page.goto('/book');
-    await page.getByLabel('Booking date').fill(nextNonSunday());
+    await page.getByLabel('Booking date').fill(openDay());
 
     const slot = page.getByRole('button', { name: /— available$/ }).first();
     await expect(slot).toBeVisible();

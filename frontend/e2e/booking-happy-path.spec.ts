@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { CUSTOMER, login, nextNonSunday } from './support/helpers';
+import { bookingDate, CUSTOMER, login, openDay, releaseBookings } from './support/helpers';
 
 /**
  * The Phase 2 hard gate: a customer can find a slot and reach payment.
@@ -10,10 +10,23 @@ import { CUSTOMER, login, nextNonSunday } from './support/helpers';
  * not at the mercy of a third party's UI.
  */
 test.describe('Booking a table', () => {
+  /**
+   * References this spec created, released after each test.
+   *
+   * <p>Reaching Stripe means a real PENDING_PAYMENT hold exists on a real slot. Left behind it
+   * blocks that cell for the next 15 minutes, which is longer than a full suite run — so a
+   * second `yarn e2e` used to fail here on a slot the first run was still holding.
+   */
+  const created: string[] = [];
+
+  test.afterEach(async ({ request }) => {
+    await releaseBookings(request, created.splice(0));
+  });
+
   test('a signed-in customer can pick a slot and be sent to payment', async ({ page }) => {
     await login(page, CUSTOMER);
 
-    const date = nextNonSunday();
+    const date = bookingDate('happyPath');
     await page.goto(`/book`);
     await page.getByLabel('Booking date').fill(date);
 
@@ -40,6 +53,13 @@ test.describe('Booking a table', () => {
     await page.waitForURL(/checkout\.stripe\.com/, { timeout: 30_000 });
 
     expect(page.url()).toContain('checkout.stripe.com');
+
+    // Registered for teardown once we are certain a hold exists. Stripe's "Back" link carries
+    // our cancel URL, which is the only place the reference is visible from this page.
+    const backHref = await page.getByRole('link', { name: /^Back to/ }).getAttribute('href');
+    const reference = backHref?.match(/SNK-[A-Z0-9]+/)?.[0];
+    expect(reference, 'the cancel URL should carry the booking reference').toBeTruthy();
+    created.push(reference!);
   });
 
   test('an anonymous visitor can browse the grid but is asked to sign in to book', async ({
@@ -48,7 +68,7 @@ test.describe('Booking a table', () => {
     // Browsing must not require an account: it is the conversion path, and a login wall in
     // front of the prices is the single easiest way to lose a customer.
     await page.goto('/book');
-    await page.getByLabel('Booking date').fill(nextNonSunday());
+    await page.getByLabel('Booking date').fill(openDay());
 
     const availableSlot = page.getByRole('button', { name: /— available$/ }).first();
     await expect(availableSlot).toBeVisible();
@@ -67,7 +87,7 @@ test.describe('Booking a table', () => {
     // A grey cell with no explanation reads as a broken page. Each unavailable cell carries
     // its reason in the accessible name, which is also the tooltip.
     await page.goto('/book');
-    await page.getByLabel('Booking date').fill(nextNonSunday());
+    await page.getByLabel('Booking date').fill(openDay());
     await expect(page.getByRole('button', { name: /— available$/ }).first()).toBeVisible();
 
     const explained = page.getByRole('button', {
@@ -81,7 +101,7 @@ test.describe('Booking a table', () => {
     // Duration options come from the server; the client must never derive them, or it will
     // offer lengths the API rejects.
     await page.goto('/book');
-    await page.getByLabel('Booking date').fill(nextNonSunday());
+    await page.getByLabel('Booking date').fill(openDay());
     await expect(page.getByRole('button', { name: /— available$/ }).first()).toBeVisible();
 
     const shortCount = await page.getByRole('button', { name: /— available$/ }).count();

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { ADMIN, apiLogin, login, nextNonSunday } from './support/helpers';
+import { ADMIN, apiLogin, login, openDay } from './support/helpers';
 
 /**
  * The availability grid on the telephone booking page.
@@ -18,7 +18,7 @@ test.describe('Telephone booking availability', () => {
     page,
     request,
   }) => {
-    const date = nextNonSunday();
+    const date = openDay();
 
     // Both contexts, separately: `request` carries its own cookie jar, so signing the page in
     // leaves the API context anonymous and every admin call it makes answers 401.
@@ -56,7 +56,7 @@ test.describe('Telephone booking availability', () => {
     // Before this, staff typed a time blind and learned on submit whether the table was free.
     await login(page, ADMIN);
     await page.goto('/admin/bookings/telephone');
-    await page.getByLabel('Date').fill(nextNonSunday());
+    await page.getByLabel('Date').fill(openDay());
 
     const cell = page.getByRole('button', { name: /— available$/ }).first();
     await expect(cell).toBeVisible();
@@ -74,7 +74,7 @@ test.describe('Telephone booking availability', () => {
     // removed a freedom the backend still grants.
     await login(page, ADMIN);
     await page.goto('/admin/bookings/telephone');
-    await page.getByLabel('Date').fill(nextNonSunday());
+    await page.getByLabel('Date').fill(openDay());
 
     const cell = page.getByRole('button', { name: /— available$/ }).first();
     await expect(cell).toBeVisible();

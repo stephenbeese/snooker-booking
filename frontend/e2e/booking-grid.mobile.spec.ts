@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { CUSTOMER, login, nextNonSunday } from './support/helpers';
+import { CUSTOMER, login, openDay } from './support/helpers';
 
 /**
  * The booking grid on a phone.
@@ -14,7 +14,7 @@ import { CUSTOMER, login, nextNonSunday } from './support/helpers';
 test.describe('Booking grid on a phone', () => {
   test('the page never scrolls sideways, however wide the grid', async ({ page }) => {
     await page.goto('/book');
-    await page.getByLabel('Booking date').fill(nextNonSunday());
+    await page.getByLabel('Booking date').fill(openDay());
     await expect(page.getByRole('button', { name: /— available$/ }).first()).toBeVisible();
 
     // The grid is deliberately wider than the screen; the scroll must live on its own
@@ -28,7 +28,7 @@ test.describe('Booking grid on a phone', () => {
 
   test('the grid itself scrolls, so later times are reachable', async ({ page }) => {
     await page.goto('/book');
-    await page.getByLabel('Booking date').fill(nextNonSunday());
+    await page.getByLabel('Booking date').fill(openDay());
     await expect(page.getByRole('button', { name: /— available$/ }).first()).toBeVisible();
 
     // The inverse of the test above: it would also pass if the grid were simply cut off and
@@ -45,7 +45,7 @@ test.describe('Booking grid on a phone', () => {
     // Without a sticky first column, scrolling to 21:00 leaves a grid of anonymous cells and
     // no way to tell which row is which table.
     await page.goto('/book');
-    await page.getByLabel('Booking date').fill(nextNonSunday());
+    await page.getByLabel('Booking date').fill(openDay());
 
     const firstRowHeader = page.getByRole('rowheader').first();
     await expect(firstRowHeader).toBeVisible();
@@ -62,7 +62,7 @@ test.describe('Booking grid on a phone', () => {
   test('the selection summary stays reachable without scrolling back', async ({ page }) => {
     await login(page, CUSTOMER);
     await page.goto('/book');
-    await page.getByLabel('Booking date').fill(nextNonSunday());
+    await page.getByLabel('Booking date').fill(openDay());
 
     const slot = page.getByRole('button', { name: /— available$/ }).first();
     await expect(slot).toBeVisible();
@@ -98,7 +98,7 @@ test.describe('Booking grid on a phone', () => {
 
   test('tap targets in the grid are big enough to hit', async ({ page }) => {
     await page.goto('/book');
-    await page.getByLabel('Booking date').fill(nextNonSunday());
+    await page.getByLabel('Booking date').fill(openDay());
     const slot = page.getByRole('button', { name: /— available$/ }).first();
     await expect(slot).toBeVisible();
 
