@@ -29,6 +29,7 @@ public class StubCheckoutGateway implements CheckoutGateway {
     private final List<CheckoutRequest> created = new ArrayList<>();
     private final List<String> expired = new ArrayList<>();
     private final List<String> idempotencyKeys = new ArrayList<>();
+    private final List<Refunded> refunds = new ArrayList<>();
 
     /**
      * What each session looks like when asked about, keyed by session id.
@@ -44,6 +45,12 @@ public class StubCheckoutGateway implements CheckoutGateway {
 
     /** When true, fetchSession reports "cannot tell" — an unreachable Stripe. */
     private volatile boolean fetchUnavailable;
+
+    /** When true, refund reports that it could not be done. */
+    private volatile boolean refundUnavailable;
+
+    /** How far short of the asked-for amount a refund comes back, for the partial case. */
+    private volatile int refundShortfallPence;
 
     @Override
     public synchronized CheckoutSession createSession(
@@ -77,6 +84,39 @@ public class StubCheckoutGateway implements CheckoutGateway {
         }
         return Optional.ofNullable(sessions.get(sessionId));
     }
+
+    @Override
+    public synchronized Optional<RefundResult> refund(
+            String paymentIntentId, int amountPence, String idempotencyKey) {
+        refunds.add(new Refunded(paymentIntentId, amountPence, idempotencyKey));
+        if (refundUnavailable) {
+            return Optional.empty();
+        }
+        return Optional.of(new RefundResult(
+                "re_test_" + counter.incrementAndGet(), amountPence - refundShortfallPence));
+    }
+
+    /**
+     * Makes refund report that it could not be done.
+     *
+     * <p>The case that matters most: the club owed the money, the provider did not send it, and
+     * the cancellation has already happened. Something must still raise that for a human.
+     */
+    public void makeRefundUnavailable() {
+        this.refundUnavailable = true;
+    }
+
+    /** Refunds less than asked, so the partial-refund branch can be exercised. */
+    public void refundShortBy(int pence) {
+        this.refundShortfallPence = pence;
+    }
+
+    public synchronized List<Refunded> refunds() {
+        return List.copyOf(refunds);
+    }
+
+    /** One call to {@link #refund}, for asserting what the club actually asked Stripe to do. */
+    public record Refunded(String paymentIntentId, int amountPence, String idempotencyKey) {}
 
     /**
      * Marks a session paid at the provider without telling the application.
@@ -134,11 +174,14 @@ public class StubCheckoutGateway implements CheckoutGateway {
         created.clear();
         expired.clear();
         idempotencyKeys.clear();
+        refunds.clear();
         // Both of these too: a session left paid, or a fetch left unavailable, would leak into
         // the next test as a booking that mysteriously refuses to start a checkout.
         sessions.clear();
         failure = null;
         fetchUnavailable = false;
+        refundUnavailable = false;
+        refundShortfallPence = 0;
     }
 
     /**

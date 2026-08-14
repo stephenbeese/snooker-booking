@@ -21,6 +21,7 @@ import type {
   MaintenanceBlock,
   MaintenanceBlockInput,
   Paged,
+  PaymentDecision,
   PricingRule,
   PricingRuleInput,
   SettingsUpdate,
@@ -95,6 +96,42 @@ export function recordCounterPayment(
     `/api/admin/bookings/${encodeURIComponent(reference)}/payment`,
     { method: 'POST', body: JSON.stringify({ status }) },
   );
+}
+
+/**
+ * Moves a booking to a new time, table, or both.
+ *
+ * <p>Sends the club's local date and time, not an instant: the server owns that conversion, and
+ * it is the same shape the telephone booking endpoint takes. No price travels — what a booking
+ * costs was settled when it was made.
+ */
+export function amendBooking(
+  reference: string,
+  input: { tableId: number; date: string; startTime: string; durationMinutes: number },
+): Promise<AdminBooking> {
+  return apiRequest<AdminBooking>(`/api/admin/bookings/${encodeURIComponent(reference)}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export function fetchPaymentDecisions(): Promise<PaymentDecision[]> {
+  return apiRequest<PaymentDecision[]>('/api/admin/payments/decisions');
+}
+
+/**
+ * Sends the money back, or records that it was settled some other way.
+ *
+ * <p>No amount travels, for the same reason a counter payment carries none: the club owes what
+ * the booking cost, and a figure typed on this screen would put the till out of step with it.
+ */
+export function answerPaymentDecision(
+  id: number,
+  action: 'refund' | 'resolve',
+): Promise<void> {
+  return apiRequest<void>(`/api/admin/payments/decisions/${id}/${action}`, {
+    method: 'POST',
+  });
 }
 
 export function fetchTables(): Promise<ClubTable[]> {

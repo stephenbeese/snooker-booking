@@ -81,6 +81,20 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     Optional<Booking> findByReferenceWithTable(@Param("reference") String reference);
 
     /**
+     * A set of bookings with their tables, in one query.
+     *
+     * <p>For screens that hold a list of booking ids from somewhere else — the payment decision
+     * queue reads them off {@code payment_exception} — and would otherwise fetch each booking,
+     * and then each booking's table, one at a time.
+     */
+    @Query("""
+            SELECT b FROM Booking b
+            JOIN FETCH b.snookerTable
+            WHERE b.id IN :ids
+            """)
+    List<Booking> findAllByIdWithTable(@Param("ids") Collection<Long> ids);
+
+    /**
      * Confirms a booking if and only if it is still awaiting payment.
      *
      * <p>The {@code WHERE status = 'PENDING_PAYMENT'} clause is the entire idempotency

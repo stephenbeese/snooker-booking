@@ -66,6 +66,19 @@ public class BookingValidator {
      * @throws NotFoundException (404) if the table does not exist
      */
     public SnookerTable validate(CreateBookingCommand command, BookingPolicy policy) {
+        return validate(command, policy, null);
+    }
+
+    /**
+     * As {@link #validate(CreateBookingCommand, BookingPolicy)}, ignoring one booking's own row.
+     *
+     * @param excludedBookingId the booking being moved, which must not be treated as clashing
+     *     with itself. Every other rule applies unchanged — an amendment is subject to the same
+     *     opening hours, maintenance and duration rules as a new booking, and giving it its own
+     *     validator would be a second place for those rules to drift.
+     */
+    public SnookerTable validate(
+            CreateBookingCommand command, BookingPolicy policy, Long excludedBookingId) {
         BookingSettings settings = BookingSettings.require(bookingSettingsRepository.findSingleton());
         Instant now = clubClock.now();
 
@@ -131,7 +144,18 @@ public class BookingValidator {
         // 8. No overlapping booking. Advisory only — see the class javadoc.
         List<Booking> clashes = bookingRepository.findOverlappingForTable(
                 command.tableId(), command.startAt(), command.endAt(), BookingStatus.slotOccupying());
-        boolean liveClash = clashes.stream().anyMatch(booking -> !booking.isLapsedHold(now));
+        boolean liveClash = clashes.stream()
+                // A booking being moved always overlaps its own current slot, so without this
+                // no amendment could ever pass — including one that only shortens it.
+                //
+                // Guarded on the excluded id being present, and compared from it rather than
+                // from the booking's. An unsaved booking has a null id: calling equals on it
+                // throws, and matching null to null would make an unsaved clash exclude itself
+                // and disappear — which is worse, because it looks like the slot is free.
+                .filter(booking ->
+                        excludedBookingId == null
+                                || !excludedBookingId.equals(booking.getId()))
+                .anyMatch(booking -> !booking.isLapsedHold(now));
         if (liveClash) {
             throw new BusinessRuleException(
                     ErrorCode.SLOT_UNAVAILABLE,

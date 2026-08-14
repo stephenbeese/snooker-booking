@@ -38,6 +38,8 @@ export interface AdminBooking {
   reference: string;
   tableId: number;
   tableName: string;
+  /** The type's code. Caption it with `useTableTypeLabel`, which reads the club's own labels. */
+  tableType: TableType;
   date: string;
   startTime: string;
   endTime: string;
@@ -72,6 +74,30 @@ export interface AdminDashboard {
   awaitingPayment: number;
   expectedRevenuePence: number;
   paymentExceptions: number;
+}
+
+/**
+ * One unresolved money question, with the booking it belongs to.
+ *
+ * <p>`refundable` comes from the server rather than being derived from `paymentStatus` here:
+ * whether a payment can be sent back also depends on it having a provider payment behind it,
+ * which the client cannot see.
+ */
+export interface PaymentDecision {
+  id: number;
+  reference: string;
+  tableName: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  customerName: string;
+  customerEmail: string | null;
+  customerPhone: string | null;
+  amountPence: number;
+  paymentStatus: PaymentStatus;
+  refundable: boolean;
+  reason: string;
+  raisedAt: string;
 }
 
 export interface Paged<T> {

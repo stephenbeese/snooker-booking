@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeUser } from '@/test/factories';
 import { renderWithRouter } from '@/test/renderWithProviders';
@@ -76,6 +76,24 @@ describe('AdminLayout', () => {
     expect(screen.queryByRole('link', { name: 'Club settings' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Manage tables' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Manage staff' })).not.toBeInTheDocument();
+  });
+
+  it('marks only the new-booking link on the new-booking screen', async () => {
+    // /admin/bookings is a prefix of /admin/bookings/telephone, so a NavLink matching on
+    // prefix lit both "Bookings" and "New booking" and the bar claimed two current screens.
+    mockSession('STAFF');
+    renderWithRouter(<AdminLayout />, {
+      route: '/admin/bookings/telephone',
+      path: '/admin/bookings/telephone',
+    });
+
+    const nav = await screen.findByRole('navigation', { name: 'Staff' });
+    await waitFor(() => {
+      const current = within(nav)
+        .getAllByRole('link')
+        .filter((link) => link.getAttribute('aria-current') === 'page');
+      expect(current.map((link) => link.textContent)).toEqual(['New booking']);
+    });
   });
 
   it('shows no admin links while the session is still loading', async () => {

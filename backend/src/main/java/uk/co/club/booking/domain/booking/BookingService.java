@@ -190,6 +190,92 @@ public class BookingService {
     }
 
     /**
+     * Moves a booking to a new time, a new table, or both.
+     *
+     * <p>The hazard is specific: releasing the old slot and taking the new one must be one
+     * atomic act, or the moment between them is a window in which the table can be sold twice.
+     * It is atomic here for the same reason creation is — the row is updated in one transaction
+     * and {@code booking_no_overlap} adjudicates the new interval, so a losing race is a
+     * constraint violation rather than a lost booking. No application locking is involved.
+     *
+     * <p>The price does not move with the booking. {@code pricePence} is captured at creation
+     * precisely so a later change cannot reprice an existing booking, and silently charging a
+     * customer a peak rate because staff moved their table would be worse than the anomaly of
+     * an off-peak price in a peak slot. Changing what is owed is a conversation, and staff have
+     * the counter-payment screens for it.
+     *
+     * <p>Validated under {@link BookingPolicy#staff()}: an amendment is made by someone at the
+     * club, and holding it to the customer's notice period would refuse to move a booking to
+     * this evening. The rules that describe the physical world — the table exists, is active,
+     * is not under maintenance, is inside opening hours — are not skippable and still apply.
+     *
+     * @throws SlotTakenException (409) if the new slot was taken while this was decided
+     */
+    @Transactional
+    public Booking amend(
+            Booking booking,
+            long newTableId,
+            Instant newStartAt,
+            int newDurationMinutes,
+            long actingUserId) {
+
+        if (booking.getStatus().isTerminal()) {
+            throw new BusinessRuleException(
+                    ErrorCode.BOOKING_NOT_AMENDABLE,
+                    "This booking is no longer live and cannot be moved.");
+        }
+
+        CreateBookingCommand command = new CreateBookingCommand(
+                newTableId,
+                newStartAt,
+                newDurationMinutes,
+                booking.getUserId(),
+                booking.getCustomerName(),
+                booking.getCustomerEmail(),
+                booking.getCustomerPhone(),
+                booking.getNotes(),
+                booking.getSource(),
+                actingUserId);
+        Instant newEndAt = command.endAt();
+
+        // Its own id is excluded, or the booking would be found clashing with itself.
+        SnookerTable table = validator.validate(command, BookingPolicy.staff(), booking.getId());
+        releaseLapsedHolds(command, clubClock.now());
+
+        booking.setSnookerTable(table);
+        booking.setStartAt(newStartAt);
+        booking.setEndAt(newEndAt);
+        booking.setDurationMinutes(newDurationMinutes);
+        booking.setAmendedAt(clubClock.now());
+        booking.setAmendedByUserId(actingUserId);
+
+        try {
+            // saveAndFlush for the same reason as on create: a deferred UPDATE would violate
+            // the constraint after this method returns, where nothing can translate it.
+            return bookingRepository.saveAndFlush(booking);
+        } catch (PessimisticLockingFailureException ex) {
+            log.debug(
+                    "Deadlock while moving booking {} to table {} at {}; treating as lost race",
+                    booking.getReference(),
+                    newTableId,
+                    newStartAt);
+            throw new SlotTakenException(
+                    "That slot has just been booked by someone else. Please choose another.");
+        } catch (DataIntegrityViolationException ex) {
+            if (OVERLAP_CONSTRAINT.equals(constraintNameOf(ex))) {
+                log.debug(
+                        "Overlap constraint rejected moving booking {} to table {} at {}",
+                        booking.getReference(),
+                        newTableId,
+                        newStartAt);
+                throw new SlotTakenException(
+                        "That slot has just been booked by someone else. Please choose another.");
+            }
+            throw ex;
+        }
+    }
+
+    /**
      * Expires holds whose TTL has passed and that clash with this request.
      *
      * <p>Deliberately narrow: only the holds actually in the way. The scheduled sweeper handles

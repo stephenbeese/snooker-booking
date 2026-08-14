@@ -153,6 +153,12 @@ public class SecurityConfig {
                         // keeps the boundary correct if the matcher is ever swapped for one
                         // that reads "/**" as "at least one more segment", which is how
                         // AntPathMatcher behaved.
+                        // Moving a booking is ADMIN's alone. Listed by method as well as path:
+                        // the same path answers GET for the booking detail screen, which STAFF
+                        // must keep — a path-only rule here would take the whole booking record
+                        // away from the people who work the counter.
+                        .requestMatchers(HttpMethod.PUT, "/api/admin/bookings/*")
+                        .hasRole("ADMIN")
                         .requestMatchers(
                                 "/api/admin/settings",
                                 "/api/admin/settings/**",

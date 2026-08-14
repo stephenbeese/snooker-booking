@@ -1,8 +1,13 @@
-import { Link, useSearchParams } from 'react-router';
+import { useSearchParams } from 'react-router';
 import { PageShell } from '@/components/ui/PageShell';
-import { useAdminAvailability, useTableTypes } from '@/features/availability/useAvailability';
+import {
+  useAdminAvailability,
+  useTableTypeLabel,
+  useTableTypes,
+} from '@/features/availability/useAvailability';
 import { addDays, formatDateLong, todayIso } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
+import { BookingDetailDialog } from './components/BookingDetailDialog';
 import { axisFor, rowFor, type DiaryCell } from './diary';
 import { useAdminDay } from './useAdmin';
 import type { AdminBooking } from './types';
@@ -36,6 +41,10 @@ export function AdminDiaryPage() {
   const tableType = searchParams.get('tableType');
   const tableIdParam = searchParams.get('tableId');
   const tableId = tableIdParam ? Number(tableIdParam) : undefined;
+  // The open booking lives in the URL alongside the date, not in component state: it survives a
+  // refresh, it can be linked to, and closing is then the back button as well as Escape — which
+  // is the control people reach for on a page whose main navigation is already the query string.
+  const openBooking = searchParams.get('booking');
 
   const day = useAdminDay(date);
   const { data: tableTypes } = useTableTypes();
@@ -157,6 +166,14 @@ export function AdminDiaryPage() {
           bookings={day.data ?? []}
           tableType={tableType}
           tableId={tableId}
+          onOpen={(reference) => update({ booking: reference })}
+        />
+      )}
+
+      {openBooking && (
+        <BookingDetailDialog
+          reference={openBooking}
+          onClose={() => update({ booking: null })}
         />
       )}
     </PageShell>
@@ -168,13 +185,16 @@ function DiaryGrid({
   bookings,
   tableType,
   tableId,
+  onOpen,
 }: {
   availability: NonNullable<ReturnType<typeof useAdminAvailability>['data']>;
   bookings: AdminBooking[];
   tableType: string | null;
   tableId: number | undefined;
+  onOpen: (reference: string) => void;
 }) {
   const axis = axisFor(availability);
+  const typeLabel = useTableTypeLabel();
 
   const tables = availability.tables.filter(
     (table) =>
@@ -285,12 +305,21 @@ function DiaryGrid({
                     <span className="block text-sm font-medium text-felt-900">
                       {table.tableName}
                     </span>
+                    {/* The type, as the customer's grid shows it: a name alone says nothing
+                        about what you can play on the table. */}
+                    <span className="block text-xs text-fg-muted">
+                      {typeLabel(table.tableType)}
+                    </span>
                     {!table.tableActive && (
                       <span className="block text-xs text-ink-500">out of service</span>
                     )}
                   </th>
                   {cells.map((cell, index) => (
-                    <Cell key={`${table.tableId}-${axis[index]}`} cell={cell} />
+                    <Cell
+                      key={`${table.tableId}-${axis[index]}`}
+                      cell={cell}
+                      onOpen={onOpen}
+                    />
                   ))}
                 </tr>
               );
@@ -311,7 +340,7 @@ function DiaryGrid({
  * `colSpan` already occupies them, and emitting a `<td>` too would push the rest of the row
  * out of line with the header.
  */
-function Cell({ cell }: { cell: DiaryCell }) {
+function Cell({ cell, onOpen }: { cell: DiaryCell; onOpen: (reference: string) => void }) {
   if (cell.kind === 'covered') {
     return null;
   }
@@ -322,10 +351,15 @@ function Cell({ cell }: { cell: DiaryCell }) {
       <td colSpan={span} className="p-0">
         {/* Inset rather than rounded: a booking is a run of half-hours, so it should fill them
             edge to edge the way the customer grid's selection does. The ring separates it from
-            its neighbours now that there is no gutter to do that. */}
-        <Link
-          to={`/admin/bookings/${encodeURIComponent(booking.reference)}`}
-          className={`flex h-14 flex-col justify-center overflow-hidden border-b border-line px-2 text-left ring-1 ring-inset ${
+            its neighbours now that there is no gutter to do that.
+
+            A real button, not a clickable div: this was a link and therefore reachable and
+            operable from the keyboard, and opening the details in a modal instead must not cost
+            that. */}
+        <button
+          type="button"
+          onClick={() => onOpen(booking.reference)}
+          className={`flex h-14 w-full flex-col justify-center overflow-hidden border-b border-line px-2 text-left ring-1 ring-inset ${
             booking.status === 'PENDING_PAYMENT'
               ? 'bg-amber-100 ring-amber-300 hover:bg-amber-200'
               : 'bg-felt-100 ring-felt-300 hover:bg-felt-200'
@@ -344,7 +378,7 @@ function Cell({ cell }: { cell: DiaryCell }) {
               {formatPence(booking.amountOutstandingPence)} due
             </span>
           )}
-        </Link>
+        </button>
       </td>
     );
   }

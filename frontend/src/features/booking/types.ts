@@ -10,6 +10,8 @@ export interface Booking {
   reference: string;
   tableId: number;
   tableName: string;
+  /** The type's code. Caption it with `useTableTypeLabel`, which reads the club's own labels. */
+  tableType: string;
   /** Club-local, ISO date. */
   date: string;
   startTime: string;

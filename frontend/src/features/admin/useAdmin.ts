@@ -40,6 +40,9 @@ import {
   fetchPricingRules,
   fetchTables,
   recordCounterPayment,
+  amendBooking,
+  fetchPaymentDecisions,
+  answerPaymentDecision,
   savePricingRule,
   resetUserPassword,
   setTableActive,
@@ -371,6 +374,59 @@ export function useRecordCounterPayment() {
       recordCounterPayment(reference, status),
     onSuccess: async (booking) => {
       queryClient.setQueryData(queryKeys.adminBooking(booking.reference), booking);
+      await queryClient.invalidateQueries({ queryKey: ['admin'] });
+    },
+  });
+}
+
+/**
+ * Moves a booking.
+ *
+ * <p>Invalidates the whole admin tree: the booking has left one slot and taken another, so the
+ * diary, the day's list and the dashboard are all now describing where it used to be.
+ */
+export function useAmendBooking() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      reference,
+      ...input
+    }: {
+      reference: string;
+      tableId: number;
+      date: string;
+      startTime: string;
+      durationMinutes: number;
+    }) => amendBooking(reference, input),
+    onSuccess: async (booking) => {
+      queryClient.setQueryData(queryKeys.adminBooking(booking.reference), booking);
+      await queryClient.invalidateQueries({ queryKey: ['admin'] });
+    },
+  });
+}
+
+// ------------------------------------------------------- payment decisions
+
+export function usePaymentDecisions() {
+  return useQuery({
+    queryKey: queryKeys.adminPaymentDecisions(),
+    queryFn: fetchPaymentDecisions,
+  });
+}
+
+/**
+ * Answers one decision, by refunding it or by recording it as settled elsewhere.
+ *
+ * <p>Invalidates the whole admin tree rather than just this list: answering a decision changes
+ * the dashboard's count and the booking's own payment status, and a stale count is precisely
+ * the thing this screen exists to stop.
+ */
+export function useAnswerPaymentDecision() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: number; action: 'refund' | 'resolve' }) =>
+      answerPaymentDecision(id, action),
+    onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['admin'] });
     },
   });

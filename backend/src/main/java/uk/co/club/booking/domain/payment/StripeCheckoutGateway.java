@@ -2,8 +2,10 @@ package uk.co.club.booking.domain.payment;
 
 import com.stripe.StripeClient;
 import com.stripe.exception.StripeException;
+import com.stripe.model.Refund;
 import com.stripe.model.checkout.Session;
 import com.stripe.net.RequestOptions;
+import com.stripe.param.RefundCreateParams;
 import com.stripe.param.checkout.SessionCreateParams;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -105,6 +107,48 @@ public class StripeCheckoutGateway implements CheckoutGateway {
             // unreachable Stripe as licence to start a second checkout — that is precisely how
             // a customer gets charged twice.
             log.warn("Could not retrieve Stripe session {}: {}", sessionId, ex.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public Optional<CheckoutGateway.RefundResult> refund(
+            String paymentIntentId, int amountPence, String idempotencyKey) {
+        try {
+            RefundCreateParams params = RefundCreateParams.builder()
+                    .setPaymentIntent(paymentIntentId)
+                    // Always an explicit amount, never "refund the whole intent". The club may
+                    // owe part of a booking, and an amount the caller computed is the only one
+                    // that matches what it decided to give back.
+                    .setAmount((long) amountPence)
+                    .build();
+            // The booking reference as the key: a timeout followed by a retry returns Stripe's
+            // original refund rather than sending the money a second time.
+            Refund refund = stripe.refunds().create(
+                    params, RequestOptions.builder().setIdempotencyKey(idempotencyKey).build());
+
+            // "succeeded" is the only status that means the money is on its way back. "pending"
+            // and "requires_action" are not failures, but they are not done either, and
+            // recording them as done would tell staff a customer had been repaid when they may
+            // yet not be. The webhook settles those when Stripe reports the outcome.
+            if (!"succeeded".equals(refund.getStatus())) {
+                log.warn(
+                        "Refund {} for intent {} came back {} rather than succeeded",
+                        refund.getId(),
+                        paymentIntentId,
+                        refund.getStatus());
+                return Optional.empty();
+            }
+            return Optional.of(new CheckoutGateway.RefundResult(
+                    refund.getId(), Math.toIntExact(refund.getAmount())));
+        } catch (StripeException ex) {
+            // Empty, not an exception. The booking is already cancelled by the time this runs,
+            // and throwing would fail a request whose real work is done; the caller raises a
+            // payment exception so a human finishes the job.
+            log.warn(
+                    "Could not refund Stripe payment intent {}: {}",
+                    paymentIntentId,
+                    ex.getMessage());
             return Optional.empty();
         }
     }

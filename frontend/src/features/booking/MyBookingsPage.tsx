@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
+import { useTableTypeLabel } from '@/features/availability/useAvailability';
 import { formatSlotTime } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
 import { CancelBookingDialog } from './CancelBookingDialog';
@@ -138,6 +139,7 @@ function Section({
 
 function BookingCard({ booking, onCancel }: { booking: Booking; onCancel?: () => void }) {
   const isPast = new Date(booking.endAt).getTime() < Date.now();
+  const typeLabel = useTableTypeLabel();
 
   return (
     <li className="rounded-card border border-ink-200 bg-white p-5 shadow-card transition-shadow hover:shadow-lifted">
@@ -149,6 +151,7 @@ function BookingCard({ booking, onCancel }: { booking: Booking; onCancel?: () =>
           >
             {booking.tableName}
           </Link>
+          <p className="text-sm text-fg-muted">{typeLabel(booking.tableType)}</p>
           <p className="mt-1 text-sm text-ink-600">
             {formatDate(booking.date)} · {formatSlotTime(booking.startTime)}–
             {formatSlotTime(booking.endTime)}

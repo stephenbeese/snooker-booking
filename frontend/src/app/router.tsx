@@ -4,6 +4,7 @@ import { AdminBookingsPage } from '@/features/admin/AdminBookingsPage';
 import { AdminCafePage } from '@/features/admin/AdminCafePage';
 import { MenuPage } from '@/features/cafe/MenuPage';
 import { AdminDiaryPage } from '@/features/admin/AdminDiaryPage';
+import { AdminPaymentsPage } from '@/features/admin/AdminPaymentsPage';
 import { AdminDashboardPage } from '@/features/admin/AdminDashboardPage';
 import { AdminLayout } from '@/features/admin/AdminLayout';
 import { AdminMaintenancePage } from '@/features/admin/AdminMaintenancePage';
@@ -101,6 +102,7 @@ export const router = createBrowserRouter([
           },
           { path: 'bookings/:reference', element: <AdminBookingDetailPage /> },
           { path: 'diary', element: <AdminDiaryPage /> },
+          { path: 'payments', element: <AdminPaymentsPage /> },
           { path: 'maintenance', element: <AdminMaintenancePage /> },
           {
             path: 'tables',

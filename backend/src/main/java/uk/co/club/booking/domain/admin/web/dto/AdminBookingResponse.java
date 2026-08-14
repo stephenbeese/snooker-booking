@@ -27,11 +27,15 @@ import uk.co.club.booking.domain.payment.PaymentSummary;
  *     outstanding amount, which means settled.
  * @param amountOutstandingPence what the club is still owed; zero once settled
  * @param payableAtCounter true when staff must take money as the customer walks in
+ * @param tableType the type's code, not its label. The label is editable and lives in one place
+ *     — {@code /api/tables/types}, which the client already reads to caption the grid — so
+ *     sending it here too would ship a second copy that goes stale when a manager renames one.
  */
 public record AdminBookingResponse(
         String reference,
         long tableId,
         String tableName,
+        String tableType,
         LocalDate date,
         LocalTime startTime,
         LocalTime endTime,
@@ -64,6 +68,7 @@ public record AdminBookingResponse(
                 booking.getReference(),
                 booking.getSnookerTable().getId(),
                 booking.getSnookerTable().getName(),
+                booking.getSnookerTable().getTableType(),
                 clock.toLocalDate(booking.getStartAt()),
                 clock.toLocalTime(booking.getStartAt()),
                 clock.toLocalTime(booking.getEndAt()),

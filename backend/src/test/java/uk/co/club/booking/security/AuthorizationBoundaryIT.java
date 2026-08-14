@@ -103,6 +103,12 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
                     HttpMethod.POST,
                     "/api/admin/bookings/SNK-VICTIM/payment",
                     Map.of("status", "PAID_AT_COUNTER")),
+            // The payment decisions queue, and clearing a row from it. Staff for the same
+            // reason: whoever is on the counter is who the customer asks about their refund,
+            // and these rows carry the customer's name, contact details and what they paid.
+            new Endpoint(HttpMethod.GET, "/api/admin/payments/decisions", null),
+            new Endpoint(HttpMethod.POST, "/api/admin/payments/decisions/1/refund", null),
+            new Endpoint(HttpMethod.POST, "/api/admin/payments/decisions/1/resolve", null),
             // A telephone booking commits a slot and records what is owed at the counter, and
             // table/maintenance changes alter what the whole club can sell — all strictly staff.
             new Endpoint(
@@ -136,6 +142,17 @@ class AuthorizationBoundaryIT extends AbstractIntegrationTest {
      * line in this list would become advisory.
      */
     private static final List<Endpoint> ADMIN_ONLY_ENDPOINTS = List.of(
+            // Moving a booking. The one write under /api/admin/bookings that STAFF may not do,
+            // and gated by method rather than path — GET on the same URL is the booking detail
+            // screen, which staff need. A path-only rule would take that away with it.
+            new Endpoint(
+                    HttpMethod.PUT,
+                    "/api/admin/bookings/SNK-VICTIM",
+                    Map.of(
+                            "tableId", 1,
+                            "date", "2030-01-02",
+                            "startTime", "19:00:00",
+                            "durationMinutes", 60)),
             new Endpoint(HttpMethod.GET, "/api/admin/tables", null),
             new Endpoint(
                     HttpMethod.POST,

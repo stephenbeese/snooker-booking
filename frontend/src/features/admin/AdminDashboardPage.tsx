@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import { PageShell } from '@/components/ui/PageShell';
+import { useTableTypeLabel } from '@/features/availability/useAvailability';
 import { formatSlotTime, todayIso } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
 import { StatusBadge } from './components/StatusBadge';
@@ -72,9 +73,17 @@ export function AdminDashboardPage() {
                   : `${dashboard.paymentExceptions} payments need a decision`}
               </p>
               <p className="mt-1 text-sm text-amber-800">
-                Money was taken for a booking that was cancelled or lost its slot. Refunds are
-                never issued automatically — someone at the club has to choose.
+                Money was taken for a booking that was cancelled or lost its slot, and this one
+                could not be settled on its own. Someone at the club has to choose.
               </p>
+              {/* The count used to end here, which meant staff could see that something was
+                  wrong and had nowhere to go about it. */}
+              <Link
+                to="/admin/payments"
+                className="mt-3 inline-block text-sm font-medium text-amber-900 underline underline-offset-2 hover:text-amber-950"
+              >
+                Review payments
+              </Link>
             </div>
           )}
 
@@ -137,12 +146,19 @@ function Stat({
 }
 
 function DiaryRow({ booking }: { booking: AdminBooking }) {
+  const typeLabel = useTableTypeLabel();
+
   return (
     <li className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-card border border-ink-200 bg-white px-4 py-3 shadow-card">
       <span className="w-28 font-mono text-sm text-felt-900">
         {formatSlotTime(booking.startTime)}–{formatSlotTime(booking.endTime)}
       </span>
-      <span className="font-medium text-felt-900">{booking.tableName}</span>
+      <span className="font-medium text-felt-900">
+        {booking.tableName}
+        <span className="ml-2 text-xs font-normal text-fg-muted">
+          {typeLabel(booking.tableType)}
+        </span>
+      </span>
       <span className="text-sm text-ink-600">{booking.customerName}</span>
       <span className="ml-auto flex items-center gap-3">
         <StatusBadge status={booking.status} />

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { Button } from '@/components/ui/Button';
+import { useTableTypeLabel } from '@/features/availability/useAvailability';
 import { ApiError } from '@/lib/apiError';
 import { formatSlotTime } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
@@ -29,6 +30,7 @@ export function BookingPage() {
     refetch,
   } = useBooking(reference, { poll: justPaid });
   const retry = useRetryCheckout();
+  const typeLabel = useTableTypeLabel();
   const [cancelling, setCancelling] = useState(false);
 
   async function handleRetry() {
@@ -85,7 +87,7 @@ export function BookingPage() {
 
       <dl className="mt-6 divide-y divide-ink-200 overflow-hidden rounded-card border border-ink-200 bg-white shadow-card">
         <Row label="Reference" value={booking.reference} mono />
-        <Row label="Table" value={booking.tableName} />
+        <Row label="Table" value={`${booking.tableName} · ${typeLabel(booking.tableType)}`} />
         <Row
           label="When"
           value={`${formatDate(booking.date)}, ${formatSlotTime(booking.startTime)}–${formatSlotTime(booking.endTime)}`}

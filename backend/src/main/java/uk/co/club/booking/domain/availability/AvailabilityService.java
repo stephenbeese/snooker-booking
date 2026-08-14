@@ -7,10 +7,12 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uk.co.club.booking.common.time.ClubClock;
@@ -177,6 +179,15 @@ public class AvailabilityService {
                     blocksByTable.getOrDefault(table.getId(), List.of())));
         }
 
+        // Trim the dead ends off the axis, now that every row knows why each of its cells is
+        // unavailable.
+        int from = firstSellableIndex(rows, slotStarts.size());
+        int to = lastSellableIndex(rows) + 1;
+        if (from < to && (from > 0 || to < slotStarts.size())) {
+            slotTimes = slotTimes.subList(from, to);
+            rows = rows.stream().map(row -> withSlots(row, row.slots().subList(from, to))).toList();
+        }
+
         return new DayAvailability(
                 date,
                 date.getDayOfWeek(),
@@ -190,6 +201,68 @@ public class AvailabilityService {
                 requestedDurationMinutes,
                 null,
                 rows);
+    }
+
+    /**
+     * Reasons that make a column dead for the whole club rather than merely sold.
+     *
+     * <p>Only structural ones. A column every table has <em>booked</em> is the busiest hour of
+     * the day, and dropping it would report the club's opening hours as narrower than they are
+     * — on a fully-booked day, down to nothing at all.
+     */
+    private static final Set<UnavailableReason> STRUCTURAL = EnumSet.of(
+            UnavailableReason.CLUB_CLOSED,
+            UnavailableReason.PAST,
+            UnavailableReason.TOO_FAR_IN_ADVANCE);
+
+    /**
+     * The first column any table could sell, or {@code size} when none can.
+     *
+     * <p>Leading columns go when the club opens at 10:00 but nothing can be booked until noon —
+     * two hours of grid whose only content is an explanation the day-level reason already gives.
+     * Interior columns are never removed, even when every table is busy: a gap in the middle of
+     * the day is information, and closing it would put 14:00 beside 17:00 with nothing to say
+     * an afternoon had been skipped.
+     */
+    private int firstSellableIndex(List<TableAvailability> rows, int size) {
+        for (int i = 0; i < size; i++) {
+            if (anySellable(rows, i)) {
+                return i;
+            }
+        }
+        return size;
+    }
+
+    /** The last column any table could sell, or -1 when none can. */
+    private int lastSellableIndex(List<TableAvailability> rows) {
+        for (int i = slotCount(rows) - 1; i >= 0; i--) {
+            if (anySellable(rows, i)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private boolean anySellable(List<TableAvailability> rows, int index) {
+        return rows.stream()
+                .map(row -> row.slots().get(index))
+                .anyMatch(slot -> slot.available() || !STRUCTURAL.contains(slot.reason()));
+    }
+
+    private int slotCount(List<TableAvailability> rows) {
+        return rows.isEmpty() ? 0 : rows.getFirst().slots().size();
+    }
+
+    private TableAvailability withSlots(TableAvailability row, List<SlotView> slots) {
+        return new TableAvailability(
+                row.tableId(),
+                row.tableName(),
+                row.tableType(),
+                row.tableActive(),
+                row.hourlyRatePence(),
+                row.varyingRate(),
+                row.highestHourlyRatePence(),
+                slots);
     }
 
     private List<SnookerTable> selectTables(List<Long> tableIds) {

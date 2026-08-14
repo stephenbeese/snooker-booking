@@ -33,7 +33,7 @@ const ROLES: { value: Role; label: string; description: string }[] = [
     value: 'STAFF',
     label: 'Staff',
     description:
-      'Takes bookings over the phone, cancels and amends any booking, marks tables out for maintenance.',
+      'Takes bookings over the phone, cancels any booking, takes payment at the counter, marks tables out for maintenance.',
   },
   {
     value: 'ADMIN',

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { PageShell } from '@/components/ui/PageShell';
 import { Link, useSearchParams } from 'react-router';
 import type { BookingStatus } from '@/features/booking/types';
+import { useTableTypeLabel } from '@/features/availability/useAvailability';
 import { formatSlotTime, todayIso } from '@/lib/datetime';
 import { formatPence } from '@/lib/money';
 import { useDebounced } from '@/lib/useDebounced';
@@ -31,6 +32,7 @@ const PAGE_SIZE = 25;
 export function AdminBookingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: tables } = useTables();
+  const typeLabel = useTableTypeLabel();
 
   const filters = filtersFromParams(searchParams);
   const { data, isPending, isError, error, isPlaceholderData } = useAdminBookings(filters);
@@ -253,6 +255,9 @@ export function AdminBookingsPage() {
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-ink-700">
                         {booking.tableName}
+                        <span className="block text-xs text-ink-500">
+                          {typeLabel(booking.tableType)}
+                        </span>
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-felt-900">{booking.customerName}</span>

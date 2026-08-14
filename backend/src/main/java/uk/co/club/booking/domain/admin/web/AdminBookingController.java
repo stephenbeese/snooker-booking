@@ -12,6 +12,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -22,6 +23,7 @@ import uk.co.club.booking.domain.admin.AdminBookingQuery;
 import uk.co.club.booking.domain.admin.AdminBookingService;
 import uk.co.club.booking.domain.admin.AdminDashboard;
 import uk.co.club.booking.domain.admin.web.dto.AdminBookingResponse;
+import uk.co.club.booking.domain.admin.web.dto.AmendBookingRequest;
 import uk.co.club.booking.domain.admin.web.dto.PagedResponse;
 import uk.co.club.booking.domain.admin.web.dto.RecordPaymentRequest;
 import uk.co.club.booking.domain.admin.web.dto.TelephoneBookingRequest;
@@ -215,6 +217,36 @@ public class AdminBookingController {
      * the rest: a booking that has already started or already ended cannot be cancelled by
      * anyone, because the session either is happening or has happened.
      */
+    /**
+     * Moves a booking to a new time, table, or both.
+     *
+     * <p>ADMIN only, unlike everything else in this class — set in {@code SecurityConfig}, which
+     * lists this path in the ADMIN block ahead of the STAFF fallthrough. Cancelling is already
+     * staff work and this is a smaller act than cancelling, so the split is a choice about who
+     * may rearrange the day rather than about risk.
+     *
+     * <p>Returns the moved booking, re-read so its price, payment state and new cancellation
+     * decision are the server's rather than the caller's assumptions.
+     */
+    @PutMapping("/bookings/{reference}")
+    public AdminBookingResponse amend(
+            @PathVariable String reference,
+            @Valid @RequestBody AmendBookingRequest request,
+            @AuthenticationPrincipal AppUserPrincipal principal) {
+
+        Booking booking = bookingService.requireByReference(reference);
+        Instant startAt = clubClock.toInstant(request.date(), request.startTime());
+
+        bookingService.amend(
+                booking,
+                request.tableId(),
+                startAt,
+                request.durationMinutes(),
+                principal.id());
+
+        return toResponse(bookingService.requireByReference(reference));
+    }
+
     @PostMapping("/bookings/{reference}/cancel")
     public AdminBookingResponse cancel(
             @PathVariable String reference,
@@ -243,9 +275,9 @@ public class AdminBookingController {
      * exists for. The acting user's id comes from the session and is stamped on the payment, so
      * the audit trail cannot be forged by the request body.
      *
-     * <p>Cancelling afterwards behaves as it does for a card payment: the booking now holds a
-     * settled payment, so {@code flagForRefundIfPaid} raises it for a refund decision rather than
-     * moving money on its own.
+     * <p>Cancelling afterwards raises a refund decision rather than moving money: counter cash
+     * and a waiver are settled payments, but neither has a card payment behind it to send back,
+     * so the automatic refund never applies to them.
      */
     @PostMapping("/bookings/{reference}/payment")
     public AdminBookingResponse recordPayment(

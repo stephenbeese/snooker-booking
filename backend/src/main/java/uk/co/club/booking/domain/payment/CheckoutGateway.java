@@ -12,7 +12,7 @@ import java.util.Optional;
  * tested code in a system that handles money.
  *
  * <p>It is deliberately narrow. No attempt at a general "payment provider abstraction": the
- * two methods here are what the booking flow actually needs, and anything more would be
+ * methods here are what the booking flow actually needs, and anything more would be
  * inventing requirements.
  */
 public interface CheckoutGateway {
@@ -45,6 +45,22 @@ public interface CheckoutGateway {
      *     as "unpaid": guessing unpaid is what takes the money twice.
      */
     Optional<SessionState> fetchSession(String sessionId);
+
+    /**
+     * Refunds a payment, in full or in part.
+     *
+     * <p>Empty means "we do not know that the money went back", never "it did not". A refund
+     * whose outcome is unknown must raise work for a human rather than be recorded as done: the
+     * failure mode of guessing wrong is a customer who was never repaid and a club that believes
+     * they were.
+     *
+     * @param idempotencyKey the booking reference, so a retried call after a timeout returns the
+     *     original refund instead of sending the money twice
+     */
+    Optional<RefundResult> refund(String paymentIntentId, int amountPence, String idempotencyKey);
+
+    /** What actually went back, as the provider reports it. */
+    record RefundResult(String refundId, int amountRefundedPence) {}
 
     /**
      * A session as the provider currently sees it.

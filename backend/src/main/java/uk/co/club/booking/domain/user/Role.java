@@ -15,9 +15,10 @@ public enum Role {
     CUSTOMER,
 
     /**
-     * Works the club: takes telephone bookings, cancels and amends anyone's booking, marks
-     * tables out for maintenance. Cannot change the club's configuration — opening hours,
-     * pricing, the tables themselves, or who else has access.
+     * Works the club: takes telephone bookings, cancels anyone's booking, settles what is owed
+     * at the counter, marks tables out for maintenance. Cannot change the club's configuration —
+     * opening hours, pricing, the tables themselves, or who else has access — and cannot move a
+     * booking to another time or table, which is ADMIN's.
      */
     STAFF,
 

@@ -9,8 +9,9 @@ import { useCurrentUser } from '@/features/auth/useAuth';
  * follow is worse than no link: it teaches them the screen exists and then refuses them, every
  * time, for a permission they cannot grant themselves.
  *
- * <p>`end` for the dashboard alone, because every other admin path begins with `/admin` and
- * would otherwise light it up permanently.
+ * <p>`end` wherever a path is a prefix of another item's. Without it `NavLink` matches on
+ * prefix, so `/admin` would light up permanently and `/admin/bookings` lights up on the
+ * telephone screen underneath it.
  */
 interface NavItem {
   to: string;
@@ -31,12 +32,19 @@ const NAV_GROUPS: { name: string; items: NavItem[] }[] = [
     name: 'Day to day',
     items: [
       { to: '/admin', label: 'Dashboard', end: true },
-      { to: '/admin/bookings', label: 'Bookings' },
+      // `end` here too, and for the same reason it is not only the dashboard's problem:
+      // /admin/bookings is itself a prefix of /admin/bookings/telephone, so without it the
+      // "New booking" screen lit this link as well as its own and the bar claimed to be in
+      // two places at once.
+      { to: '/admin/bookings', label: 'Bookings', end: true },
       { to: '/admin/diary', label: 'Calendar' },
       // "New booking" rather than "Telephone": the screen takes a booking for someone who is
       // not booking it themselves, whether they rang up or are stood at the counter, and the
       // old label described only half of what it is used for.
       { to: '/admin/bookings/telephone', label: 'New booking' },
+      // Staff, not admin-only: whoever is on the counter is who a customer asks about a
+      // refund, and a queue only a manager can clear leaves that person unable to answer.
+      { to: '/admin/payments', label: 'Payments' },
     ],
   },
   {
