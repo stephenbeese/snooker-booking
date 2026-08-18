@@ -49,22 +49,99 @@ export function weekdayOf(isoDate: string): string {
   return new Date(year!, month! - 1, day!).toLocaleDateString('en-GB', { weekday: 'long' });
 }
 
+/** One day of the club's trading week. */
+interface TradingDay {
+  /** The club does not open at all. */
+  closed: boolean;
+  /** Open, but not for the full day — so a spec assuming a morning slot may find none. */
+  short: boolean;
+}
+
+/** Where {@link globalSetup} leaves the trading week for the workers to pick up. */
+export const OPENING_HOURS_ENV = 'E2E_CLUB_OPENING_HOURS';
+
+/**
+ * Reads the club's opening hours, indexed by `Date.getDay()` — 0 is Sunday.
+ *
+ * <p>This used to be hardcoded, and the hardcoding rotted. The rule was "skip Sunday", written
+ * when the seed shut on Sundays and traded the other six days. The dev club now opens on Sunday
+ * and shuts on Wednesday, so every read-only spec spent one day in seven pointed at a closed
+ * club, rendering "The club is closed on this day" and then failing on a grid that was never
+ * going to be there — a failure that reads as a broken booking page and is nothing of the kind.
+ * Which specs failed depended on the day of the week the suite happened to run.
+ *
+ * <p>So whether a spec can run comes from what the club actually publishes, not from a weekday
+ * name written down once. `GET /api/club` is public and already serves exactly this.
+ *
+ * <p>Called once from the Playwright global setup so that {@link openDay} can stay synchronous
+ * — it has 17 call sites across five specs, and making it async to fetch a value that does not
+ * change during a run would rewrite all of them for nothing.
+ */
+export async function fetchOpeningHours(baseUrl = 'http://localhost:8080'): Promise<TradingDay[]> {
+  const response = await fetch(`${baseUrl}/api/club`);
+  if (!response.ok) {
+    throw new Error(`Could not read club hours: ${response.status}`);
+  }
+  const club = (await response.json()) as {
+    openingHours: { dayOfWeek: number; closed: boolean; openTime: string | null }[];
+  };
+
+  const week: TradingDay[] = Array.from({ length: 7 }, () => ({ closed: true, short: true }));
+  for (const day of club.openingHours) {
+    // The API numbers days 1–7 from Monday (ISO-8601); JavaScript numbers them 0–6 from Sunday.
+    week[day.dayOfWeek % 7] = {
+      closed: day.closed,
+      // A day that opens later than the usual 10:00 is "short". Specs that assume a morning
+      // slot exists fail on one for reasons unconnected to what they test — which is why the
+      // original helper skipped Sunday, and a reason that outlives the day it applied to.
+      short: day.closed || (day.openTime ?? '23:59') > '10:00',
+    };
+  }
+  return week;
+}
+
+/**
+ * What the club does on the weekday a given date falls on.
+ *
+ * <p>Read from the environment on each call rather than cached in a module: global setup runs
+ * in its own process, so nothing it assigns to a module variable reaches the workers.
+ */
+function tradingDayOf(isoDate: string, caller: string): TradingDay {
+  const raw = process.env[OPENING_HOURS_ENV];
+  if (!raw) {
+    throw new Error(`${caller}() needs ${OPENING_HOURS_ENV}; check globalSetup is configured.`);
+  }
+  const [year, month, day] = isoDate.split('-').map(Number);
+  return (JSON.parse(raw) as TradingDay[])[new Date(year!, month! - 1, day!).getDay()]!;
+}
+
 /**
  * A day the club is open with a full schedule, for specs that only read the grid.
  *
- * <p>Sunday is seeded 12:00–20:00 rather than 10:00–23:00, so a spec that assumes a
- * particular slot exists can fail on a Sunday for reasons unconnected to what it tests.
+ * <p>Prefers a full-length trading day and falls back to any open one, so a club with nothing
+ * but short days still yields a usable date rather than throwing.
  *
  * <p>Use this only where nothing is booked. A spec that creates a booking must take its own
  * day from {@link bookingDate} instead, or it contends with every other spec for the same
  * first free cell.
  */
 export function openDay(startDays = 2): string {
+  let fallback: string | null = null;
   for (let offset = startDays; offset < startDays + 7; offset++) {
     const iso = isoDaysFromNow(offset);
-    if (weekdayOf(iso) !== 'Sunday') return iso;
+    const hours = tradingDayOf(iso, 'openDay');
+    if (hours.closed) {
+      continue;
+    }
+    if (!hours.short) {
+      return iso;
+    }
+    fallback ??= iso;
   }
-  throw new Error('No non-Sunday found in a 7-day window, which is impossible');
+  if (fallback) {
+    return fallback;
+  }
+  throw new Error('The club is closed every day in the next week, so no spec can read a grid.');
 }
 
 /**
@@ -97,15 +174,24 @@ const BOOKING_DATE_SPECS = [
   'counterPayment',
 ] as const;
 
-/** This spec's own booking day: the nth open day from now, skipping Sundays. */
+/**
+ * This spec's own booking day: the nth day the club is actually open.
+ *
+ * <p>Reads the published hours for the same reason {@link openDay} does. This skipped Sundays
+ * on the assumption the club was shut then; it now trades on Sunday and shuts on Wednesday, so
+ * the skip both wasted an open day and handed specs a closed one. Unlike `openDay` a short
+ * trading day is fine here — these specs book the first free cell, whenever it falls.
+ */
 export function bookingDate(spec: (typeof BOOKING_DATE_SPECS)[number]): string {
   const wanted = BOOKING_DATE_SPECS.indexOf(spec);
   let found = -1;
-  // Two weeks is ample headroom for the dates above plus the Sundays between them, and stays
-  // well inside the 30-day advance window a customer booking is allowed.
+  // Two weeks is ample headroom for the dates above plus the closed days between them, and
+  // stays well inside the 30-day advance window a customer booking is allowed.
   for (let offset = 2; offset < 2 + 14; offset++) {
     const iso = isoDaysFromNow(offset);
-    if (weekdayOf(iso) === 'Sunday') continue;
+    if (tradingDayOf(iso, 'bookingDate').closed) {
+      continue;
+    }
     if (++found === wanted) return iso;
   }
   throw new Error(`No open day found for spec date "${spec}"`);

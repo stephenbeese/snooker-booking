@@ -96,12 +96,62 @@ export function AdminTelephoneBookingPage() {
     ...(filterTableId !== null ? { tableIds: [filterTableId] } : {}),
   });
 
+  /**
+   * A single click: this is the START of the booking, held at the shortest length the club
+   * sells until a second click or a drag says otherwise.
+   *
+   * <p>The duration drops to the minimum for the same reason it does on the customer page —
+   * carrying the previous booking's length over draws a span nobody asked for, and pre-answers
+   * the question the next click is about to answer. One click is still a complete, priced,
+   * bookable thing; anything longer is one more click or one drag away.
+   *
+   * <p>The minimum comes from the server's `durationOptions`, never a hardcoded 30: the
+   * increment is a club setting, and this screen already refuses to derive durations locally.
+   * With no options loaded yet the current value stands rather than being reset to a guess.
+   *
+   * <p>Unlike the customer page, re-clicking the anchor does NOT clear the selection. There the
+   * selection is page state and clearing it merely retracts the offer to pay; here `tableId`
+   * and `startTime` are submitted form fields, so emptying them on a stray second click would
+   * silently blank two required inputs staff had already filled and leave the summary line
+   * describing a booking with no table.
+   */
   function selectSlot(pickedTableId: number, slot: Slot) {
     // Both fields, together: a cell identifies a table and a time, and setting only one
     // would leave the form describing a slot nobody picked.
     setValue('tableId', pickedTableId, { shouldValidate: true });
     // The form's time input is HH:mm; the slot carries HH:mm:ss.
     setValue('startTime', slot.startTime.slice(0, 5), { shouldValidate: true });
+
+    const shortest = availability?.durationOptions[0]?.minutes;
+    if (shortest !== undefined) {
+      setValue('durationMinutes', shortest, { shouldValidate: true });
+    }
+  }
+
+  /**
+   * A start and an end picked on the grid — a second click on the row, or a drag across it.
+   *
+   * <p>The same gesture the customer page has. Staff taking a booking over the phone are told a
+   * start and an end ("seven till nine"), not a start and a length, so making them read the
+   * duration off the call and translate it into the dropdown is the one bit of arithmetic the
+   * grid can do for them.
+   *
+   * <p>The duration arrives already snapped to one the club sells — the grid resolves that
+   * through the same `durationForRange` the customer page uses, so the two screens can never
+   * read the same pair of cells as different lengths.
+   *
+   * <p>Written back into the form rather than held beside it: `durationMinutes` is a registered
+   * field, it is what gets submitted, and a second source of truth would let the dropdown and
+   * the drawn span disagree about what is being booked. `shouldValidate` because the select is
+   * under the same resolver as everything else.
+   */
+  function selectRange(pickedTableId: number, slot: Slot, minutes: number) {
+    // Not via `selectSlot`: that resets the duration to the club's minimum, which is exactly
+    // what a range gesture has just decided for itself. Going through it would set the field
+    // twice in one handler and leave the reset looking like the intended value.
+    setValue('tableId', pickedTableId, { shouldValidate: true });
+    setValue('startTime', slot.startTime.slice(0, 5), { shouldValidate: true });
+    setValue('durationMinutes', minutes, { shouldValidate: true });
   }
 
   async function onSubmit(values: FormValues) {
@@ -236,6 +286,7 @@ export function AdminTelephoneBookingPage() {
                 durationMinutes={durationMinutes ?? null}
                 typeLabel={typeLabel}
                 onSelect={selectSlot}
+                onSelectRange={selectRange}
               />
             )
           )}

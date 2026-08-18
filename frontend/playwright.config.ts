@@ -10,6 +10,9 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
+  // Reads the club's trading week before any spec runs, so `openDay()` can pick a day the club
+  // is genuinely open rather than one a helper assumed it was.
+  globalSetup: './e2e/support/globalSetup.ts',
   // Serial. The specs change club-wide settings and book real slots, so two workers would
   // race over shared state and fail in ways that have nothing to do with the code.
   workers: 1,

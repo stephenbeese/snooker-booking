@@ -205,6 +205,65 @@ describe('AdminTelephoneBookingPage', () => {
     expect(sent.startTime).toBe('10:30');
   });
 
+  it('takes the booking’s length from a second click on the row', async () => {
+    // A caller says "seven till nine", not "seven for two hours". Before this the grid set the
+    // start and staff did the arithmetic into the duration select by hand; now the same
+    // two-click gesture the customer page has resolves both ends here too.
+    //
+    // 10:00 then 11:00 is three cells inclusive — 90 minutes, which the club sells.
+    const booking = makeAdminBooking({ reference: 'SNK-RANGE1' });
+    const calls = mockApi(() => json(booking, 201));
+    const user = userEvent.setup();
+    renderWithRouter(<AdminTelephoneBookingPage />, {
+      route: '/admin/bookings/telephone',
+      path: '/admin/bookings/telephone',
+    });
+
+    await user.click((await screen.findAllByRole('button', { name: /10:00 — available/ }))[0]!);
+    await user.click((await screen.findAllByRole('button', { name: /11:00/ }))[0]!);
+
+    // The select is the submitted field, so it — not just the drawn bar — has to have moved.
+    await waitFor(() => {
+      expect((screen.getByLabelText('Duration') as HTMLSelectElement).value).toBe('90');
+    });
+
+    await user.type(screen.getByLabelText('Email address'), 'caller@example.test');
+    await user.type(screen.getByLabelText('First name'), 'Phone');
+    await user.type(screen.getByLabelText('Last name'), 'Caller');
+    await user.click(screen.getByRole('button', { name: 'Take booking' }));
+
+    await screen.findByText(/SNK-RANGE1/);
+    const sent = JSON.parse(calls.find((call) => call.method === 'POST')?.body ?? '{}');
+    expect(sent.startTime).toBe('10:00');
+    expect(sent.durationMinutes).toBe(90);
+  });
+
+  it('drops back to the shortest length when a new start is picked', async () => {
+    // Otherwise the previous caller's two hours silently becomes the next caller's default,
+    // drawing a span nobody asked for and pre-answering the question the next click is about
+    // to answer. The customer page behaves the same way, and the two must not diverge.
+    mockApi(() => json({}));
+    const user = userEvent.setup();
+    renderWithRouter(<AdminTelephoneBookingPage />, {
+      route: '/admin/bookings/telephone',
+      path: '/admin/bookings/telephone',
+    });
+
+    await user.click((await screen.findAllByRole('button', { name: /10:00 — available/ }))[0]!);
+    await user.click((await screen.findAllByRole('button', { name: /11:00/ }))[0]!);
+    await waitFor(() => {
+      expect((screen.getByLabelText('Duration') as HTMLSelectElement).value).toBe('90');
+    });
+
+    // A fresh start, on the row that already holds the selection but BEFORE its anchor, which
+    // the grid treats as re-anchoring rather than as an end click.
+    await user.click((await screen.findAllByRole('button', { name: /10:30/ }))[0]!);
+
+    await waitFor(() => {
+      expect((screen.getByLabelText('Duration') as HTMLSelectElement).value).toBe('30');
+    });
+  });
+
   it('lets staff overwrite the grid’s time with one the grid does not offer', async () => {
     // The backend lifts notice and advance for staff, and has always let them key an
     // arbitrary time. The grid is an affordance; if picking a cell locked the field, the
